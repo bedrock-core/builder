@@ -1,0 +1,17 @@
+{
+  "format_version": 2,
+  "header": {
+    "name": "@bedrock-core bundler example",
+    "description": "Standalone bundler fixture",
+    "uuid": "8832a65b-a06a-4c2b-b97c-cf1ee147ae50",
+    "version": [1, 0, 0],
+    "min_engine_version": [1, 26, 50]
+  },
+  "modules": [
+    { "type": "data", "uuid": "c5f3b6e9-cb5f-4baf-bbb0-f47eb363e620", "version": [1, 0, 0] },
+    {
+      "type": "script", "language": "javascript", "entry": "scripts/main.js",
+      "uuid": "ab316296-60bf-4877-b3f6-1c089e410719", "version": [1, 0, 0]
+    }
+  ]
+}

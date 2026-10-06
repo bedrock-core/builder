@@ -1,0 +1,17 @@
+{
+  "name": "@bedrock-core/builder-bundler",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone TS/JS script bundling for @bedrock-core projects",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema.json": "./schema.json"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "esbuild": "0.25.12"
+  }
+}
