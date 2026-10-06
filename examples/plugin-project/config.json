@@ -32,8 +32,7 @@
           }
         ],
         "export": {
-          "target": "local",
-          "path": "./dist"
+          "behaviorPack": "./dist/behaviorPack"
         }
       }
     }

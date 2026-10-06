@@ -15,6 +15,7 @@ async function fixture(t, plugin, steps = [{ plugin: 'custom', after: 'prepare' 
   await mkdir(path.join(root, 'dist'));
   await writeFile(path.join(root, 'packs/BP/source.json'), '{"source":true}');
   await writeFile(path.join(root, 'dist/previous.txt'), 'previous successful export');
+  await writeFile(path.join(root, 'dist/manifest.json'), await readFile(path.join(root, 'packs/BP/manifest.json')));
   await writeFile(path.join(root, 'plugin.ts'), plugin);
   const config = {
     type: 'minecraftBedrock',
@@ -27,7 +28,7 @@ async function fixture(t, plugin, steps = [{ plugin: 'custom', after: 'prepare' 
     bedrockCore: {
       formatVersion: '1.0.0',
       plugins: { custom: { module: './plugin.ts' } },
-      profiles: { default: { steps, export: { path: './dist' } } },
+      profiles: { default: { steps, export: { behaviorPack: './dist' } } },
     },
   };
   const configPath = path.join(root, 'config.json');
@@ -75,13 +76,13 @@ test('TS producer and consumer share generated JSON without touching source', as
   const result = await runBuild(project.options);
 
   assert.deepEqual(
-    JSON.parse(await readFile(path.join(result.outputPath, 'behaviorPack/generated.json'), 'utf8')),
+    JSON.parse(await readFile(path.join(result.outputPaths.behaviorPack, 'generated.json'), 'utf8')),
     { item: 'custom' },
   );
   assert.deepEqual((await readdir(path.join(project.root, 'packs/BP'))).sort(), ['manifest.json', 'source.json']);
   assert.equal(result.artifacts[0].id, 'items');
   assert.equal(result.dependencies.includes(path.join(project.root, 'plugin.ts')), true);
-  await assert.rejects(readFile(path.join(result.outputPath, 'previous.txt')), { code: 'ENOENT' });
+  await assert.rejects(readFile(path.join(result.outputPaths.behaviorPack, 'previous.txt')), { code: 'ENOENT' });
 });
 test('plugin failure keeps sources and previous export intact and permits retry', async (t) => {
   const project = await fixture(
@@ -152,9 +153,9 @@ test('unimplemented stages and unsafe output fail before plugins run', async (t)
   project.config.bedrockCore.profiles.default.stages = { guides: true };
   await writeFile(project.configPath, JSON.stringify(project.config));
   await assert.rejects(runBuild(project.options), /Stage implementation unavailable/);
-  project.config.bedrockCore.profiles.default.export.path = './packs/BP';
+  project.config.bedrockCore.profiles.default.export.behaviorPack = './packs/BP';
   await writeFile(project.configPath, JSON.stringify(project.config));
-  await assert.rejects(runBuild(project.options), /separate project directories/);
+  await assert.rejects(runBuild(project.options), /separate directories/);
   await preservation(project.root);
 });
 test('a destination lock blocks overlapping writes', async (t) => {

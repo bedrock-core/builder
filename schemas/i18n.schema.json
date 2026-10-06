@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "@bedrock-core i18n settings",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "sourceDir": {
+      "type": "string",
+      "pattern": "\\S",
+      "default": "i18n",
+      "description": "Project-relative directory containing default-exported locale modules."
+    },
+    "defaultLocale": {
+      "type": "string",
+      "pattern": "^[a-z]{2}_[A-Z]{2}$",
+      "default": "en_US"
+    },
+    "namespace": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Defaults to the project's namespace."
+    },
+    "strict": { "type": "boolean", "default": true },
+    "types": {
+      "type": "boolean",
+      "default": true,
+      "description": "Write editor declarations under .bedrock-core/generated/i18n."
+    },
+    "vanilla": {
+      "type": "boolean",
+      "default": false,
+      "description": "Fetch and cache vanilla strings, type their keys and bundle referenced values."
+    },
+    "vanillaLangUrlTemplate": {
+      "type": "string",
+      "pattern": "\\{locale\\}",
+      "description": "Vanilla language URL containing a {locale} placeholder."
+    },
+    "cacheMaxAgeHours": { "type": "number", "minimum": 0, "default": 24 },
+    "tsconfig": { "type": "string", "pattern": "\\S" },
+    "pretty": {
+      "anyOf": [
+        { "const": false },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "indent": { "enum": ["space", "tab"] },
+            "size": { "type": "integer", "minimum": 1 }
+          }
+        }
+      ]
+    }
+  }
+}

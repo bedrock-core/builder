@@ -10,11 +10,16 @@ const config = profile => ({
   },
 });
 
-test('a bundler-only profile does not silently enable the stack', () => {
+test('omitted stages keep automatic boundaries and explicit selections retain their settings', () => {
   assert.deepEqual(
     planBuild(config({ stages: { bundler: true } })).map(step => step.stage),
-    ['prepare', 'bundler', 'validate', 'export'],
+    ['prepare', 'manifest', 'generator', 'guides', 'i18n', 'ui-compiler', 'bundler', 'validate', 'export'],
   );
+  const result = planBuild(config({ stages: { bundler: true, i18n: false } }));
+
+  assert.equal(result.find(step => step.stage === 'generator').mode, 'auto');
+  assert.equal(result.find(step => step.stage === 'bundler').mode, 'always');
+  assert.equal(result.some(step => step.stage === 'i18n'), false);
 });
 test('hooks retain configuration order and validation follows final modifications', () => {
   const steps = [

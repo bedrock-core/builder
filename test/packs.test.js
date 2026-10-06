@@ -10,7 +10,9 @@ import { runBuild } from '../src/run.ts';
 const configFor = packs => ({
   type: 'minecraftBedrock', name: 'Pack selection', authors: [], targetVersion: '1.26.50',
   namespace: 'pack_test', worlds: [], packs,
-  bedrockCore: { formatVersion: '1.0.0', profiles: { default: { export: { path: './dist' } } } },
+  bedrockCore: { formatVersion: '1.0.0', profiles: { default: {
+    export: Object.fromEntries(Object.keys(packs).map(id => [id, `./dist/${id}`])),
+  } } },
 });
 
 test('schema accepts arbitrary pack names and requires named paths', () => {
@@ -40,8 +42,8 @@ for (const packId of ['resourcePack', 'behaviorPack']) {
     await writeFile(configPath, JSON.stringify(configFor({ [packId]: './pack' })));
     const result = await runBuild({ configPath, logger: {} });
 
-    assert.deepEqual((await readdir(result.outputPath)).sort(), ['build.json', packId].sort());
-    assert.equal(await readFile(path.join(result.outputPath, packId, 'asset.json'), 'utf8'), '{}');
+    assert.deepEqual((await readdir(result.outputPaths[packId])).sort(), ['asset.json', 'manifest.json']);
+    assert.equal(await readFile(path.join(result.outputPaths[packId], 'asset.json'), 'utf8'), '{}');
   });
 }
 
@@ -59,7 +61,7 @@ test('bundler skips resource packs without requiring a behavior pack', async (t)
   await writeFile(configPath, JSON.stringify(config));
   const result = await runBuild({ configPath, logger: {} });
 
-  assert.equal(result.artifacts.length, 0);
+  assert.equal(result.artifacts.filter(artifact => artifact.owner === 'bundler').length, 0);
 });
 
 test('multiple packs use manifest classification rather than configured names', async (t) => {
@@ -84,8 +86,8 @@ test('multiple packs use manifest classification rather than configured names', 
   const result = await runBuild({ configPath, logger: {} });
 
   assert.deepEqual(result.packs.map(pack => pack.kind), ['behavior', 'behavior', 'resource', 'resource']);
-  assert.equal(result.packs[2].defaultDeploymentFolder, 'development_resource_packs');
-  assert.deepEqual((await readdir(result.outputPath)).sort(), ['build.json', ...Object.keys(packs)].sort());
+  assert.equal(result.outputPaths.visuals, path.join(root, 'dist/visuals'));
+  assert.deepEqual((await readdir(path.join(root, 'dist'))).sort(), Object.keys(packs).sort());
 
   await rm(path.join(root, 'two/scripts/main.js'));
   await writeFile(path.join(root, 'two/scripts/main.ts'), 'export const value = 1;');

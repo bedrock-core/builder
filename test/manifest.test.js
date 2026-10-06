@@ -93,7 +93,7 @@ test('manifest stage selects profile test scripts without modifying authored fil
   const original = await readFile(manifestPath, 'utf8');
   const result = await runBuild({ configPath: project.configPath, profile: 'tests', logger: {} });
 
-  assert.match(await readFile(path.join(result.outputPath, 'gameplay/scripts/tests.js'), 'utf8'), /99/);
+  assert.match(await readFile(path.join(result.outputPaths.gameplay, 'scripts/tests.js'), 'utf8'), /99/);
   assert.equal(await readFile(manifestPath, 'utf8'), original);
   assert.equal(result.artifacts.some(artifact => artifact.id === 'manifest:gameplay'), true);
 

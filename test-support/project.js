@@ -3,10 +3,14 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { manifestFor } from './manifest.js';
 
-export async function projectFor(t) {
+export async function projectFor(t, { cleanup = true } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'builder-flow-'));
+  const dispose = () => rm(root, { recursive: true, force: true });
 
-  t.after(() => rm(root, { recursive: true, force: true }));
+  if (cleanup) {
+    t.after(dispose);
+  }
+
   const project = path.join(root, 'project');
   const behavior = manifestFor('script');
   const resources = manifestFor('resources');
@@ -22,10 +26,10 @@ export async function projectFor(t) {
     type: 'minecraftBedrock', name: 'Build flow', authors: [], targetVersion: '1.26.50',
     namespace: 'flow_test', worlds: [], packs: { gameplay: './packs/gameplay', visuals: './packs/visuals' },
     bedrockCore: { formatVersion: '1.0.0', profiles: {
-      default: { stages: { manifest: true, bundler: { debug: true } }, export: { path: './dist' } },
+      default: { stages: { manifest: true, bundler: { debug: true } }, export: { gameplay: './dist/gameplay', visuals: './dist/visuals' } },
       tests: {
         stages: { manifest: { packs: { gameplay: { scriptEntry: 'scripts/tests.js', header: { name: 'Test pack' } } } }, bundler: true },
-        export: { path: './dist-tests' },
+        export: { gameplay: './dist-tests/gameplay', visuals: './dist-tests/visuals' },
       },
     } },
   };
@@ -33,5 +37,5 @@ export async function projectFor(t) {
 
   await writeFile(configPath, JSON.stringify(config));
 
-  return { root, project, behavior, resources, config, configPath };
+  return { root, project, behavior, resources, config, configPath, dispose };
 }

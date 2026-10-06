@@ -188,13 +188,16 @@
     "stage": {
       "anyOf": [
         {
+          "const": "auto"
+        },
+        {
           "type": "boolean"
         },
         {
           "type": "object"
         }
       ],
-      "description": "True/settings enables the stage; false/omission disables it. Stage packages validate their own settings."
+      "description": "Omission or auto detects inputs; false disables; true or settings enables the stage even without detected inputs."
     },
     "profile": {
       "type": "object",
@@ -202,18 +205,14 @@
       "properties": {
         "export": {
           "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "path"
-          ],
-          "properties": {
-            "target": {
-              "const": "local"
-            },
-            "path": {
-              "$ref": "#/definitions/nonempty"
-            }
-          }
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/nonempty"
+          },
+          "description": "Map each configured pack ID to its exact destination folder. Paths resolve relative to config.json; absolute paths are supported."
         },
         "stages": {
           "type": "object",
@@ -222,28 +221,47 @@
             "manifest": {
               "anyOf": [
                 {
+                  "const": "auto"
+                },
+                {
                   "type": "boolean"
                 },
                 {
                   "$ref": "./manifest.schema.json"
                 }
-              ]
+              ],
+              "description": "Omission or auto detects inputs; false disables; true or settings enables the stage even without detected inputs."
             },
             "generator": {
               "anyOf": [
+                {
+                  "const": "auto"
+                },
                 {
                   "type": "boolean"
                 },
                 {
                   "$ref": "./generator.schema.json"
                 }
-              ]
+              ],
+              "description": "Omission or auto detects inputs; false disables; true or settings enables the stage even without detected inputs."
             },
             "guides": {
               "$ref": "#/definitions/stage"
             },
             "i18n": {
-              "$ref": "#/definitions/stage"
+              "anyOf": [
+                {
+                  "const": "auto"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "$ref": "./i18n.schema.json"
+                }
+              ],
+              "description": "Omission or auto detects inputs; false disables; true or settings enables the stage even without detected inputs."
             },
             "ui-compiler": {
               "$ref": "#/definitions/stage"
@@ -251,12 +269,16 @@
             "bundler": {
               "anyOf": [
                 {
+                  "const": "auto"
+                },
+                {
                   "type": "boolean"
                 },
                 {
                   "$ref": "./bundler.schema.json"
                 }
-              ]
+              ],
+              "description": "Omission or auto detects inputs; false disables; true or settings enables the stage even without detected inputs."
             }
           }
         },
@@ -265,28 +287,6 @@
           "items": {
             "$ref": "#/definitions/step"
           }
-        },
-        "deploy": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "path": {
-                  "$ref": "#/definitions/nonempty"
-                },
-                "channel": {
-                  "enum": [
-                    "retail",
-                    "preview"
-                  ]
-                }
-              }
-            }
-          ]
         },
         "watch": {
           "type": "object",
@@ -304,6 +304,11 @@
               }
             }
           }
+        },
+        "cache": {
+          "type": "boolean",
+          "default": true,
+          "description": "Reuse deterministic compiler output when its inputs match. Set false to rebuild it."
         }
       }
     },

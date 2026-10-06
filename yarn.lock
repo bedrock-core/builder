@@ -34,6 +34,14 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@bedrock-core/builder-i18n@workspace:packages/i18n":
+  version: 0.0.0-use.local
+  resolution: "@bedrock-core/builder-i18n@workspace:packages/i18n"
+  dependencies:
+    "@bedrock-core/builder-bundler": "workspace:*"
+  languageName: unknown
+  linkType: soft
+
 "@bedrock-core/builder@workspace:.":
   version: 0.0.0-use.local
   resolution: "@bedrock-core/builder@workspace:."

@@ -28,13 +28,19 @@ setup. The generator uses these options to support Node built-ins in bundled Com
 `inject` supplies helper modules for free identifiers during compilation.
 The Bedrock adapter keeps the default neutral platform.
 
-The builder adapter discovers script modules from every staged behavior-pack manifest. The
+The builder adapter activates automatically for script modules in staged behavior-pack manifests. The
 manifest's JavaScript entry selects the same-stem TypeScript source, or the JavaScript file
 itself. Manifest plugins can select test scripts before bundling. No script entry or destination
-is repeated in builder configuration. `generatedImports` maps specifiers to registered artifact
-IDs. Artifacts include the pack ID and manifest entry. All bundles finish before staged scripts
+is repeated in builder configuration. Producer import names resolve automatically;
+`generatedImports` optionally overrides them or maps custom specifiers to artifact IDs.
+Artifacts include the pack ID and manifest entry. All bundles finish before staged scripts
 are replaced and consumed TypeScript sources are removed. Authored files remain unchanged.
 See [builder settings](../../README.md#bundler-settings) for configuration and validation.
+
+The adapter reuses verified local compilations by default and restores them into fresh staging.
+Profile `cache: false` disables reuse. External/npm inputs and inherited tsconfigs currently
+recompile. Final pack validation and publication always run. Standalone `bundleScripts` calls
+compile each time; caching belongs to the runner adapter.
 
 Screen JSX transforms, JSON5 support and Regolith parity remain pending. `.screen.tsx` modules
 fail explicitly until UI transformation is integrated. The default `es2020` compilation target

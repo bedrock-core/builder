@@ -5,22 +5,20 @@ import {
   readFile,
   realpath,
   readdir,
-  rename,
   rm,
   stat,
   symlink,
-  writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-import { randomUUID } from 'node:crypto';
 import { validateConfig } from './config.ts';
 import { planBuild } from './plan.ts';
+import { detectStage } from './detect.ts';
 import { inspectPack, type PackInfo } from './packs.ts';
 import { validatePackManifests } from './manifest.ts';
-import { resolveDeploymentRoot, withDeployment, type DeployedPack } from './deploy.ts';
+import { resolveExportPaths, withExportPaths } from './export.ts';
 import type { Artifact, BuildContext, BuildOptions, BuildResult } from './contract.d.ts';
 export type {
   Artifact,
@@ -28,6 +26,7 @@ export type {
   BuildOptions,
   BuildResult,
   BuildStep,
+  BuildStepResult,
   BuildPlugin,
 } from './contract.d.ts';
 
@@ -73,67 +72,52 @@ export async function runBuild({
   const plan = planBuild(config, profile);
   const implementations = { ...stages };
 
-  if (
-    plan.some(step => step.kind === 'stage' && step.stage === 'bundler')
-    && !implementations.bundler
-  ) {
-    implementations.bundler = (await import('./stages/bundler.ts')).run;
-  }
+  async function implementation(stage: string) {
+    if (!implementations[stage]) {
+      if (stage === 'manifest') {
+        implementations.manifest = (await import('./stages/manifest.ts')).run;
+      } else if (stage === 'generator') {
+        implementations.generator = (await import('./stages/generator.ts')).run;
+      } else if (stage === 'i18n') {
+        implementations.i18n = (await import('./stages/i18n.ts')).run;
+      } else if (stage === 'bundler') {
+        implementations.bundler = (await import('./stages/bundler.ts')).run;
+      }
+    }
 
-  if (plan.some(step => step.kind === 'stage' && step.stage === 'manifest') && !implementations.manifest) {
-    implementations.manifest = (await import('./stages/manifest.ts')).run;
-  }
+    if (typeof implementations[stage] !== 'function') {
+      throw new Error(`Stage implementation unavailable: ${stage}`);
+    }
 
-  if (plan.some(step => step.kind === 'stage' && step.stage === 'generator') && !implementations.generator) {
-    implementations.generator = (await import('./stages/generator.ts')).run;
+    return implementations[stage]!;
   }
 
   const exportConfig = config.bedrockCore.profiles[profile]?.export;
 
   if (!exportConfig) {
-    throw new Error('Profile needs export.path to execute a build');
+    throw new Error('Profile needs export destinations for its packs to execute a build');
   }
 
-  const output = path.resolve(project, exportConfig.path);
-  const deployment = config.bedrockCore.profiles[profile]?.deploy;
-  const deploymentSettings = deployment ? (typeof deployment === 'object' ? deployment : {}) : undefined;
-  const deploymentRoot = deploymentSettings ? resolveDeploymentRoot(project, deploymentSettings) : undefined;
+  const outputPaths = Object.freeze(resolveExportPaths(project, config.packs, exportConfig));
+  const outputs = Object.values(config.bedrockCore.profiles).flatMap((settings) => {
+    if (!settings.export) {
+      return [];
+    }
 
-  if (deploymentRoot && !deploymentSettings?.path && !await exists(deploymentRoot)) {
-    throw new Error(`Minecraft data directory does not exist: ${deploymentRoot}; set deploy.path`);
-  }
-
-  if (deploymentRoot && (
-    deploymentRoot === project || inside(deploymentRoot, project)
-    || deploymentRoot === output || inside(output, deploymentRoot) || inside(deploymentRoot, output)
-    || (inside(project, deploymentRoot) && ['.git', 'node_modules', '.bedrock-core'].includes(path.relative(project, deploymentRoot).split(path.sep)[0]))
-  )) {
-    throw new Error('Deployment, project sources and local export must be separate directories');
-  }
-
-  // Export is a dedicated project directory. Reject source roots and pack overlap.
-  if (
-    !inside(project, output)
-    || ['.git', 'node_modules', '.bedrock-core'].includes(
-      path.relative(project, output).split(path.sep)[0],
-    )
-  ) {
-    throw new Error('Export must be a dedicated directory inside the project');
-  }
+    try {
+      return Object.values(resolveExportPaths(project, config.packs, settings.export));
+    } catch {
+      return [];
+    }
+  });
 
   const packs = Object.fromEntries(
     Object.entries(config.packs).map(([id, relative]) => [id, path.resolve(project, relative!)]),
   );
 
   for (const source of Object.values(packs)) {
-    if (
-      !inside(project, source)
-      || source === output
-      || inside(source, output)
-      || inside(output, source)
-      || (deploymentRoot && (source === deploymentRoot || inside(source, deploymentRoot) || inside(deploymentRoot, source)))
-    ) {
-      throw new Error('Pack and export paths must be separate project directories');
+    if (!inside(project, source)) {
+      throw new Error('Pack sources must be directories inside the project');
     }
 
     if (!(await stat(source)).isDirectory()) {
@@ -145,9 +129,9 @@ export async function runBuild({
     if (
       step.kind === 'stage'
       && !['prepare', 'validate', 'export'].includes(step.stage)
-      && typeof implementations[step.stage] !== 'function'
+      && step.mode === 'always'
     ) {
-      throw new Error(`Stage implementation unavailable: ${step.stage}`);
+      await implementation(step.stage);
     }
   }
 
@@ -168,13 +152,17 @@ export async function runBuild({
   }
 
   const ignored = new Set(['.git', 'node_modules', '.bedrock-core']);
+  const normalized = (file: string) => process.platform === 'win32' ? file.toLowerCase() : file;
+  const isOutput = (file: string) => outputs.some(output =>
+    path.relative(output, file) === '' || normalized(file).startsWith(`${normalized(output)}.builder-`),
+  );
 
   // Reject symlinks before copying or publishing, including export parent directories.
   async function inspect(directory: string, skipIgnored = true): Promise<void> {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       const source = path.join(directory, entry.name);
 
-      if (skipIgnored && (source === output || source === deploymentRoot || ignored.has(entry.name))) {
+      if (skipIgnored && (isOutput(source) || ignored.has(entry.name))) {
         continue;
       }
 
@@ -189,204 +177,178 @@ export async function runBuild({
   }
 
   await inspect(project);
-  await mkdir(path.dirname(output), { recursive: true });
 
-  if (
-    !inside(project, await realpath(path.dirname(output)))
-    && (await realpath(path.dirname(output))) !== project
-  ) {
-    throw new Error('Export parent escapes the project');
-  }
+  return withExportPaths(outputPaths, async (publish) => {
+    let workspace: string | undefined;
+    const dependencies = new Set([file, ...modules.values()]);
+    const artifacts = new Map<string, Artifact>();
+    const generatedImports = new Map<string, string>();
+    const stageResults: BuildResult['stages'] = [];
+    let publishedPacks: PackInfo[] = [];
 
-  if ((await exists(output)) && (await realpath(output)) !== output) {
-    throw new Error('Export cannot be a symlink');
-  }
+    try {
+      workspace = await mkdtemp(path.join(tmpdir(), 'bedrock-core-build-'));
+      const staged = path.join(workspace, 'project');
 
-  const lock = `${output}.builder-lock`;
+      await cp(project, staged, {
+        recursive: true,
+        filter: source =>
+          !isOutput(source) && !ignored.has(path.basename(source)),
+      });
+      const generated = path.join(workspace, 'generated');
 
-  await mkdir(lock); // A second build for the same destination fails before staging.
-  let workspace: string | undefined;
-  let backup: string | undefined;
-  let candidate: string | undefined;
-  let published = false;
-  const dependencies = new Set([file, ...modules.values()]);
-  const artifacts = new Map<string, Artifact>();
-  let publishedPacks: PackInfo[] = [];
-  let deployments: DeployedPack[] = [];
+      await mkdir(generated);
 
-  try {
-    workspace = await mkdtemp(path.join(tmpdir(), 'bedrock-core-build-'));
-    const staged = path.join(workspace, 'project');
+      if (await exists(path.join(project, 'node_modules'))) {
+        await symlink(path.join(project, 'node_modules'), path.join(workspace, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
+      }
 
-    await cp(project, staged, {
-      recursive: true,
-      filter: source =>
-        source !== output && source !== deploymentRoot && source !== lock && !ignored.has(path.basename(source)),
-    });
-    const generated = path.join(workspace, 'generated');
-
-    await mkdir(generated);
-
-    if (await exists(path.join(project, 'node_modules'))) {
-      await symlink(path.join(project, 'node_modules'), path.join(workspace, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
-    }
-
-    const stagedPacks = Object.fromEntries(
-      Object.entries(packs).map(([id, source]) => [
-        id,
-        path.join(staged, path.relative(project, source)),
-      ]),
-    );
-    let owner = 'prepare';
-    const context: BuildContext = Object.freeze({
-      projectRoot: project,
-      stagedRoot: staged,
-      generatedDir: generated,
-      packs: Object.freeze(stagedPacks),
-      outputPath: output,
-      profile,
-      logger,
-      signal,
-      registerDependency(filePath: string) {
-        dependencies.add(path.resolve(project, filePath));
-      },
-      async registerArtifact(id: string, filePath: string) {
-        if (typeof id !== 'string' || !id.trim()) {
-          throw new Error('Artifact ID must be nonempty');
-        }
-
-        const location = await realpath(path.resolve(staged, filePath));
-
-        if (!inside(workspace!, location) || !(await stat(location)).isFile()) {
-          throw new Error(`Artifact must be a staged file: ${id}`);
-        }
-
-        if (artifacts.has(id)) {
-          throw new Error(`Artifact already registered: ${id}`);
-        }
-
-        artifacts.set(id, Object.freeze({ id, path: location, owner }));
-      },
-      artifact(id: string) {
-        const artifact = artifacts.get(id);
-
-        if (!artifact) {
-          throw new Error(
-            `Missing artifact: ${id}; select its producer or register an external input copied into staging`,
-          );
-        }
-
-        return artifact;
-      },
-      async inspectPack(id: string) {
-        const directory = stagedPacks[id];
-
-        if (!directory) {
-          throw new Error(`Pack is not configured: ${id}`);
-        }
-
-        return inspectPack(id, directory);
-      },
-    });
-
-    for (const [index, step] of plan.entries()) {
-      check(signal);
-      owner = step.kind === 'plugin' ? `${step.plugin}:${index}` : step.stage;
-      logger.info?.(`@bedrock-core/builder: ${owner}`);
-
-      if (step.kind === 'plugin') {
-        const module = modules.get(step.module)!;
-        const local = step.module.startsWith('.') || path.isAbsolute(step.module);
-        const url = pathToFileURL(local ? path.join(staged, path.relative(project, module)) : module);
-
-        url.searchParams.set('build', path.basename(workspace));
-        const plugin = await import(url.href);
-
-        if (typeof plugin.run !== 'function') {
-          throw new Error(`Plugin must export run(context, settings): ${step.plugin}`);
-        }
-
-        await plugin.run(context, step.settings);
-      } else if (step.stage === 'validate') {
-        for (const artifact of artifacts.values()) {
-          const current = await realpath(artifact.path);
-
-          if (!inside(workspace, current) || !(await stat(current)).isFile()) {
-            throw new Error(`Invalid registered artifact: ${artifact.id}`);
-          }
-        }
-
-        await validateArtifacts?.(context);
-        await validatePackManifests(stagedPacks);
-      } else if (step.stage === 'export') {
-        publishedPacks = await Promise.all(Object.keys(stagedPacks).map(id => context.inspectPack(id)));
-        await inspect(staged, false);
-        candidate = `${output}.builder-${randomUUID()}`;
-        await mkdir(candidate);
-
-        for (const [id, source] of Object.entries(stagedPacks)) {
-          await cp(source, path.join(candidate, id), { recursive: true });
-        }
-
-        await writeFile(
-          path.join(candidate, 'build.json'),
-          JSON.stringify({ profile, packs: publishedPacks.map(({ id, kind, moduleTypes, defaultDeploymentFolder }) => ({ id, kind, moduleTypes, defaultDeploymentFolder })) }, null, 2),
-        );
-        check(signal);
-
-        const publishLocal = async () => {
-          if (await exists(output)) {
-            backup = `${output}.builder-backup-${randomUUID()}`;
-            await rename(output, backup);
+      const stagedPacks = Object.fromEntries(
+        Object.entries(packs).map(([id, source]) => [
+          id,
+          path.join(staged, path.relative(project, source)),
+        ]),
+      );
+      let owner = 'prepare';
+      const context: BuildContext = Object.freeze({
+        projectRoot: project,
+        namespace: config.namespace,
+        stagedRoot: staged,
+        generatedDir: generated,
+        cache: config.bedrockCore.profiles[profile]?.cache !== false,
+        get generatedImports() {
+          return Object.freeze(Object.fromEntries(generatedImports));
+        },
+        packs: Object.freeze(stagedPacks),
+        outputPaths,
+        profile,
+        logger,
+        signal,
+        registerDependency(filePath: string) {
+          dependencies.add(path.resolve(project, filePath));
+        },
+        async registerArtifact(id: string, filePath: string, options?: { importAs?: string }) {
+          if (typeof id !== 'string' || !id.trim()) {
+            throw new Error('Artifact ID must be nonempty');
           }
 
-          try {
-            await rename(candidate!, output);
-            candidate = undefined;
-            published = true;
-          } catch (error) {
-            if (backup) {
-              await rename(backup, output);
-              backup = undefined;
+          const location = await realpath(path.resolve(staged, filePath));
+
+          if (!inside(workspace!, location) || !(await stat(location)).isFile()) {
+            throw new Error(`Artifact must be a staged file: ${id}`);
+          }
+
+          if (artifacts.has(id)) {
+            throw new Error(`Artifact already registered: ${id}`);
+          }
+
+          const importAs = options?.importAs;
+
+          if (importAs !== undefined) {
+            if (typeof importAs !== 'string' || !importAs.trim()) {
+              throw new Error(`Artifact import name must be nonempty: ${id}`);
             }
 
-            throw error;
-          }
-        };
+            if (generatedImports.has(importAs)) {
+              throw new Error(`Generated import already registered: ${importAs}; owned by ${generatedImports.get(importAs)}`);
+            }
 
-        if (deploymentRoot) {
-          deployments = await withDeployment({ packs: stagedPacks, root: deploymentRoot, signal }, publishLocal);
-        } else {
-          await publishLocal();
+            generatedImports.set(importAs, id);
+          }
+
+          artifacts.set(id, Object.freeze({ id, path: location, owner, ...(importAs ? { importAs } : {}) }));
+        },
+        artifact(id: string) {
+          const artifact = artifacts.get(id);
+
+          if (!artifact) {
+            throw new Error(
+              `Missing artifact: ${id}; select its producer or register an external input copied into staging`,
+            );
+          }
+
+          return artifact;
+        },
+        async inspectPack(id: string) {
+          const directory = stagedPacks[id];
+
+          if (!directory) {
+            throw new Error(`Pack is not configured: ${id}`);
+          }
+
+          return inspectPack(id, directory);
+        },
+      });
+
+      for (const [index, step] of plan.entries()) {
+        check(signal);
+        owner = step.kind === 'plugin' ? `${step.plugin}:${index}` : step.stage;
+
+        if (step.kind === 'plugin' || ['prepare', 'validate', 'export'].includes(owner)) {
+          logger.info?.(`@bedrock-core/builder: ${owner}`);
         }
-      } else if (step.stage !== 'prepare') {
-        await implementations[step.stage]!(context, step.settings ?? {});
+
+        if (step.kind === 'plugin') {
+          const module = modules.get(step.module)!;
+          const local = step.module.startsWith('.') || path.isAbsolute(step.module);
+          const url = pathToFileURL(local ? path.join(staged, path.relative(project, module)) : module);
+
+          url.searchParams.set('build', path.basename(workspace));
+          const plugin = await import(url.href);
+
+          if (typeof plugin.run !== 'function') {
+            throw new Error(`Plugin must export run(context, settings): ${step.plugin}`);
+          }
+
+          await plugin.run(context, step.settings);
+        } else if (step.stage === 'validate') {
+          for (const artifact of artifacts.values()) {
+            const current = await realpath(artifact.path);
+
+            if (!inside(workspace, current) || !(await stat(current)).isFile()) {
+              throw new Error(`Invalid registered artifact: ${artifact.id}`);
+            }
+          }
+
+          await validateArtifacts?.(context);
+          await validatePackManifests(stagedPacks);
+        } else if (step.stage === 'export') {
+          publishedPacks = await Promise.all(Object.keys(stagedPacks).map(id => context.inspectPack(id)));
+          await inspect(staged, false);
+          check(signal);
+          await publish(stagedPacks, signal);
+        } else if (step.stage !== 'prepare') {
+          const detection = step.mode === 'auto' ? await detectStage(context, step.stage) : undefined;
+
+          if (detection && !detection.needed) {
+            stageResults.push({ stage: step.stage, status: 'skipped', reason: detection.reason });
+            logger.info?.(`@bedrock-core/builder: ${step.stage} skipped (${detection.reason})`);
+            continue;
+          }
+
+          const run = await implementation(step.stage);
+          const outcome = await run(context, step.settings ?? {});
+          const status = outcome?.cached ? 'cached' : 'executed';
+          const reason = outcome?.reason ?? detection?.reason;
+
+          stageResults.push({ stage: step.stage, status, reason });
+          logger.info?.(`@bedrock-core/builder: ${step.stage} ${status}${reason ? ` (${reason})` : ''}`);
+        }
+      }
+
+      return Object.freeze({
+        outputPaths,
+        profile,
+        stages: stageResults,
+        dependencies: [...dependencies],
+        artifacts: [...artifacts.values()].map(({ id, owner, importAs }) => ({ id, owner, ...(importAs ? { importAs } : {}) })),
+        packs: publishedPacks.map(pack => ({ ...pack, path: outputPaths[pack.id]! })),
+      });
+    } finally {
+    // Cleanup removes owned directories and dependency links without following link targets.
+      if (workspace) {
+        await rm(workspace, { recursive: true, force: true });
       }
     }
-
-    return Object.freeze({
-      outputPath: output,
-      profile,
-      dependencies: [...dependencies],
-      artifacts: [...artifacts.values()].map(({ id, owner }) => ({ id, owner })),
-      deployments,
-      packs: publishedPacks.map(pack => ({ ...pack, path: path.join(output, pack.id) })),
-    });
-  } finally {
-    // Cleanup removes owned directories and dependency links without following link targets.
-    if (candidate) {
-      await rm(candidate, { recursive: true, force: true });
-    }
-
-    // Retain the previous export if rollback itself failed.
-    if (backup && published) {
-      await rm(backup, { recursive: true, force: true });
-    }
-
-    if (workspace) {
-      await rm(workspace, { recursive: true, force: true });
-    }
-
-    await rm(lock, { recursive: true, force: true });
-  }
+  });
 }

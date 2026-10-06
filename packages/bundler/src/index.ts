@@ -1,6 +1,8 @@
-import { context as createContext, type Plugin, type Metafile } from 'esbuild';
+import { context as createContext, version, type Plugin, type Metafile } from 'esbuild';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+
+export const compilerVersion = version;
 
 export interface BundleOptions {
   root: string;
@@ -48,7 +50,7 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
           return {
             errors: [
               {
-                text: `Missing generated import: ${args.path}; register its producer artifact and configure generatedImports`,
+                text: `Missing generated import: ${args.path}; enable its producing stage or provide an explicit alias`,
               },
             ],
           };

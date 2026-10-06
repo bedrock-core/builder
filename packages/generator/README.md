@@ -133,8 +133,8 @@ sources under every configured pack, excluding pack `scripts` directories and de
 templates must remain inside configured packs. The adapter removes consumed template sources only
 from staging and registers every JSON document as `generator:<packId>:<packRelativePath>`.
 
-`generatedImports` maps specifiers to artifact IDs from earlier stages or hooks. For example,
-`{ "@bedrock-core/generated/input": "my-input" }` consumes a registered `my-input` file.
+Producer import names registered by earlier stages or hooks resolve automatically. Optional
+`generatedImports` settings override them or map custom specifiers to artifact IDs.
 Later stages can consume the generator's artifact IDs or ordinary relative JSON imports.
 Settings are described by [the schema](../../schemas/generator.schema.json).
 

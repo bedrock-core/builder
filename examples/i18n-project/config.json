@@ -1,0 +1,24 @@
+{
+  "$schema": "../../schemas/config.schema.json",
+  "type": "minecraftBedrock",
+  "name": "@bedrock-core i18n example",
+  "authors": [],
+  "targetVersion": "1.26.50",
+  "namespace": "builder_i18n",
+  "packs": {
+    "gameplay": "./packs/gameplay",
+    "visuals": "./packs/visuals"
+  },
+  "worlds": [],
+  "bedrockCore": {
+    "formatVersion": "1.0.0",
+    "profiles": {
+      "default": {
+        "export": {
+          "gameplay": "./dist/gameplay",
+          "visuals": "./dist/visuals"
+        }
+      }
+    }
+  }
+}

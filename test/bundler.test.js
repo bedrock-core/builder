@@ -28,7 +28,7 @@ async function fixture(t) {
       profiles: {
         default: {
           stages: { bundler: { debug: true } },
-          export: { path: './dist' },
+          export: { behaviorPack: './dist/behaviorPack' },
         },
       },
     },
@@ -91,7 +91,7 @@ test('runner bundles a generated artifact and project npm dependency without oth
   await writeFile(configPath, JSON.stringify(config));
   const result = await runBuild({ configPath, logger: {} });
   const bundle = await readFile(
-    path.join(result.outputPath, 'behaviorPack/scripts/main.js'),
+    path.join(result.outputPaths.behaviorPack, 'scripts/main.js'),
     'utf8',
   );
   const executable = path.join(root, 'verify.mjs');
@@ -104,7 +104,7 @@ test('runner bundles a generated artifact and project npm dependency without oth
   );
   assert.deepEqual(await readdir(path.join(root, 'packs/BP/scripts')), ['custom.js', 'main.ts']);
   assert.equal(
-    await readFile(path.join(result.outputPath, 'behaviorPack/scripts/custom.js'), 'utf8'),
+    await readFile(path.join(result.outputPaths.behaviorPack, 'scripts/custom.js'), 'utf8'),
     'export const custom = true;',
   );
 });
@@ -166,12 +166,13 @@ test('multiple script packs bundle shared inputs before staged source cleanup', 
   await writeFile(path.join(root, 'packs/BP/scripts/start.ts'), 'export { shared } from \'./shared.ts\';');
   await writeFile(path.join(root, 'packs/extra/scripts/extra.ts'), 'export { shared } from \'../../BP/scripts/shared.ts\';');
   config.packs.extra = './packs/extra';
+  config.bedrockCore.profiles.default.export.extra = './dist/extra';
   config.bedrockCore.profiles.default.stages.bundler = { debug: true };
   await writeFile(configPath, JSON.stringify(config));
   const result = await runBuild({ configPath, logger: {} });
 
   for (const [pack, filename] of [['behaviorPack', 'start.js'], ['extra', 'extra.js']]) {
-    const output = await readFile(path.join(result.outputPath, pack, 'scripts', filename), 'utf8');
+    const output = await readFile(path.join(result.outputPaths[pack], 'scripts', filename), 'utf8');
     const executable = path.join(root, `${pack}.mjs`);
 
     await writeFile(executable, output);
@@ -179,7 +180,7 @@ test('multiple script packs bundle shared inputs before staged source cleanup', 
     assert.equal(result.artifacts.some(artifact => artifact.id === `bundler:${pack}:scripts/${filename}:script`), true);
   }
 
-  await assert.rejects(readFile(path.join(result.outputPath, 'behaviorPack/scripts/shared.ts')), { code: 'ENOENT' });
+  await assert.rejects(readFile(path.join(result.outputPaths.behaviorPack, 'scripts/shared.ts')), { code: 'ENOENT' });
   assert.match(await readFile(path.join(root, 'packs/BP/scripts/shared.ts'), 'utf8'), /number/);
 });
 
@@ -194,9 +195,64 @@ test('missing manifest sources in a later pack preserve the previous export', as
   await mkdir(path.join(root, 'second/scripts'), { recursive: true });
   await writeFile(path.join(root, 'second/manifest.json'), JSON.stringify(manifestFor('script', 'scripts/missing.js')));
   config.packs.second = './second';
+  config.bedrockCore.profiles.default.export.second = './dist/second';
   await writeFile(configPath, JSON.stringify(config));
   await assert.rejects(runBuild({ configPath, logger: {} }), /no TS\/JS source matching.*missing.js/);
   assert.equal(await readFile(output, 'utf8'), previous);
+});
+
+test('a producer registers its import name once and consumers need no alias configuration', async (t) => {
+  const { root, config, configPath } = await fixture(t);
+
+  await writeFile(path.join(root, 'packs/BP/scripts/main.ts'), `
+    import data from '@bedrock-core/generated/custom';
+    export const result = data.value;
+  `);
+  await writeFile(path.join(root, 'produce.ts'), `
+    import { writeFile } from 'node:fs/promises';
+    import path from 'node:path';
+    export async function run(context) {
+      const file = path.join(context.generatedDir, 'custom.json');
+      await writeFile(file, '{"value":42}');
+      await context.registerArtifact('custom', file, { importAs: '@bedrock-core/generated/custom' });
+    }
+  `);
+  config.bedrockCore.plugins = { custom: { module: './produce.ts' } };
+  config.bedrockCore.profiles.default.steps = [{ plugin: 'custom', before: 'bundler' }];
+  await writeFile(configPath, JSON.stringify(config));
+  const result = await runBuild({ configPath, logger: {} });
+  const source = await readFile(path.join(result.outputPaths.behaviorPack, 'scripts/main.js'), 'utf8');
+
+  assert.match(source, /value: 42/);
+  const artifact = result.artifacts.find(artifact => artifact.id === 'custom');
+
+  assert.equal(artifact.importAs, '@bedrock-core/generated/custom');
+  assert.match(artifact.owner, /^custom:\d+$/);
+});
+
+test('duplicate producer import names fail before replacing a successful export', async (t) => {
+  const { root, config, configPath } = await fixture(t);
+
+  await writeFile(path.join(root, 'packs/BP/scripts/main.ts'), 'export const result = 1;');
+  const previous = await runBuild({ configPath, logger: {} });
+  const output = path.join(previous.outputPaths.behaviorPack, 'scripts/main.js');
+  const source = await readFile(output, 'utf8');
+
+  await writeFile(path.join(root, 'produce.ts'), `
+    import { writeFile } from 'node:fs/promises';
+    import path from 'node:path';
+    export async function run(context) {
+      const file = path.join(context.generatedDir, 'custom.json');
+      await writeFile(file, '{}');
+      await context.registerArtifact('first', file, { importAs: '@bedrock-core/generated/custom' });
+      await context.registerArtifact('second', file, { importAs: '@bedrock-core/generated/custom' });
+    }
+  `);
+  config.bedrockCore.plugins = { custom: { module: './produce.ts' } };
+  config.bedrockCore.profiles.default.steps = [{ plugin: 'custom', before: 'bundler' }];
+  await writeFile(configPath, JSON.stringify(config));
+  await assert.rejects(runBuild({ configPath, logger: {} }), /Generated import already registered[\s\S]*owned by first/);
+  assert.equal(await readFile(output, 'utf8'), source);
 });
 
 test('a manifest plugin selects a test entry before bundling without changing the authored manifest', async (t) => {
@@ -220,11 +276,11 @@ test('a manifest plugin selects a test entry before bundling without changing th
   config.bedrockCore.profiles.default.steps = [{ plugin: 'manifest', before: 'bundler' }];
   await writeFile(configPath, JSON.stringify(config));
   const result = await runBuild({ configPath, logger: {} });
-  const output = await readFile(path.join(result.outputPath, 'behaviorPack/scripts/tests.js'), 'utf8');
+  const output = await readFile(path.join(result.outputPaths.behaviorPack, 'scripts/tests.js'), 'utf8');
 
   assert.match(output, /tests/);
   assert.doesNotMatch(output, /production/);
-  assert.equal(JSON.parse(await readFile(path.join(result.outputPath, 'behaviorPack/manifest.json'), 'utf8')).modules[0].entry, 'scripts/tests.js');
+  assert.equal(JSON.parse(await readFile(path.join(result.outputPaths.behaviorPack, 'manifest.json'), 'utf8')).modules[0].entry, 'scripts/tests.js');
   assert.equal(await readFile(manifestPath, 'utf8'), original);
   assert.equal(result.dependencies.includes(manifestPath), true);
 });
@@ -245,7 +301,7 @@ test('JavaScript manifest entries bundle in place after all shared inputs are re
   for (const entry of ['main', 'other']) {
     const executable = path.join(root, `${entry}.mjs`);
 
-    await writeFile(executable, await readFile(path.join(result.outputPath, `behaviorPack/scripts/${entry}.js`), 'utf8'));
+    await writeFile(executable, await readFile(path.join(result.outputPaths.behaviorPack, `scripts/${entry}.js`), 'utf8'));
     assert.equal((await import(pathToFileURL(executable).href)).value, 23);
   }
 

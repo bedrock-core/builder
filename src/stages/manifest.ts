@@ -19,7 +19,10 @@ export async function run(context: BuildContext, settings: ManifestSettings): Pr
     const input: unknown = JSON.parse(await readFile(file, 'utf8'));
     const output = transformManifest(input, settings.packs?.[id] ?? {});
 
-    await writeFile(file, `${JSON.stringify(output, null, 2)}\n`);
+    if (settings.packs?.[id]) {
+      await writeFile(file, `${JSON.stringify(output, null, 2)}\n`);
+    }
+
     context.registerDependency(path.join(context.projectRoot, path.relative(context.stagedRoot, file)));
     await context.registerArtifact(`manifest:${id}`, file);
   }

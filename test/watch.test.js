@@ -6,6 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { watchBuild } from '../src/watch.ts';
 import { projectFor } from '../test-support/project.js';
 import { seedSchemas } from '../test-support/schemas.js';
+import { translationsFor, put } from '../test-support/i18n.js';
 
 async function waitFor(condition) {
   const deadline = Date.now() + 10000;
@@ -19,13 +20,12 @@ async function waitFor(condition) {
   }
 }
 
-test('watch rebuilds and deploys real input changes without output loops and recovers after errors', { timeout: 15000 }, async (t) => {
-  const project = await projectFor(t);
+test('watch recovers from invalid export paths and ignores current and former destinations', { timeout: 15000 }, async (t) => {
+  const project = await projectFor(t, { cleanup: false });
   const cancellation = new AbortController();
   const results = [];
   const errors = [];
 
-  project.config.bedrockCore.profiles.default.deploy = { path: './minecraft' };
   project.config.bedrockCore.profiles.default.watch = { debounceMs: 30 };
   await writeFile(project.configPath, JSON.stringify(project.config));
   const watching = watchBuild({
@@ -36,24 +36,118 @@ test('watch rebuilds and deploys real input changes without output loops and rec
 
   t.after(async () => {
     cancellation.abort();
-    await watching;
+
+    try {
+      await watching;
+    } finally {
+      await project.dispose();
+    }
+  });
+  await waitFor(() => results.length === 1);
+  const previous = results[0].outputPaths.gameplay;
+
+  project.config.bedrockCore.profiles.default.export.gameplay = '.';
+  await writeFile(project.configPath, JSON.stringify(project.config));
+  await waitFor(() => errors.length > 0);
+  project.config.bedrockCore.profiles.default.export.gameplay = '../external/BP';
+  await writeFile(project.configPath, JSON.stringify(project.config));
+  await waitFor(() => results.length >= 2);
+  await delay(200);
+  const count = results.length;
+
+  assert.equal(results.at(-1).outputPaths.gameplay, path.join(project.root, 'external/BP'));
+  await writeFile(path.join(previous, 'ignored.json'), '{}');
+  await writeFile(path.join(results.at(-1).outputPaths.visuals, 'ignored.json'), '{}');
+  await delay(200);
+  assert.equal(results.length, count);
+  await writeFile(path.join(project.project, 'packs/gameplay/scripts/main.ts'), 'export const value = 55;');
+  await waitFor(() => results.length > count);
+  assert.match(await readFile(path.join(results.at(-1).outputPaths.gameplay, 'scripts/main.js'), 'utf8'), /value = 55/);
+});
+
+test('watch reloads translation imports, adds locales and avoids declaration output loops', { timeout: 15000 }, async (t) => {
+  const project = await translationsFor(t, { cleanup: false });
+  const cancellation = new AbortController();
+  const results = [];
+  const errors = [];
+
+  await put(project.project, 'shared/title.ts', 'export const title = "First" as const;');
+  await put(project.project, 'i18n/en_US.ts', 'import { title } from "../shared/title.ts"; export default { shop: { title } } as const;');
+  await put(project.project, 'i18n/cs_CZ.ts', 'export default { shop: { title: "Obchod" } } as const;');
+  delete project.config.packs.gameplay;
+  delete project.config.bedrockCore.profiles.default.export.gameplay;
+  project.config.bedrockCore.profiles.default.stages = { i18n: true };
+  project.config.bedrockCore.profiles.default.watch = { debounceMs: 30 };
+  await writeFile(project.configPath, JSON.stringify(project.config));
+  const watching = watchBuild({
+    configPath: project.configPath, signal: cancellation.signal, logger: {},
+    onBuild(result) { results.push(result); },
+    onError(error) { errors.push(error); },
+  });
+
+  t.after(async () => {
+    cancellation.abort();
+
+    try {
+      await watching;
+    } finally {
+      await project.dispose();
+    }
+  });
+  await waitFor(() => results.length === 1);
+  await delay(200);
+  assert.equal(results.length, 1);
+  await put(project.project, 'shared/title.ts', 'export const title = "Second" as const;');
+  await waitFor(() => results.length >= 2);
+  assert.match(await readFile(path.join(results.at(-1).outputPaths.visuals, 'texts/en_US.lang'), 'utf8'), /flow_test.shop.title=Second/);
+  await put(project.project, 'i18n/fr_FR.ts', 'export default { shop: { title: "Boutique" } } as const;');
+  await waitFor(() => results.length >= 3);
+  assert.match(await readFile(path.join(results.at(-1).outputPaths.visuals, 'texts/fr_FR.lang'), 'utf8'), /Boutique/);
+  const count = results.length;
+
+  await delay(200);
+  assert.equal(results.length, count);
+  assert.deepEqual(errors, []);
+});
+
+test('watch exports to separate local and development paths without output loops and recovers after errors', { timeout: 15000 }, async (t) => {
+  const project = await projectFor(t, { cleanup: false });
+  const cancellation = new AbortController();
+  const results = [];
+  const errors = [];
+
+  project.config.bedrockCore.profiles.default.export.gameplay = './minecraft/development_behavior_packs/gameplay';
+  project.config.bedrockCore.profiles.default.watch = { debounceMs: 30 };
+  await writeFile(project.configPath, JSON.stringify(project.config));
+  const watching = watchBuild({
+    configPath: project.configPath, signal: cancellation.signal, logger: {},
+    onBuild(result) { results.push(result); },
+    onError(error) { errors.push(error); },
+  });
+
+  t.after(async () => {
+    cancellation.abort();
+
+    try {
+      await watching;
+    } finally {
+      await project.dispose();
+    }
   });
   await waitFor(() => results.length === 1);
   await delay(200);
   assert.equal(results.length, 1);
   const first = results[0];
-  const output = path.join(first.outputPath, 'gameplay/scripts/main.js');
+  const output = path.join(first.outputPaths.gameplay, 'scripts/main.js');
   const source = path.join(project.project, 'packs/gameplay/scripts/main.ts');
   const previous = await readFile(output, 'utf8');
 
   await writeFile(source, 'invalid TypeScript syntax ?');
   await waitFor(() => errors.length > 0);
   assert.equal(await readFile(output, 'utf8'), previous);
-  assert.equal(await readFile(path.join(first.deployments[0].path, 'scripts/main.js'), 'utf8'), previous);
   await writeFile(source, 'export const value = 8;');
   await waitFor(() => results.length > 1);
   assert.match(await readFile(output, 'utf8'), /value = 8/);
-  assert.match(await readFile(path.join(first.deployments[0].path, 'scripts/main.js'), 'utf8'), /value = 8/);
   const count = results.length;
 
   await delay(200);
@@ -61,7 +155,7 @@ test('watch rebuilds and deploys real input changes without output loops and rec
 });
 
 test('watch tracks external plugin dependencies and serializes changes arriving during a build', { timeout: 15000 }, async (t) => {
-  const project = await projectFor(t);
+  const project = await projectFor(t, { cleanup: false });
   const cancellation = new AbortController();
   const dependency = path.join(project.root, 'external.json');
   const results = [];
@@ -96,7 +190,12 @@ test('watch tracks external plugin dependencies and serializes changes arriving 
 
   t.after(async () => {
     cancellation.abort();
-    await watching;
+
+    try {
+      await watching;
+    } finally {
+      await project.dispose();
+    }
   });
   await waitFor(() => results.length === 1);
   await writeFile(dependency, '{"value":2}');
@@ -106,11 +205,11 @@ test('watch tracks external plugin dependencies and serializes changes arriving 
   await waitFor(() => results.length >= 3);
   assert.equal(maximumConcurrent, 1);
   assert.deepEqual(errors, []);
-  assert.equal(await readFile(path.join(results.at(-1).outputPath, 'visuals/dependency.json'), 'utf8'), '{"value":2}');
+  assert.equal(await readFile(path.join(results.at(-1).outputPaths.visuals, 'dependency.json'), 'utf8'), '{"value":2}');
 });
 
 test('watch reloads local plugin helpers and recovers from invalid config edits', { timeout: 15000 }, async (t) => {
-  const project = await projectFor(t);
+  const project = await projectFor(t, { cleanup: false });
   const cancellation = new AbortController();
   const results = [];
   const errors = [];
@@ -137,7 +236,12 @@ test('watch reloads local plugin helpers and recovers from invalid config edits'
 
   t.after(async () => {
     cancellation.abort();
-    await watching;
+
+    try {
+      await watching;
+    } finally {
+      await project.dispose();
+    }
   });
   await waitFor(() => results.length === 1);
   await writeFile(project.configPath, '{ invalid config');
@@ -145,11 +249,11 @@ test('watch reloads local plugin helpers and recovers from invalid config edits'
   await writeFile(helper, 'export const value = 7;');
   await writeFile(project.configPath, JSON.stringify(project.config));
   await waitFor(() => results.length >= 2);
-  assert.equal(await readFile(path.join(results.at(-1).outputPath, 'visuals/helper.json'), 'utf8'), '{"value":7}');
+  assert.equal(await readFile(path.join(results.at(-1).outputPaths.visuals, 'helper.json'), 'utf8'), '{"value":7}');
 });
 
 test('watch reloads generator npm imports and recovers after a template failure', { timeout: 15000 }, async (t) => {
-  const project = await projectFor(t);
+  const project = await projectFor(t, { cleanup: false });
   const cancellation = new AbortController();
   const results = [];
   const errors = [];
@@ -161,6 +265,7 @@ test('watch reloads generator npm imports and recovers after a template failure'
   await writeFile(dependency, 'export const value = 1;');
   await writeFile(template, 'import { value } from "template-data"; export default { value };');
   delete project.config.packs.gameplay;
+  delete project.config.bedrockCore.profiles.default.export.gameplay;
   project.config.bedrockCore.profiles.default.stages = { generator: { types: false } };
   project.config.bedrockCore.profiles.default.watch = { debounceMs: 30 };
   await writeFile(project.configPath, JSON.stringify(project.config));
@@ -172,10 +277,15 @@ test('watch reloads generator npm imports and recovers after a template failure'
 
   t.after(async () => {
     cancellation.abort();
-    await watching;
+
+    try {
+      await watching;
+    } finally {
+      await project.dispose();
+    }
   });
   await waitFor(() => results.length === 1);
-  const output = path.join(results[0].outputPath, 'visuals/generated.json');
+  const output = path.join(results[0].outputPaths.visuals, 'generated.json');
 
   assert.equal(await readFile(output, 'utf8'), '{"value":1}');
   await writeFile(dependency, 'export const value = 7;');
@@ -190,7 +300,7 @@ test('watch reloads generator npm imports and recovers after a template failure'
 });
 
 test('watch ignores generated editor declarations and still rebuilds authored templates', { timeout: 15000 }, async (t) => {
-  const project = await projectFor(t);
+  const project = await projectFor(t, { cleanup: false });
   const { version } = await seedSchemas(project.project);
   const cancellation = new AbortController();
   const results = [];
@@ -199,6 +309,7 @@ test('watch ignores generated editor declarations and still rebuilds authored te
   const declarations = path.join(project.project, 'editor/mc/globals.d.ts');
 
   delete project.config.packs.gameplay;
+  delete project.config.bedrockCore.profiles.default.export.gameplay;
   project.config.bedrockCore.profiles.default.stages = { generator: { schemaVersion: version, typesDir: 'editor/mc' } };
   project.config.bedrockCore.profiles.default.watch = { debounceMs: 30 };
   await writeFile(template, 'export default { value: 1 };');
@@ -211,7 +322,12 @@ test('watch ignores generated editor declarations and still rebuilds authored te
 
   t.after(async () => {
     cancellation.abort();
-    await watching;
+
+    try {
+      await watching;
+    } finally {
+      await project.dispose();
+    }
   });
   await waitFor(() => results.length === 1);
   const original = await readFile(declarations, 'utf8');
@@ -222,7 +338,7 @@ test('watch ignores generated editor declarations and still rebuilds authored te
   assert.equal(results.length, 1);
   await writeFile(template, 'export default { value: 2 };');
   await waitFor(() => results.length >= 2);
-  assert.equal(await readFile(path.join(results.at(-1).outputPath, 'visuals/generated.json'), 'utf8'), '{"value":2}');
+  assert.equal(await readFile(path.join(results.at(-1).outputPaths.visuals, 'generated.json'), 'utf8'), '{"value":2}');
   await delay(200);
   assert.equal(results.length, 2);
   assert.deepEqual(errors, []);

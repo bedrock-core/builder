@@ -8,11 +8,12 @@ or entry point.
 | `script-only` | Bundle a TypeScript behavior-pack script | `packs/BP/scripts/main.ts` |
 | `multi-pack` | Build two behavior packs from shared TypeScript inputs | Each manifest selects its matching TypeScript source |
 | `generator-project` | Generate typed loot tables from shared JSON and bundle a script | `packs/gameplay/scripts/main.ts` |
+| `i18n-project` | Compile typed translations, preserve manual text and bundle generated JSON | `packs/gameplay/scripts/main.ts` |
 | `plugin-project` | Generate and consume JSON through build hooks | `build/items.ts` is a build plugin; this data-only BP has no runtime script |
 
 Each project owns its config.json, v3 pack manifests and dist directory. The `script-only`
-project has a `tests` profile that overrides its staged manifest entry. Deployment is disabled
-in these examples; configure `deploy` explicitly to install their packs.
+project has a `tests` profile that overrides its staged manifest entry. Profiles map each pack
+to its own export path. Use game folders as those paths to install development packs.
 
 ```sh
 yarn build examples/script-only/config.json
@@ -20,4 +21,5 @@ yarn build examples/script-only/config.json tests
 yarn build examples/plugin-project/config.json
 yarn build examples/multi-pack/config.json
 yarn build examples/generator-project/config.json
+yarn build examples/i18n-project/config.json
 ```

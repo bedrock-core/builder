@@ -22,6 +22,7 @@
   "exclude": [
     "**/node_modules/**",
     "**/dist/**",
-    "examples/generator-project/**"
+    "examples/generator-project/**",
+    "examples/i18n-project/**"
   ]
 }

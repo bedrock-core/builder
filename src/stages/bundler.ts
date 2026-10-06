@@ -1,8 +1,10 @@
 import path from 'node:path';
 import { copyFile, lstat, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
-import type { BuildContext } from '../contract.d.ts';
+import type { BuildContext, BuildStepResult } from '../contract.d.ts';
 import { readScriptEntries } from '../manifest.ts';
 import { bundleScripts } from '../../packages/bundler/src/index.ts';
+import { generatedAliases } from '../imports.ts';
+import { compilationCache } from '../compile-cache.ts';
 
 export interface BundlerSettings {
   debug?: boolean;
@@ -116,30 +118,33 @@ async function discoverScripts(context: BuildContext, settings: BundlerSettings)
 }
 
 /** Bundle every script module using only its current staged manifest entry. */
-export async function run(context: BuildContext, settings: BundlerSettings): Promise<void> {
+export async function run(context: BuildContext, settings: BundlerSettings): Promise<BuildStepResult> {
   const scripts = await discoverScripts(context, settings);
   const sources = new Set<string>();
   const outputs: { temporary: string; destination: string; artifactId: string }[] = [];
-  const aliases = Object.fromEntries(
-    Object.entries(settings.generatedImports ?? {}).map(([specifier, artifact]) => [
-      specifier,
-      context.artifact(artifact).path,
-    ]),
-  );
+  const aliases = generatedAliases(context, settings.generatedImports);
+  const cache = await compilationCache(context, { ...settings }, scripts.map(script => `${script.packId}:${script.runtimeEntry}`));
 
   for (const script of scripts) {
-    const result = await bundleScripts({
-      root: context.stagedRoot,
-      dependencyRoot: context.projectRoot,
-      entry: script.source,
-      outfile: script.temporaryOutput,
-      debug: settings.debug,
-      target: settings.target,
-      tsconfig: settings.tsconfig,
-      external: settings.external,
-      aliases,
-      signal: context.signal,
-    });
+    const id = `${script.packId}:${script.runtimeEntry}`;
+    const result = cache?.hit
+      ? await cache.restore(id)
+      : await bundleScripts({
+          root: context.stagedRoot,
+          dependencyRoot: context.projectRoot,
+          entry: script.source,
+          outfile: script.temporaryOutput,
+          debug: settings.debug,
+          target: settings.target,
+          tsconfig: settings.tsconfig,
+          external: settings.external,
+          aliases,
+          signal: context.signal,
+        });
+
+    if (cache && !cache.hit) {
+      await cache.record(id, result);
+    }
 
     for (const input of result.inputs) {
       if (within(context.stagedRoot, input)) {
@@ -163,6 +168,8 @@ export async function run(context: BuildContext, settings: BundlerSettings): Pro
       });
     }
   }
+
+  await cache?.save();
 
   // Keep staged inputs intact until every bundle has finished, including JS entries.
   for (const output of outputs) {
@@ -190,4 +197,6 @@ export async function run(context: BuildContext, settings: BundlerSettings): Pro
   if (settings.tsconfig) {
     context.registerDependency(settings.tsconfig);
   }
+
+  return { cached: cache?.hit ?? false };
 }

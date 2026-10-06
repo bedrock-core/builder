@@ -1,0 +1,16 @@
+{
+  "name": "@bedrock-core/builder-i18n",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Compile typed translation resources into Bedrock language files and runtime bundles",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "@bedrock-core/builder-bundler": "workspace:*"
+  }
+}

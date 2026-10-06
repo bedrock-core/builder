@@ -250,13 +250,13 @@ test('runner generates named behavior and resource packs, preserving authored te
   const result = await runBuild({ configPath, logger: {} });
   const executable = path.join(project, 'verify.mjs');
 
-  await writeFile(executable, await readFile(path.join(result.outputPath, 'gameplay/scripts/main.js')));
+  await writeFile(executable, await readFile(path.join(result.outputPaths.gameplay, 'scripts/main.js')));
   assert.equal((await import(pathToFileURL(executable).href)).value, 11);
-  assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPath, 'visuals/content.json'), 'utf8')), { resource: true });
+  assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPaths.visuals, 'content.json'), 'utf8')), { resource: true });
   assert.deepEqual(result.artifacts.filter(artifact => artifact.id.startsWith('generator:')).map(artifact => artifact.id).sort(), ['generator:gameplay:data/settings.json', 'generator:visuals:content.json']);
   assert.equal(result.dependencies.includes(path.join(project, 'shared/value.json')), true);
-  assert.equal(await readFile(path.join(result.outputPath, 'gameplay/scripts/custom.js'), 'utf8'), 'export const custom = true;');
-  await assert.rejects(readFile(path.join(result.outputPath, 'gameplay/data/settings.ts')), { code: 'ENOENT' });
+  assert.equal(await readFile(path.join(result.outputPaths.gameplay, 'scripts/custom.js'), 'utf8'), 'export const custom = true;');
+  await assert.rejects(readFile(path.join(result.outputPaths.gameplay, 'data/settings.ts')), { code: 'ENOENT' });
   assert.match(await readFile(path.join(project, 'packs/gameplay/data/settings.ts'), 'utf8'), /export default/);
   assert.equal(await readFile(path.join(project, 'packs/gameplay/data/settings.json'), 'utf8'), '{"authored":true}');
   assert.match(await readFile(path.join(project, 'packs/visuals/content.ts'), 'utf8'), /export default/);
@@ -266,6 +266,7 @@ test('generator selection supports a resource-only project and always protects s
   const { project, config, configPath } = await projectFor(t);
 
   delete config.packs.gameplay;
+  delete config.bedrockCore.profiles.default.export.gameplay;
   config.bedrockCore.profiles.default.stages = { generator: { types: false, include: 'packs/visuals/**/*.ts', exclude: '**/helper.ts' } };
   await mkdir(path.join(project, 'packs/visuals/scripts'));
   await writeFile(path.join(project, 'packs/visuals/selected.ts'), 'export default { selected: true };');
@@ -276,9 +277,9 @@ test('generator selection supports a resource-only project and always protects s
   const result = await runBuild({ configPath, logger: {} });
 
   assert.equal(result.packs.length, 1);
-  assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPath, 'visuals/selected.json'), 'utf8')), { selected: true });
-  assert.match(await readFile(path.join(result.outputPath, 'visuals/helper.ts'), 'utf8'), /export const/);
-  assert.match(await readFile(path.join(result.outputPath, 'visuals/scripts/ignored.ts'), 'utf8'), /export const/);
+  assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPaths.visuals, 'selected.json'), 'utf8')), { selected: true });
+  assert.match(await readFile(path.join(result.outputPaths.visuals, 'helper.ts'), 'utf8'), /export const/);
+  assert.match(await readFile(path.join(result.outputPaths.visuals, 'scripts/ignored.ts'), 'utf8'), /export const/);
 });
 
 test('a generator can consume an earlier hook artifact and feed the bundler through artifact IDs', async (t) => {
@@ -305,7 +306,7 @@ test('a generator can consume an earlier hook artifact and feed the bundler thro
   const result = await runBuild({ configPath, logger: {} });
   const executable = path.join(project, 'verify.mjs');
 
-  await writeFile(executable, await readFile(path.join(result.outputPath, 'gameplay/scripts/main.js')));
+  await writeFile(executable, await readFile(path.join(result.outputPaths.gameplay, 'scripts/main.js')));
   assert.equal((await import(pathToFileURL(executable).href)).value, 8);
 });
 

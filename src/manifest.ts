@@ -112,7 +112,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-async function readManifest(id: string, directory: string): Promise<Manifest> {
+/** Read and validate manifest v3 fields without requiring compiled script files. */
+export async function readManifest(id: string, directory: string): Promise<Manifest> {
   const value: unknown = JSON.parse(await readFile(path.join(directory, 'manifest.json'), 'utf8'));
 
   function fail(field: string): never {

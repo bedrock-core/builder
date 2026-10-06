@@ -119,7 +119,7 @@ test('generator stage prepares editor declarations by default even with no templ
   const result = await runBuild({ configPath, logger: {} });
 
   assert.match(await readFile(path.join(project, '.bedrock-core/generated/mc/globals.d.ts'), 'utf8'), /declare type Entity/);
-  await assert.rejects(readFile(path.join(result.outputPath, 'gameplay/.bedrock-core/generated/mc/globals.d.ts')), { code: 'ENOENT' });
+  await assert.rejects(readFile(path.join(result.outputPaths.gameplay, '.bedrock-core/generated/mc/globals.d.ts')), { code: 'ENOENT' });
 });
 
 test('type-generation failures preserve authored directories and previously generated declarations', async (t) => {

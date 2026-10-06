@@ -11,10 +11,8 @@ try {
     signal: cancellation.signal,
   });
 
-  console.log(`@bedrock-core/builder: exported ${result.outputPath}`);
-
-  for (const pack of result.deployments) {
-    console.log(`@bedrock-core/builder: deployed ${pack.id} to ${pack.path}`);
+  for (const [id, directory] of Object.entries(result.outputPaths)) {
+    console.log(`@bedrock-core/builder: exported ${id} to ${directory}`);
   }
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));

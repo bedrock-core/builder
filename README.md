@@ -1,7 +1,7 @@
 # @bedrock-core/builder
 
 Build tools for TS/JS Bedrock projects. This private package resolves plans and executes trusted
-plugins in an isolated staged project. Manifest, generator and bundler stages are integrated; other built-in
+plugins in an isolated staged project. Manifest, generator, i18n and bundler stages are integrated; other built-in
 compilers and full Minecraft content validation remain pending. Library callers can supply stage
 functions and a final artifact validator.
 
@@ -15,8 +15,9 @@ yarn lint
 yarn test
 ```
 
-The planner reads `config.json` without importing plugin code. Execution resolves paths relative
-to that file. `bedrockCore.formatVersion` is independent of the
+The planner reads `config.json` without importing plugin code. Automatic stage boundaries appear
+in the plan; input detection happens during execution after their before hooks. Execution resolves
+paths relative to that file. `bedrockCore.formatVersion` is independent of the
 shared [Project Config Standard](https://github.com/Bedrock-OSS/project-config-standard).
 
 ## Configuration schema
@@ -32,10 +33,10 @@ Library callers can use `validateConfig` from `@bedrock-core/builder/config`.
 
 The schema requires `authors` and preserves unused top-level metadata and other tool
 namespaces, and rejects unknown builder fields, stage names and malformed hook placement.
-Manifest, generator and bundler options have schemas under `schemas/`; plugin settings remain extensible.
-Cross-reference checks (plugin names and enabled boundaries) belong to the planner. Export
-supports a dedicated local directory inside the project. Deployment and watch settings belong
-to each profile; script entries come from pack manifests.
+Manifest, generator, i18n and bundler options have schemas under `schemas/`; plugin settings remain extensible.
+Cross-reference checks (plugin names and enabled boundaries) belong to the planner. Each profile's
+`export` maps configured pack IDs to destination paths; the runner checks that every pack has one.
+Watch settings belong to each profile; script entries come from pack manifests.
 
 ## Execute plugins
 
@@ -48,19 +49,31 @@ The example generates JSON, registers it and consumes it in a second TS step.
 The `examples` directory contains independent sibling projects, each with its own config and
 pack manifests. `script-only` uses `packs/BP/scripts/main.ts`; `plugin-project` demonstrates
 build hooks in a data-only behavior pack.
-Output packs appear under `dist/<packId>/`. Authored pack files remain unchanged by the runner. Plugin failures,
+Each pack is written directly to its configured export folder. Authored pack files remain unchanged by the runner. Plugin failures,
 validation failures and cancellation retain the previous export. A destination lock rejects
 simultaneous exports. Cancellation is cooperative at step boundaries and through `context.signal`.
 Project symlinks are currently unsupported. Plugins are trusted Node code, not sandboxed processes.
 
-Plugins export `run(context, settings)`. The typed context supplies staged project/pack paths,
+Plugins export `run(context, settings)`. The typed context supplies the project namespace, staged project/pack paths,
 a generated directory, logger, cancellation signal and artifact/dependency registration. Artifact
-IDs have one owner and must identify existing staged files. Missing or duplicate IDs fail the build.
+IDs have one owner and must identify existing staged files. `context.outputPaths` provides the
+resolved pack-to-destination map. Missing or duplicate IDs fail the build.
 Result records expose IDs and owners; temporary workspace paths do not survive cleanup.
 
+Producers can publish a generated module's import name once:
+
+```ts
+await context.registerArtifact('items', file, { importAs: '@bedrock-core/generated/items' });
+```
+
+Later compiler stages resolve it automatically. `context.generatedImports` exposes the current
+build's registered names. Import names have one owner; conflicting producers fail the build.
+
 `runBuild` from `@bedrock-core/builder/runner` accepts named stage functions and `validateArtifacts`.
-Manifest, generator and bundler stages load only when selected; other unimplemented stages fail before
-plugin execution. Default validation checks registered files and v3 manifest integrity. Full
+Manifest, generator, i18n and bundler stages load when needed. Explicitly enabled unavailable stages
+fail before plugins run; automatically detected unavailable stages fail at their boundary.
+`BuildResult.stages` and build logs report `executed`, `skipped` or `cached` for each participating
+stage. Default validation checks registered files and v3 manifest integrity. Full
 Minecraft content validation and runtime acceptance require separate checks.
 
 Implementation files are strictly typed `.ts`, executed directly by Node 22.18 or later.
@@ -76,19 +89,41 @@ identify two behavior and two resource packs. Names carry no type meaning. Only 
 are exported. Intermediate build files use the generated workspace.
 
 The current staged manifest is read when a stage needs pack information and again before export,
-so manifest-changing steps affect the final classification. Export metadata records the inferred
-development folder for behavior/resource packs. Profiles can deploy to these folders after
-validation.
-Other module types remain exportable with no inferred behavior/resource destination.
+so manifest-changing steps affect the final classification. Destination paths are explicit;
+classification does not change them. Other module types remain exportable to their configured paths.
 
-Profiles explicitly select built-in stages. An absent stage is disabled. A bundler-only project
-does not enable guides, translations, UI compilation or the server framework. A complete stack
-will be an explicit preset. Installed npm dependencies and selected build stages are separate.
+Profiles detect built-in stages by default. A script-only project needs no `stages` configuration.
+Omission or `"auto"` checks for inputs, `false` disables a stage, and `true` or an options object
+enables it even without detected inputs. Installed npm packages do not activate unrelated stages.
 
-The intended distribution separates the runner, independently installable stage packages and
-a convenience stack preset. A shared plugin contract has no Minecraft runtime dependency.
+| Stage | Automatic input detection |
+| --- | --- |
+| Manifest | Configured pack manifests |
+| Generator | `.ts` templates inside packs, excluding `scripts/` and declarations |
+| Guides | `guides/**/*.md` or `.mdx` |
+| i18n | `i18n/<locale>.ts`, `.js`, `.mts` or `.mjs` |
+| UI compiler | Pack `scripts/**/*.screen.tsx` modules |
+| Bundler | Script modules declared in staged manifests |
+
+Detection runs after each stage's before hooks. After hooks run even when automatic detection
+skips a stage. Explicitly disabled stages have no boundary, so hooks targeting them are rejected.
+Guides and UI compilation remain unimplemented; their detected inputs report an unavailable-stage
+error unless that stage is disabled.
+
+For example, a profile can skip translations while bundling detected scripts:
+
+```json
+{
+  "stages": { "i18n": false },
+  "export": { "gameplay": "./dist/BP", "visuals": "./dist/RP" }
+}
+```
+
+The intended distribution separates the runner and independently installable stage packages.
+A shared plugin contract has no Minecraft runtime dependency.
 Standalone stage functions accept explicit inputs and return artifacts; builder adapters schedule
-them. `packages/bundler` and `packages/generator` implement this boundary; other stage packages remain pending.
+them. `packages/bundler`, `packages/generator` and `packages/i18n` implement this boundary;
+guides and UI compilation remain pending.
 
 | Component   | Build-time purpose                                | Standalone boundary                                                         |
 | ----------- | ------------------------------------------------- | --------------------------------------------------------------------------- |
@@ -96,7 +131,7 @@ them. `packages/bundler` and `packages/generator` implement this boundary; other
 | Manifest    | Apply profile overrides to staged manifests                       | Explicit manifest inputs and outputs                                        |
 | Generator   | Execute typed content templates                   | Shared esbuild bundler and template dependencies; no framework runtime       |
 | Bundler     | Compile an explicit TS/JS entry                   | esbuild only; screen JSX integration is pending                             |
-| i18n        | Generate language files and translation artifacts | Runtime translation helpers only when code uses them                        |
+| i18n        | Generate language files and translation artifacts | Shared esbuild bundler; runtime translation helpers when code uses them     |
 | Guides      | Compile guide content                             | MDX tooling; translations and guide runtime when content requires them      |
 | UI compiler | Compile screen modules into pack assets           | UI compiler libraries; runtime registration dependencies for generated code |
 
@@ -105,22 +140,39 @@ such as config, catalog and guides have their own dependencies; changing the bui
 remove those. Document each extracted package's direct dependencies, consumed/provided artifact
 IDs, optional integrations and runtime requirements. Declare unconditional prerequisites and
 conditional requirements based on selected features; fail with the missing artifact and its
-provider or external-input option. Never silently enable the entire stack.
+provider or external-input option.
 
-Raw JSON imports need no translation or guide stage. Generated imports require either a selected
-producer or an explicitly configured existing artifact. Import resolution must not use stale
-generated files from a previous build. Current generator and bundler adapters resolve explicit
-artifact mappings and reject missing IDs. Automatic prerequisite inference remains pending.
+Raw JSON imports need no translation or guide stage. Generated imports require either an active
+producer or an explicitly registered existing artifact. Producers register built-in import names;
+compiler adapters resolve them automatically. Optional `generatedImports` settings override those
+defaults or name custom artifacts. Import resolution uses the current build's registered files.
+Imports do not enable additional stages; producer inputs determine automatic participation.
+
+## Compilation cache
+
+Profiles reuse verified local bundles by default. The fingerprint includes staged and generated
+file content, compiler options, generated import registrations and Node/compiler versions.
+Edits or added files invalidate it. A cache hit restores outputs into fresh staging, including
+source maps, artifacts and dependency tracking. Final validation and export still run.
+
+Set `"cache": false` on a profile to recompile every bundle. Cache files live under
+`.bedrock-core/cache/build/bundler`; removing that directory also forces compilation.
+The cache conservatively snapshots the whole staged/generated project. npm or other external
+compiler inputs and inherited tsconfigs currently recompile each time.
+
+Templates, locale resources and trusted plugins execute every build because they can use Node
+I/O, environment values or time. Schema declarations and optional vanilla downloads retain their
+own content/freshness caches. Watch mode still creates a complete staged build each time.
 
 ## Extension vocabulary
 
 A plugin supplies a module; a step invokes it with JSON settings at one boundary. Built-in stages
-run in stable order. Hooks targeting absent or disabled stages fail. Modifying hooks run before
+run in stable order. Hooks targeting disabled stages fail. Modifying hooks run before
 final validation and export. Plugins execute as trusted Node code.
 
 ## Manifest overrides
 
-Enable `manifest` with `true` to preserve staged v3 manifests, or supply per-pack overrides:
+The manifest stage preserves staged v3 manifests by default. Supply per-pack overrides to change them:
 
 ```json
 {
@@ -135,7 +187,7 @@ Enable `manifest` with `true` to preserve staged v3 manifests, or supply per-pac
     },
     "bundler": { "debug": true }
   },
-  "export": { "path": "./dist" }
+  "export": { "behaviorPack": "./dist/tests/BP" }
 }
 ```
 
@@ -151,26 +203,39 @@ Every resulting manifest is registered as `manifest:<packId>` and validated befo
 yarn build examples/script-only/config.json tests
 ```
 
-## Development deployment
+## Pack export paths
 
-Add `"deploy": true` to a profile to publish to the Windows retail installation. Use
-`"deploy": { "channel": "preview" }` for Preview, or `"deploy": { "path": "./minecraft" }`
-for an explicit com.mojang root relative to config.json. A custom absolute path also works.
-Other platforms require an explicit path. Default installation directories must exist.
-`false` or omission disables deployment.
+`export` maps each pack ID to its exact destination folder. Paths resolve relative to config.json;
+absolute paths are supported. Every configured pack needs a destination, and unknown pack IDs
+fail before plugin execution. Missing parent folders are created. Path strings are literal,
+without environment-variable expansion or appended pack names and UUIDs.
 
-The defaults follow [Microsoft's Windows storage locations](https://learn.microsoft.com/en-us/minecraft/creator/documents/gdkpcprojectfolder).
-Packs are routed by their final manifests to `development_behavior_packs/<headerUuid>` or
-`development_resource_packs/<headerUuid>`. Unsupported pack types fail deployment. Existing
-UUID folders must identify the same pack; unrelated folders are retained. Development folders
-and authored packs must be separate. Stale files in a replaced pack are removed.
+```json
+{
+  "export": {
+    "gameplay": "./dist/BP",
+    "visuals": "C:/Minecraft/development_resource_packs/my-addon"
+  }
+}
+```
 
-Deployment candidates are prepared before any replacement, with backups retained until both
-deployment and local publication succeed. Ordinary failures restore prior packs and local
-output. Rollback failures retain backups and report their location. A destination lock prevents
-overlapping deployments. Replacements happen sequentially; Minecraft should reload packs after
-the build completes. `BuildResult.deployments` reports installed paths.
-`deployPacks` also accepts explicit source packs and a destination root without a runner.
+Use the same map for development packs. Point each value to that pack's folder inside the
+installation's `development_behavior_packs` or `development_resource_packs` directory, following
+[Microsoft's development-folder guidance](https://learn.microsoft.com/en-us/minecraft/creator/documents/gettingstarted?view=minecraft-bedrock-stable).
+Local folders, game folders and server folders use the same export mechanism.
+
+Destinations must be separate from each other and authored packs. Existing nonempty destinations
+must contain a valid v3 pack manifest. A configured destination is an owned pack output;
+subsequent exports replace its contents, including stale files. Sibling folders remain intact.
+Manifest overrides can change UUIDs while keeping the configured path.
+
+All candidates are copied beside their destinations before any replacement. Backups remain until
+every pack is published; ordinary failures and cancellation restore prior outputs. Rollback
+failures retain backups and report their paths. A lock for each destination prevents overlapping
+builds. Replacements happen sequentially. `BuildResult.outputPaths` reports resolved destinations;
+`BuildResult.packs` contains final manifest classification and published paths.
+The standalone `exportPacks({ packs, paths, signal })` API from `@bedrock-core/builder/export`
+uses the same validation and publication transaction without the runner.
 
 ## Watch builds
 
@@ -179,14 +244,14 @@ yarn watch examples/script-only/config.json
 yarn watch examples/script-only/config.json tests
 ```
 
-Watch mode builds immediately, then rebuilds and redeploys on project changes. It keeps watching
+Watch mode builds immediately, then rebuilds and exports on project changes. It keeps watching
 after compiler, plugin, config or validation failures. Changes arriving during a build are
 coalesced into subsequent full builds; runs never overlap. Configuration is read each time.
 Local plugin modules and their relative helpers execute from each fresh staged copy.
 
 Optional profile settings are `"watch": { "debounceMs": 100, "paths": ["../shared-inputs"] }`.
 Project files, selected plugins, declared dependencies and extra paths are observed. Local
-output, deployment folders, temporary export directories, `.git` and generated workspaces are
+export folders from all profiles, temporary export directories, `.git` and generated workspaces are
 ignored. Explicit dependencies in node_modules are observed individually. Former output paths
 remain ignored after config edits. Native filesystem notifications require a local filesystem;
 watch mode has no polling fallback. Ctrl+C stops watching and cancels the active build.
@@ -194,15 +259,15 @@ Library callers use `watchBuild` with an AbortSignal and optional result/error c
 
 ## Content generation
 
-Enable `generator` to evaluate TS/JS default exports as JSON templates inside configured packs:
+The generator detects `.ts` default-exported templates inside configured packs. An options object
+can customize generation or enable editor declarations without template inputs:
 
 ```json
 {
   "stages": {
     "generator": {
       "pretty": { "indent": "space", "size": 2 }
-    },
-    "bundler": true
+    }
   }
 }
 ```
@@ -219,10 +284,27 @@ exclude them. File and folder names do not infer the document type.
 The adapter removes consumed templates only from staging. Generated documents replace staged
 JSON at the same path; repeated names retain the last emitted document. Authored JSON remains
 unchanged. Artifacts are registered as `generator:<packId>:<packRelativePath>`.
-`generatedImports` maps import specifiers to earlier artifact IDs; `tsconfig` selects compiler
+Registered import names resolve automatically; optional `generatedImports` overrides map specifiers
+to earlier artifact IDs. `tsconfig` selects compiler
 settings. The standalone `generateTemplates` API writes JSON beside explicit inputs and leaves
 sources intact. It needs only the shared esbuild bundler and the template's own dependencies.
 See [the generator package](packages/generator/README.md) for its API and limits.
+
+## Translations
+
+The i18n stage detects `i18n/<locale>.ts` default-exported objects. It uses the project
+namespace and each staged manifest's pack type. Runtime JSON keeps named interpolation
+variables, while language files use positional placeholders. Library resources, plural forms,
+nesting, handwritten language entries and optional vanilla strings are supported.
+
+No stage or generated-import configuration is required for the default locale directory.
+An options object can change the directory or enable optional features; `"i18n": false` skips it.
+
+Editor declarations are generated under `.bedrock-core/generated/i18n`; include that directory
+in the project tsconfig. Build [the i18n example](examples/i18n-project/README.md) with
+`yarn build examples/i18n-project/config.json`. The standalone `compileI18n` API needs no runner
+or framework runtime. See [the i18n package](packages/i18n/README.md) for settings, artifacts,
+runtime requirements and usage-scan limits.
 
 ```sh
 yarn build examples/generator-project/config.json
@@ -242,8 +324,9 @@ yarn exec tsc --project examples/generator-project/tsconfig.json
 
 ## Bundler settings
 
-Enable `bundler` with `true` or an options object. The staged pack manifests declare all
-script entries; no separate entry or destination configuration is needed:
+The bundler detects script modules automatically. An options object customizes compilation.
+The staged pack manifests declare all script entries; no separate entry or destination
+configuration is needed:
 
 ```json
 {
@@ -261,7 +344,8 @@ Data-only behavior packs and resource packs need no script build. A manifest sta
 running before bundling can change the staged entry, including selecting a test script.
 
 `debug`, `target`, `tsconfig`, `external` and `generatedImports` apply to every bundle.
-`generatedImports` maps specifiers to artifact IDs registered by earlier steps. Ordinary JSON
+Producer import names resolve automatically; `generatedImports` optionally overrides them or
+maps custom specifiers to artifact IDs registered by earlier steps. Ordinary JSON
 imports need no producer. Artifacts are named `bundler:<packId>:<manifestEntry>:script` and
 `bundler:<packId>:<manifestEntry>:sourcemap`. Inputs remain intact until all bundles complete,
 then consumed TypeScript sources inside script packs are removed from staging. Authored files

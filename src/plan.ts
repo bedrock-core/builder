@@ -1,4 +1,4 @@
-/** Default ordering; profiles explicitly select the stages they need. */
+/** Stable stage boundaries; omitted stages detect their inputs during execution. */
 import type { ProjectConfig, StageName, Settings } from './config.ts';
 export const stages: readonly StageName[] = Object.freeze([
   'manifest',
@@ -20,6 +20,7 @@ export type PlannedStage = {
   kind: 'stage';
   stage: StageName | 'prepare' | 'validate' | 'export';
   settings?: Settings;
+  mode?: 'auto' | 'always';
 };
 export type PlannedStep = PlannedPlugin | PlannedStage;
 
@@ -51,14 +52,12 @@ export function planBuild(config: ProjectConfig, profileName = 'default'): Plann
       throw new Error(`Unknown stage: ${name}`);
     }
 
-    if (settings !== true && settings !== false && !record(settings)) {
+    if (settings !== 'auto' && settings !== true && settings !== false && !record(settings)) {
       throw new Error(`Invalid stage settings: ${name}`);
     }
   }
 
-  const enabled = stages.filter(
-    name => Object.hasOwn(selected, name) && selected[name] !== false,
-  );
+  const enabled = stages.filter(name => selected[name] !== false);
   const definitions = tool.plugins ?? {};
 
   if (!record(definitions)) {
@@ -129,6 +128,7 @@ export function planBuild(config: ProjectConfig, profileName = 'default'): Plann
         kind: 'stage',
         stage,
         settings: record(selected[stage]) ? (selected[stage] as Settings) : {},
+        mode: selected[stage] === true || record(selected[stage]) ? 'always' : 'auto',
       },
       ...at('after', stage),
     ]),

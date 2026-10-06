@@ -6,7 +6,6 @@ export interface PackInfo {
   readonly path: string;
   readonly kind: 'behavior' | 'resource' | 'other';
   readonly moduleTypes: readonly string[];
-  readonly defaultDeploymentFolder?: 'development_behavior_packs' | 'development_resource_packs';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -28,13 +27,10 @@ export async function inspectPack(id: string, directory: string): Promise<PackIn
   const resource = moduleTypes.includes('resources');
 
   if (behavior && resource) {
-    throw new Error(`Pack ${id} contains behavior and resource modules; deployment is ambiguous`);
+    throw new Error(`Pack ${id} contains behavior and resource modules; its type is ambiguous`);
   }
 
   const kind = behavior ? 'behavior' : resource ? 'resource' : 'other';
-  const defaultDeploymentFolder = behavior
-    ? 'development_behavior_packs'
-    : resource ? 'development_resource_packs' : undefined;
 
-  return Object.freeze({ id, path: directory, kind, moduleTypes, defaultDeploymentFolder });
+  return Object.freeze({ id, path: directory, kind, moduleTypes });
 }

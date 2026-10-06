@@ -12,12 +12,13 @@
       "default": "./src/run.ts"
     },
     "./manifest": "./src/manifest.ts",
-    "./deploy": "./src/deploy.ts",
+    "./export": "./src/export.ts",
     "./watch": "./src/watch.ts",
     "./schemas/config.schema.json": "./schemas/config.schema.json",
     "./schemas/manifest.schema.json": "./schemas/manifest.schema.json",
     "./schemas/bundler.schema.json": "./schemas/bundler.schema.json",
-    "./schemas/generator.schema.json": "./schemas/generator.schema.json"
+    "./schemas/generator.schema.json": "./schemas/generator.schema.json",
+    "./schemas/i18n.schema.json": "./schemas/i18n.schema.json"
   },
   "scripts": {
     "test": "node --test",
@@ -47,7 +48,8 @@
   },
   "workspaces": [
     "packages/bundler",
-    "packages/generator"
+    "packages/generator",
+    "packages/i18n"
   ],
   "packageManager": "yarn@4.16.0"
 }

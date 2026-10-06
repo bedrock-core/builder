@@ -1,8 +1,8 @@
 import { watch, type FSWatcher } from 'node:fs';
 import { lstat, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { validateConfig } from './config.ts';
-import { resolveDeploymentRoot } from './deploy.ts';
+import { validateConfig, type ProjectConfig } from './config.ts';
+import { resolveExportPaths } from './export.ts';
 import { runBuild } from './run.ts';
 import type { BuildOptions, BuildResult } from './contract.d.ts';
 
@@ -42,6 +42,26 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
 
   let removeAbortListener = () => {};
 
+  function exportRoots(config: ProjectConfig): string[] {
+    const selected = config.bedrockCore.profiles[profile];
+
+    if (selected?.export) {
+      resolveExportPaths(project, config.packs, selected.export);
+    }
+
+    return Object.values(config.bedrockCore.profiles).flatMap((settings) => {
+      if (!settings.export) {
+        return [];
+      }
+
+      try {
+        return Object.values(resolveExportPaths(project, config.packs, settings.export));
+      } catch {
+        return [];
+      }
+    });
+  }
+
   function ignored(file: string): boolean {
     const parts = path.relative(project, file).split(path.sep);
 
@@ -50,7 +70,9 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
     }
 
     for (const root of outputRoots) {
-      if (contains(root, file) || file.startsWith(`${root}.builder-`)) {
+      const normalized = (file: string) => process.platform === 'win32' ? file.toLowerCase() : file;
+
+      if (contains(root, file) || normalized(file).startsWith(`${normalized(root)}.builder-`)) {
         return true;
       }
     }
@@ -146,15 +168,7 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
           throw new Error(`Unknown profile: ${profile}`);
         }
 
-        const roots = new Set<string>();
-
-        if (settings.export) {
-          roots.add(path.resolve(project, settings.export.path));
-        }
-
-        if (settings.deploy) {
-          roots.add(resolveDeploymentRoot(project, typeof settings.deploy === 'object' ? settings.deploy : {}));
-        }
+        const roots = new Set(exportRoots(config));
 
         const generator = settings.stages?.generator;
 
@@ -263,12 +277,8 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
     const config = validateConfig(JSON.parse(await readFile(configPath, 'utf8')));
     const settings = config.bedrockCore.profiles[profile];
 
-    if (settings?.export) {
-      outputRoots.add(path.resolve(project, settings.export.path));
-    }
-
-    if (settings?.deploy) {
-      outputRoots.add(resolveDeploymentRoot(project, typeof settings.deploy === 'object' ? settings.deploy : {}));
+    for (const directory of exportRoots(config)) {
+      outputRoots.add(directory);
     }
 
     const generator = settings?.stages?.generator;

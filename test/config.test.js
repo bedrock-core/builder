@@ -39,7 +39,7 @@ test('unknown builder fields, malformed metadata and unsupported versions fail',
       c.bedrockCore.profiles.default.stages.bundelr = true;
     },
     (c) => {
-      c.bedrockCore.profiles.default.export = { target: 'unknown', path: './dist' };
+      c.bedrockCore.profiles.default.export.behaviorPack = { path: './dist' };
     },
     (c) => {
       c.bedrockCore.formatVersion = '2.0.0';

@@ -1,0 +1,19 @@
+{
+  "format_version": 3,
+  "header": {
+    "name": "pack.name",
+    "description": "pack.description",
+    "uuid": "bd062f5c-9ef7-4c69-9e31-a1548ba54c02",
+    "version": "1.0.0",
+    "min_engine_version": "1.26.50"
+  },
+  "modules": [
+    {
+      "type": "script",
+      "language": "javascript",
+      "entry": "scripts/main.js",
+      "uuid": "3b18658d-9d16-42c9-80f0-b9f077cce3a1",
+      "version": "1.0.0"
+    }
+  ]
+}

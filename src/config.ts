@@ -3,14 +3,15 @@ import { Ajv } from 'ajv';
 
 export type StageName = 'manifest' | 'generator' | 'guides' | 'i18n' | 'ui-compiler' | 'bundler';
 export type Settings = Record<string, unknown>;
+export type StageSelection = 'auto' | boolean | Settings;
 export type PluginStep = { plugin: string; settings?: Settings } & (
   { before: StageName | 'export'; after?: never } | { after: StageName | 'prepare'; before?: never }
 );
 export interface BuildProfile {
-  stages?: Partial<Record<StageName, boolean | Settings>>;
+  stages?: Partial<Record<StageName, StageSelection>>;
+  cache?: boolean;
   steps?: PluginStep[];
-  export?: { target?: 'local'; path: string };
-  deploy?: boolean | { path?: string; channel?: 'retail' | 'preview' };
+  export?: Record<string, string>;
   watch?: { debounceMs?: number; paths?: string[] };
 }
 export interface ProjectConfig {
@@ -40,6 +41,7 @@ const ajv = new Ajv({ allErrors: true, strict: false });
 ajv.addSchema(bundlerSchema, 'bundler.schema.json');
 ajv.addSchema(JSON.parse(readFileSync(new URL('../schemas/manifest.schema.json', import.meta.url), 'utf8')), 'manifest.schema.json');
 ajv.addSchema(JSON.parse(readFileSync(new URL('../schemas/generator.schema.json', import.meta.url), 'utf8')), 'generator.schema.json');
+ajv.addSchema(JSON.parse(readFileSync(new URL('../schemas/i18n.schema.json', import.meta.url), 'utf8')), 'i18n.schema.json');
 const validate = ajv.compile<ProjectConfig>(configSchema);
 
 /** Validate without adding defaults or removing other tools' configuration. */

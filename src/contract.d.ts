@@ -1,29 +1,37 @@
-import type { DeployedPack } from './deploy.ts';
 import type { PackInfo } from './packs.ts';
+import type { StageName } from './config.ts';
 
 export interface Artifact {
   readonly id: string;
   readonly path: string;
   readonly owner: string;
+  readonly importAs?: string;
 }
 export interface BuildContext {
   readonly projectRoot: string;
+  readonly namespace: string;
   readonly stagedRoot: string;
   readonly generatedDir: string;
+  readonly generatedImports: Readonly<Record<string, string>>;
+  readonly cache: boolean;
   readonly packs: Readonly<Record<string, string>>;
-  readonly outputPath: string;
+  readonly outputPaths: Readonly<Record<string, string>>;
   readonly profile: string;
   readonly logger: Pick<Console, 'info' | 'warn' | 'error'>;
   readonly signal?: AbortSignal;
   registerDependency(path: string): void;
-  registerArtifact(id: string, path: string): Promise<void>;
+  registerArtifact(id: string, path: string, options?: { importAs?: string }): Promise<void>;
   artifact(id: string): Artifact;
   inspectPack(id: string): Promise<PackInfo>;
+}
+export interface BuildStepResult {
+  cached?: boolean;
+  reason?: string;
 }
 export type BuildStep = (
   context: BuildContext,
   settings: Record<string, unknown>,
-) => void | Promise<void>;
+) => void | BuildStepResult | Promise<void | BuildStepResult>;
 export interface BuildPlugin {
   run: BuildStep;
 }
@@ -36,11 +44,11 @@ export interface BuildOptions {
   validateArtifacts?: (context: BuildContext) => void | Promise<void>;
 }
 export interface BuildResult {
-  readonly outputPath: string;
+  readonly outputPaths: Readonly<Record<string, string>>;
   readonly profile: string;
+  readonly stages: { stage: StageName; status: 'executed' | 'skipped' | 'cached'; reason?: string }[];
   readonly dependencies: string[];
-  readonly artifacts: Pick<Artifact, 'id' | 'owner'>[];
+  readonly artifacts: Pick<Artifact, 'id' | 'owner' | 'importAs'>[];
   readonly packs: PackInfo[];
-  readonly deployments: DeployedPack[];
 }
 export function runBuild(options: BuildOptions): Promise<BuildResult>;

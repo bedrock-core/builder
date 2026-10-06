@@ -20,8 +20,8 @@
           }
         },
         "export": {
-          "target": "local",
-          "path": "./dist"
+          "gameplay": "./dist/gameplay",
+          "extraGameplay": "./dist/extraGameplay"
         }
       }
     }

@@ -24,6 +24,7 @@
     },
     "generatedImports": {
       "type": "object",
+      "description": "Optional overrides or custom artifact aliases. Producer import names resolve automatically.",
       "additionalProperties": {
         "type": "string",
         "pattern": "\\S"

@@ -1,6 +1,8 @@
-import { glob, stat, unlink } from 'node:fs/promises';
+import { unlink } from 'node:fs/promises';
 import path from 'node:path';
 import type { BuildContext } from '../contract.d.ts';
+import { generatedAliases } from '../imports.ts';
+import { templateFiles } from '../template-files.ts';
 import { generateTemplates, generateSchemaTypes, type JsonFormatting, type SchemaTypeSettings } from '../../packages/generator/src/index.ts';
 
 export interface GeneratorSettings extends SchemaTypeSettings {
@@ -27,33 +29,12 @@ export async function run(context: BuildContext, settings: GeneratorSettings): P
     await generateSchemaTypes({ ...settings, root: context.projectRoot, signal: context.signal, log: message => context.logger.info?.(`@bedrock-core/generator: ${message}`) });
   }
 
-  const packPaths = Object.values(context.packs);
-  const include = settings.include ?? packPaths.map(directory => `${projectPath(context.stagedRoot, directory)}/**/*.ts`);
-  const exclude = [
-    '**/*.d.{ts,mts,cts}',
-    ...packPaths.map(directory => `${projectPath(context.stagedRoot, directory)}/scripts/**`),
-    ...([settings.exclude ?? []].flat()),
-  ];
-  const files = new Set<string>();
+  const files = await templateFiles(context, settings);
 
-  for await (const relative of glob(include, { cwd: context.stagedRoot, exclude })) {
-    const file = path.resolve(context.stagedRoot, relative);
-
-    if (!(await stat(file)).isFile()) {
-      continue;
-    }
-
-    if (!packPaths.some(directory => within(directory, file))) {
-      throw new Error(`Generator templates must be inside configured packs: ${relative}`);
-    }
-
-    files.add(file);
-  }
-
-  const aliases = Object.fromEntries(Object.entries(settings.generatedImports ?? {}).map(([specifier, artifact]) => [specifier, context.artifact(artifact).path]));
+  const aliases = generatedAliases(context, settings.generatedImports);
   const result = await generateTemplates({
     root: context.stagedRoot,
-    files: [...files],
+    files,
     dependencyRoot: context.projectRoot,
     aliases,
     tsconfig: settings.tsconfig,
