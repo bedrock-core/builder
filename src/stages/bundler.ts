@@ -1,10 +1,11 @@
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { copyFile, lstat, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import type { BuildContext, BuildStepResult } from '../contract.d.ts';
 import { readScriptEntries } from '../manifest.ts';
-import { bundleScripts } from '../../packages/bundler/src/index.ts';
+import { bundleScripts, compilerVersion } from '../../packages/bundler/src/index.ts';
 import { generatedAliases } from '../imports.ts';
-import { compilationCache } from '../compile-cache.ts';
+import { buildCache } from '../file-cache.ts';
 
 export interface BundlerSettings {
   debug?: boolean;
@@ -123,13 +124,29 @@ export async function run(context: BuildContext, settings: BundlerSettings): Pro
   const sources = new Set<string>();
   const outputs: { temporary: string; destination: string; artifactId: string }[] = [];
   const aliases = generatedAliases(context, settings.generatedImports);
-  const cache = await compilationCache(context, { ...settings }, scripts.map(script => `${script.packId}:${script.runtimeEntry}`));
+  const version = createHash('sha256')
+    .update(await readFile(new URL(import.meta.url)))
+    .update(await readFile(new URL('../../packages/bundler/src/index.ts', import.meta.url)))
+    .update(await readFile(new URL('../../packages/bundler/src/dependencies.ts', import.meta.url)))
+    .digest('hex');
+  let cached = 0;
 
   for (const script of scripts) {
     const id = `${script.packId}:${script.runtimeEntry}`;
-    const result = cache?.hit
-      ? await cache.restore(id)
-      : await bundleScripts({
+    const result = await buildCache(context).reuse(id, {
+      inputs: [script.source],
+      key: {
+        version,
+        compilerVersion,
+        nodePath: process.env.NODE_PATH ?? '',
+        debug: settings.debug ?? false,
+        target: settings.target ?? 'es2020',
+        tsconfig: settings.tsconfig ?? null,
+        external: settings.external ?? [],
+        aliases: Object.fromEntries(Object.entries(aliases).map(([name, file]) => [name, path.relative(context.stagedRoot, file)])),
+      },
+      async run() {
+        const bundle = await bundleScripts({
           root: context.stagedRoot,
           dependencyRoot: context.projectRoot,
           entry: script.source,
@@ -142,11 +159,22 @@ export async function run(context: BuildContext, settings: BundlerSettings): Pro
           signal: context.signal,
         });
 
-    if (cache && !cache.hit) {
-      await cache.record(id, result);
+        return {
+          value: { sources: bundle.inputs.map(file => path.relative(context.stagedRoot, file)) },
+          inputs: [...bundle.inputs, ...bundle.watchFiles],
+          files: bundle.files,
+          cache: bundle.cacheable,
+        };
+      },
+    });
+
+    if (result.cached) {
+      cached++;
     }
 
-    for (const input of result.inputs) {
+    for (const relative of result.value.sources) {
+      const input = path.resolve(context.stagedRoot, relative);
+
       if (within(context.stagedRoot, input)) {
         context.registerDependency(path.join(context.projectRoot, path.relative(context.stagedRoot, input)));
       } else if (!within(context.generatedDir, input)) {
@@ -168,8 +196,6 @@ export async function run(context: BuildContext, settings: BundlerSettings): Pro
       });
     }
   }
-
-  await cache?.save();
 
   // Keep staged inputs intact until every bundle has finished, including JS entries.
   for (const output of outputs) {
@@ -198,5 +224,5 @@ export async function run(context: BuildContext, settings: BundlerSettings): Pro
     context.registerDependency(settings.tsconfig);
   }
 
-  return { cached: cache?.hit ?? false };
+  return { cached: cached === scripts.length, reason: `${scripts.length - cached} built, ${cached} reused` };
 }

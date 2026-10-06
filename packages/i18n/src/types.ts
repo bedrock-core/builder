@@ -34,6 +34,7 @@ export interface I18nOptions extends I18nSettings {
   declarationRoot?: string;
   signal?: AbortSignal;
   warn?: (message: string) => void;
+  compile?: (options: BundleOptions) => Promise<CompiledModule>;
 }
 
 /** JSON consumed by @bedrock-core/i18n; resources are represented only in declarations. */
@@ -54,3 +55,4 @@ export interface I18nResult {
   declarations: string[];
   warnings: string[];
 }
+import type { BundleOptions, CompiledModule } from '@bedrock-core/builder-bundler';

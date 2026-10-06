@@ -21,6 +21,7 @@ __metadata:
   resolution: "@bedrock-core/builder-bundler@workspace:packages/bundler"
   dependencies:
     esbuild: "npm:0.25.12"
+    typescript: "npm:5.9.3"
   languageName: unknown
   linkType: soft
 

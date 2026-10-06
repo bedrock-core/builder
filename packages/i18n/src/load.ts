@@ -5,7 +5,7 @@ import type { I18nOptions } from './types.ts';
 
 /** A fresh output path per build reevaluates resources and their imported helpers. */
 export async function loadResources(file: string, output: string, options: I18nOptions, inputs: Set<string>): Promise<unknown> {
-  const result = await bundleScripts({
+  const result = await (options.compile ?? bundleScripts)({
     root: path.resolve(options.root),
     entry: file,
     outfile: output,

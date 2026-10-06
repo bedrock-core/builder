@@ -4,6 +4,7 @@ import path from 'node:path';
 import { validateConfig, type ProjectConfig } from './config.ts';
 import { resolveExportPaths } from './export.ts';
 import { runBuild } from './run.ts';
+import { inputLocations } from './file-cache.ts';
 import type { BuildOptions, BuildResult } from './contract.d.ts';
 
 export interface WatchOptions extends BuildOptions {
@@ -29,9 +30,12 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
   const configPath = await realpath(options.configPath ?? 'config.json');
   const project = path.dirname(configPath);
   const external = new Map<string, FSWatcher>();
+  const recursiveExternal = new Map<string, boolean>();
+  let externalTargets = new Map<string, Set<string>>();
   let outputRoots = new Set<string>();
   let extraPaths: string[] = [];
   let dependencies: string[] = [];
+  let dependencyLocations: ReadonlySet<string> = new Set();
   let debounceMs = 100;
   let dirty = false;
   let stopped = false;
@@ -110,20 +114,10 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
 
   async function updateExternalWatchers(): Promise<void> {
     const targets = new Set([...extraPaths, ...dependencies].filter(file => !contains(project, file) || path.relative(project, file).split(path.sep).includes('node_modules')));
-
-    for (const [target, watcher] of external) {
-      if (!targets.has(target)) {
-        watcher.close();
-        external.delete(target);
-      }
-    }
+    const directories = new Map<string, Set<string>>();
 
     for (const target of targets) {
-      if (external.has(target)) {
-        continue;
-      }
-
-      let directory = target;
+      let directory = dependencyLocations.has(target) ? path.dirname(target) : target;
 
       while (true) {
         try {
@@ -131,7 +125,7 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
             break;
           }
         } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          if (!['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) {
             throw error;
           }
         }
@@ -139,20 +133,47 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
         directory = path.dirname(directory);
       }
 
-      const watcher = watch(directory, { recursive: true }, (_event, filename) => {
-        const changed = filename ? path.resolve(directory, filename.toString()) : target;
+      const group = directories.get(directory) ?? new Set<string>();
 
-        if ((contains(target, changed) || contains(changed, target)) && ![...outputRoots].some(root => contains(root, changed))) {
+      group.add(target);
+      directories.set(directory, group);
+    }
+
+    externalTargets = directories;
+
+    for (const [directory, watcher] of external) {
+      if (!externalTargets.has(directory)) {
+        watcher.close();
+        external.delete(directory);
+        recursiveExternal.delete(directory);
+      }
+    }
+
+    for (const directory of externalTargets.keys()) {
+      const recursive = [...externalTargets.get(directory)!].some(target => target === directory && !dependencyLocations.has(target));
+
+      if (external.has(directory) && recursiveExternal.get(directory) === recursive) {
+        continue;
+      }
+
+      external.get(directory)?.close();
+      const watcher = watch(directory, { recursive }, (_event, filename) => {
+        const changed = filename ? path.resolve(directory, filename.toString()) : directory;
+        const relevant = [...(externalTargets.get(directory) ?? [])].some(target => contains(target, changed) || contains(changed, target));
+
+        if (relevant && ![...outputRoots].some(root => contains(root, changed))) {
           requestBuild();
         }
       });
 
       watcher.on('error', (error) => {
         watcher.close();
-        external.delete(target);
+        external.delete(directory);
+        recursiveExternal.delete(directory);
         report(error);
       });
-      external.set(target, watcher);
+      external.set(directory, watcher);
+      recursiveExternal.set(directory, recursive);
     }
   }
 
@@ -184,6 +205,7 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
         const result = await runBuild({ ...options, configPath });
 
         dependencies = result.dependencies;
+        dependencyLocations = inputLocations(result);
         await updateExternalWatchers();
         logger.info?.(`@bedrock-core/builder: watching ${project}`);
         await options.onBuild?.(result);
@@ -223,7 +245,7 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
 
       return `${info.mtimeNs}:${info.size}:${info.ino}`;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      if (['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) {
         return 'missing';
       }
 

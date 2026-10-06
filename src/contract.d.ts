@@ -48,6 +48,7 @@ export interface BuildResult {
   readonly profile: string;
   readonly stages: { stage: StageName; status: 'executed' | 'skipped' | 'cached'; reason?: string }[];
   readonly dependencies: string[];
+  readonly compilations: { id: string; status: 'executed' | 'cached' }[];
   readonly artifacts: Pick<Artifact, 'id' | 'owner' | 'importAs'>[];
   readonly packs: PackInfo[];
 }

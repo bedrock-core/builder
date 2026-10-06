@@ -1,6 +1,6 @@
 # @bedrock-core/builder-bundler
 
-Standalone script bundling with esbuild. Requires no builder runner, server framework, guides,
+Standalone script bundling with esbuild and TypeScript config parsing. Requires no builder runner, server framework, guides,
 i18n or UI runtime. This private package runs typed TS directly in Node; npm distribution will
 require JavaScript output because Node does not strip TS inside node_modules.
 
@@ -22,7 +22,8 @@ not stage files or provide transactional export. Other files remain intact.
 `dependencyRoot` supplies the original project's npm installation for staged sources. Staged
 resolution runs first, preserving tsconfig aliases. `aliases` maps exact generated imports to
 files; missing `@bedrock-core/generated/*` imports report a missing producer. The result contains
-output paths, input dependencies and esbuild metadata. Cancellation accepts an AbortSignal.
+output paths, input dependencies, resolution candidates (`watchFiles`), a conservative
+`cacheable` flag and esbuild metadata. Cancellation accepts an AbortSignal.
 Standalone Node consumers can select `platform: 'node'` and a JavaScript `banner` for runtime
 setup. The generator uses these options to support Node built-ins in bundled CommonJS modules.
 `inject` supplies helper modules for free identifiers during compilation.
@@ -37,10 +38,12 @@ Artifacts include the pack ID and manifest entry. All bundles finish before stag
 are replaced and consumed TypeScript sources are removed. Authored files remain unchanged.
 See [builder settings](../../README.md#bundler-settings) for configuration and validation.
 
-The adapter reuses verified local compilations by default and restores them into fresh staging.
-Profile `cache: false` disables reuse. External/npm inputs and inherited tsconfigs currently
-recompile. Final pack validation and publication always run. Standalone `bundleScripts` calls
-compile each time; caching belongs to the runner adapter.
+The adapter automatically reuses each compiled entry and restores it into fresh staging.
+Unrelated file changes retain cached entries; shared dependencies invalidate their consumers.
+Import tracking includes installed package files and metadata, missing resolver candidates,
+tsconfig path mappings, inherited configs and JSONC configs. Compiler option changes invalidate
+their compiled output. Profile `cache: false` disables reuse. Final pack validation and publication
+always run. Standalone `bundleScripts` calls compile each time; the runner manages reuse automatically.
 
 Screen JSX transforms, JSON5 support and Regolith parity remain pending. `.screen.tsx` modules
 fail explicitly until UI transformation is integrated. The default `es2020` compilation target

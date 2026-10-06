@@ -1,10 +1,12 @@
 import { lstat, mkdir, mkdtemp, open, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { bundleScripts } from '@bedrock-core/builder-bundler';
+import { bundleScripts, type BundleOptions, type CompiledModule } from '@bedrock-core/builder-bundler';
 import { templateCategory } from './category.ts';
 import type { JsonValue } from './templates.ts';
+import { deterministicData } from './deterministic.ts';
 export { defineMany, defineTemplate } from './templates.ts';
 export type { JsonValue, ManyTemplate, TemplateName, TemplateData } from './templates.ts';
 export { generateSchemaTypes } from './types.ts';
@@ -32,6 +34,17 @@ export interface GeneratorOptions {
   pretty?: JsonFormatting | false;
   signal?: AbortSignal;
   validate?: (document: GeneratedDocument) => void | Promise<void>;
+  /** Optional per-template reuse supplied by a build runner. */
+  reuse?: (source: string, evaluate: () => Promise<TemplateEvaluation>) => Promise<TemplateEvaluation>;
+  /** Compiler integration supplied by the runner. */
+  compile?: (options: BundleOptions) => Promise<CompiledModule>;
+}
+
+export interface TemplateEvaluation {
+  documents: GeneratedDocument[];
+  inputs: string[];
+  watchFiles: string[];
+  cacheable: boolean;
 }
 
 export interface GeneratorResult {
@@ -82,17 +95,16 @@ export async function generateTemplates(options: GeneratorOptions): Promise<Gene
   const written: string[] = [];
 
   try {
-    async function document(source: string, name: unknown, value: unknown, category?: string): Promise<void> {
+    function document(source: string, name: unknown, value: unknown, category?: string): GeneratedDocument {
       options.signal?.throwIfAborted();
       const destination = path.join(path.dirname(source), outputName(name, source));
       const content = format(value, options.pretty);
       const generated = { path: destination, source, value: JSON.parse(content) as JsonValue, content, category: category ?? templateCategory(value) };
 
-      await options.validate?.(generated);
-      documents.set(process.platform === 'win32' ? destination.toLowerCase() : destination, generated);
+      return generated;
     }
 
-    for (const [index, source] of templates.entries()) {
+    for (const source of templates) {
       options.signal?.throwIfAborted();
       const sourceInfo = await lstat(source);
 
@@ -101,53 +113,73 @@ export async function generateTemplates(options: GeneratorOptions): Promise<Gene
         throw new Error(`Template must be a TS/JS source file inside its project: ${source}`);
       }
 
-      const compiled = path.join(workspace, `template-${index}.mjs`);
-      const bundle = await bundleScripts({
-        root,
-        entry: source,
-        outfile: compiled,
-        dependencyRoot: options.dependencyRoot,
-        aliases: options.aliases,
-        tsconfig: options.tsconfig,
-        platform: 'node',
-        inject: [path.join(import.meta.dirname, 'templates.ts')],
-        // Bundled CommonJS dependencies can require Node built-ins from this ESM module.
-        banner: 'import { createRequire as __bedrockCoreCreateRequire } from \'node:module\'; const require = __bedrockCoreCreateRequire(import.meta.url);',
-        debug: true,
-        target: 'esnext',
-        signal: options.signal,
-      });
+      const evaluate = async (): Promise<TemplateEvaluation> => {
+        const emitted: GeneratedDocument[] = [];
+        const id = createHash('sha256').update(path.relative(root, source)).digest('hex');
+        const compiled = path.join(workspace, `template-${id}.mjs`);
+        const bundle = await (options.compile ?? bundleScripts)({
+          root,
+          entry: source,
+          outfile: compiled,
+          dependencyRoot: options.dependencyRoot,
+          aliases: options.aliases,
+          tsconfig: options.tsconfig,
+          platform: 'node',
+          inject: [path.join(import.meta.dirname, 'templates.ts')],
+          // Bundled CommonJS dependencies can require Node built-ins from this ESM module.
+          banner: 'import { createRequire as __bedrockCoreCreateRequire } from \'node:module\'; const require = __bedrockCoreCreateRequire(import.meta.url);',
+          debug: true,
+          target: 'esnext',
+          signal: options.signal,
+        });
 
-      for (const file of bundle.inputs) {
+        const module: Record<string, unknown> = await import(pathToFileURL(compiled).href);
+
+        if (!Object.hasOwn(module, 'default')) {
+          throw new Error(`Template must export default JSON data or [name, data, items]: ${source}`);
+        }
+
+        const value = module.default;
+        const category = templateCategory(value);
+
+        if (Array.isArray(value)) {
+          if (value.length !== 3 || typeof value[0] !== 'function' || typeof value[1] !== 'function' || !Array.isArray(value[2])) {
+            throw new Error(`Invalid default export array: expected [nameFn, dataFn, items] in ${source}`);
+          }
+
+          const [name, data, items] = value as [(item: unknown, index: number) => unknown, (item: unknown, index: number) => unknown, unknown[]];
+
+          for (const [index, item] of items.entries()) {
+            options.signal?.throwIfAborted();
+            emitted.push(document(source, await name(item, index), await data(item, index), category));
+          }
+        } else if (value !== null && typeof value === 'object') {
+          emitted.push(document(source, path.basename(source, path.extname(source)), value, category));
+        } else {
+          throw new Error(`Unsupported template: expected a default export object or [nameFn, dataFn, items] in ${source}`);
+        }
+
+        const helpers = ['templates.ts', 'category.ts'].map(file => path.join(import.meta.dirname, file));
+
+        return {
+          documents: emitted,
+          inputs: bundle.inputs,
+          watchFiles: bundle.watchFiles,
+          cacheable: !!options.reuse && bundle.cacheable && await deterministicData(bundle.inputs.filter(file => !helpers.includes(file))),
+        };
+      };
+
+      const result = options.reuse ? await options.reuse(source, evaluate) : await evaluate();
+
+      for (const file of result.inputs) {
         if (!within(workspace, file)) {
           inputs.add(file);
         }
       }
 
-      const module: Record<string, unknown> = await import(pathToFileURL(compiled).href);
-
-      if (!Object.hasOwn(module, 'default')) {
-        throw new Error(`Template must export default JSON data or [name, data, items]: ${source}`);
-      }
-
-      const value = module.default;
-      const category = templateCategory(value);
-
-      if (Array.isArray(value)) {
-        if (value.length !== 3 || typeof value[0] !== 'function' || typeof value[1] !== 'function' || !Array.isArray(value[2])) {
-          throw new Error(`Invalid default export array: expected [nameFn, dataFn, items] in ${source}`);
-        }
-
-        const [name, data, items] = value as [(item: unknown, index: number) => unknown, (item: unknown, index: number) => unknown, unknown[]];
-
-        for (const [index, item] of items.entries()) {
-          options.signal?.throwIfAborted();
-          await document(source, await name(item, index), await data(item, index), category);
-        }
-      } else if (value !== null && typeof value === 'object') {
-        await document(source, path.basename(source, path.extname(source)), value, category);
-      } else {
-        throw new Error(`Unsupported template: expected a default export object or [nameFn, dataFn, items] in ${source}`);
+      for (const generated of result.documents) {
+        await options.validate?.(generated);
+        documents.set(process.platform === 'win32' ? generated.path.toLowerCase() : generated.path, generated);
       }
     }
 

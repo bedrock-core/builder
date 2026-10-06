@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { bundleDtsText } from './dts.ts';
 import { flattenNesting, templateVars, toPositional } from './interp.ts';
 import { manifestAliasEntries, parseLang, stripGeneratedSection, upsertGeneratedSection } from './lang.ts';
@@ -130,11 +131,10 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
   const workspace = await mkdtemp(path.join(tmpdir(), 'bedrock-core-i18n-'));
 
   try {
-    let moduleIndex = 0;
-
     async function load(file: string, scope: string): Promise<Table> {
       try {
-        const value = await loadResources(file, path.join(workspace, `resource-${moduleIndex++}.mjs`), options, inputs);
+        const id = createHash('sha256').update(path.relative(root, file)).digest('hex');
+        const value = await loadResources(file, path.join(workspace, `resource-${id}.mjs`), options, inputs);
 
         return flattenResources(value, { error: (key, text) => error(`${scope} ${key}`, text) });
       } catch (cause) {

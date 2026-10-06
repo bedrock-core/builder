@@ -1,8 +1,12 @@
-import { unlink } from 'node:fs/promises';
+import { readFile, unlink } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
-import type { BuildContext } from '../contract.d.ts';
+import type { BuildContext, BuildStepResult } from '../contract.d.ts';
+import { compilerVersion } from '../../packages/bundler/src/index.ts';
 import { generatedAliases } from '../imports.ts';
 import { templateFiles } from '../template-files.ts';
+import { buildCache } from '../file-cache.ts';
+import { compileModule } from '../compile.ts';
 import { generateTemplates, generateSchemaTypes, type JsonFormatting, type SchemaTypeSettings } from '../../packages/generator/src/index.ts';
 
 export interface GeneratorSettings extends SchemaTypeSettings {
@@ -24,7 +28,7 @@ function projectPath(root: string, file: string): string {
 }
 
 /** Discover templates only in configured packs and register their emitted JSON. */
-export async function run(context: BuildContext, settings: GeneratorSettings): Promise<void> {
+export async function run(context: BuildContext, settings: GeneratorSettings): Promise<BuildStepResult> {
   if (settings.types !== false) {
     await generateSchemaTypes({ ...settings, root: context.projectRoot, signal: context.signal, log: message => context.logger.info?.(`@bedrock-core/generator: ${message}`) });
   }
@@ -32,6 +36,17 @@ export async function run(context: BuildContext, settings: GeneratorSettings): P
   const files = await templateFiles(context, settings);
 
   const aliases = generatedAliases(context, settings.generatedImports);
+  const version = createHash('sha256');
+
+  for (const file of [import.meta.url, '../../packages/generator/src/index.ts', '../../packages/generator/src/category.ts',
+    '../../packages/generator/src/deterministic.ts', '../../packages/bundler/src/index.ts', '../../packages/bundler/src/dependencies.ts']) {
+    version.update(await readFile(new URL(file, import.meta.url)));
+  }
+
+  const implementation = version.digest('hex');
+  let cached = 0;
+  let compiled = 0;
+  let modulesReused = 0;
   const result = await generateTemplates({
     root: context.stagedRoot,
     files,
@@ -40,6 +55,64 @@ export async function run(context: BuildContext, settings: GeneratorSettings): P
     tsconfig: settings.tsconfig,
     pretty: settings.pretty,
     signal: context.signal,
+    async compile(options) {
+      const result = await compileModule(context, options);
+
+      if (result.cached) {
+        modulesReused++;
+      } else {
+        compiled++;
+      }
+
+      return result;
+    },
+    async reuse(source, evaluate) {
+      const output = await buildCache(context).reuse(projectPath(context.stagedRoot, source), {
+        inputs: [source],
+        key: {
+          implementation,
+          compilerVersion,
+          nodePath: process.env.NODE_PATH ?? '',
+          pretty: settings.pretty ?? false,
+          tsconfig: settings.tsconfig ?? null,
+          aliases: Object.fromEntries(Object.entries(aliases).map(([name, file]) => [name, path.relative(context.stagedRoot, file)])),
+        },
+        async run() {
+          const result = await evaluate();
+
+          return {
+            value: {
+              documents: result.documents.map(document => ({
+                path: path.relative(context.stagedRoot, document.path),
+                source: path.relative(context.stagedRoot, document.source),
+                content: document.content,
+                ...(document.category ? { category: document.category } : {}),
+              })),
+              inputs: result.inputs.map(file => path.relative(context.stagedRoot, file)),
+              watchFiles: result.watchFiles.map(file => path.relative(context.stagedRoot, file)),
+            },
+            inputs: [...result.inputs, ...result.watchFiles],
+            cache: result.cacheable,
+          };
+        },
+      });
+
+      if (output.cached) {
+        cached++;
+      }
+
+      return {
+        documents: output.value.documents.map(document => ({
+          ...document,
+          path: path.resolve(context.stagedRoot, document.path),
+          source: path.resolve(context.stagedRoot, document.source),
+          value: JSON.parse(document.content),
+        })),
+        inputs: output.value.inputs.map(file => path.resolve(context.stagedRoot, file)),
+        watchFiles: output.value.watchFiles.map(file => path.resolve(context.stagedRoot, file)),
+        cacheable: true,
+      };
+    },
   });
 
   for (const input of result.inputs) {
@@ -60,4 +133,9 @@ export async function run(context: BuildContext, settings: GeneratorSettings): P
   for (const template of result.templates) {
     await unlink(template);
   }
+
+  return {
+    cached: cached === files.length,
+    reason: `${compiled} compiled, ${modulesReused} compiled modules reused; ${files.length - cached} evaluated, ${cached} outputs reused`,
+  };
 }

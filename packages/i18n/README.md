@@ -2,7 +2,8 @@
 
 Compile TS/JS default-exported translation objects into language files, a runtime JSON bundle
 and editor declarations. This private native TypeScript package runs on Node 22.18 or later.
-Its only build dependency is the shared `@bedrock-core/builder-bundler` package and esbuild.
+Its build dependency is the shared `@bedrock-core/builder-bundler` package, which uses esbuild
+and TypeScript config parsing.
 Resource modules may import additional project dependencies. The runner, UI system and server
 framework are optional.
 
@@ -32,6 +33,11 @@ and underscores.
 compilation writes files; resource validation finishes before any pack or declaration changes.
 Existing language content is preserved outside the generated section. Sources execute as
 trusted Node code. An AbortSignal supports cooperative cancellation.
+
+The builder automatically reuses unchanged compiled locale modules, including their transitive
+imports and compiler configuration. Modules still evaluate on every build so runtime Node inputs
+remain current. Standalone calls compile normally; an optional `compile(options)` callback supports
+integration with another runner.
 
 ## Resources
 

@@ -20,6 +20,53 @@ async function waitFor(condition) {
   }
 }
 
+test('watch reuses templates on script edits and rebuilds template consumers on imported data edits', { timeout: 15000 }, async (t) => {
+  const project = await projectFor(t, { cleanup: false });
+  const cancellation = new AbortController();
+  const results = [];
+  const errors = [];
+
+  project.config.bedrockCore.profiles.default.stages.generator = { types: false };
+  project.config.bedrockCore.profiles.default.watch = { debounceMs: 30 };
+  await writeFile(project.configPath, JSON.stringify(project.config));
+  await put(project.project, 'shared/value.json', '{"value":1}');
+  await put(project.project, 'packs/gameplay/items/value.ts', `import data from '../../../shared/value.json'; export default data;`);
+  await put(project.project, 'packs/gameplay/scripts/main.ts', `import data from '../items/value.json'; export const value = data.value;`);
+  const watching = watchBuild({
+    configPath: project.configPath, signal: cancellation.signal, logger: {},
+    onBuild(result) { results.push(result); },
+    onError(error) { errors.push(error); },
+  });
+
+  t.after(async () => {
+    cancellation.abort();
+
+    try {
+      await watching;
+    } finally {
+      await project.dispose();
+    }
+  });
+  await waitFor(() => results.length === 1);
+  await put(project.project, 'packs/gameplay/scripts/main.ts', `import data from '../items/value.json'; export const value = data.value + 1;`);
+  await waitFor(() => results.length >= 2);
+  const script = results.at(-1);
+
+  assert.equal(script.compilations.find(task => task.id === 'generator/packs/gameplay/items/value.ts').status, 'cached');
+  assert.equal(script.compilations.find(task => task.id === 'bundler/gameplay:scripts/main.js').status, 'executed');
+  const count = results.length;
+
+  await put(project.project, 'shared/value.json', '{"value":2}');
+  await waitFor(() => results.length > count);
+  const generated = results.at(-1);
+
+  assert.equal(generated.compilations.find(task => task.id === 'generator/packs/gameplay/items/value.ts').status, 'executed');
+  assert.equal(generated.compilations.find(task => task.id === 'bundler/gameplay:scripts/main.js').status, 'executed');
+  assert.deepEqual(JSON.parse(await readFile(path.join(generated.outputPaths.gameplay, 'items/value.json'), 'utf8')), { value: 2 });
+  await delay(200);
+  assert.deepEqual(errors, []);
+});
+
 test('watch recovers from invalid export paths and ignores current and former destinations', { timeout: 15000 }, async (t) => {
   const project = await projectFor(t, { cleanup: false });
   const cancellation = new AbortController();

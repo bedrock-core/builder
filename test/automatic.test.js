@@ -142,7 +142,7 @@ test('unchanged local bundles restore to fresh staging and preserve artifacts an
   assert.equal(await exportedValue(project), 1);
 });
 
-test('local import edits and file additions invalidate cached bundles', async (t) => {
+test('local import edits invalidate bundles while unrelated additions remain cached', async (t) => {
   const project = await projectFor(t);
 
   await put(project.project, 'packs/gameplay/scripts/main.ts', `import data from './value.json'; export const value = data.value;`);
@@ -155,7 +155,7 @@ test('local import edits and file additions invalidate cached bundles', async (t
   assert.equal(status(await runBuild(options), 'bundler'), 'executed');
   assert.equal(await exportedValue(project), 22);
   await put(project.project, 'new-input.json', '{}');
-  assert.equal(status(await runBuild(options), 'bundler'), 'executed');
+  assert.equal(status(await runBuild(options), 'bundler'), 'cached');
 });
 
 test('corrupt cache bytes are discarded and rebuilt', async (t) => {
@@ -163,11 +163,11 @@ test('corrupt cache bytes are discarded and rebuilt', async (t) => {
   const options = { configPath: project.configPath, logger: {} };
 
   await runBuild(options);
-  const directory = path.join(project.project, '.bedrock-core/cache/build/bundler');
-  const file = path.join(directory, (await readdir(directory))[0]);
+  const directory = path.join(project.project, '.bedrock-core/cache/build');
+  const file = path.join(directory, (await readdir(directory))[0], 'files.json');
   const record = JSON.parse(await readFile(file, 'utf8'));
 
-  Object.values(record.bundles)[0].files[0].content = Buffer.from('export const value = 999;').toString('base64');
+  Object.values(record.files)[0].files[0].content = Buffer.from('export const value = 999;').toString('base64');
   await writeFile(file, JSON.stringify(record));
   assert.equal(status(await runBuild(options), 'bundler'), 'executed');
   assert.equal(await exportedValue(project), 1);
@@ -187,7 +187,7 @@ test('profile cache false bypasses compiled-output reuse', async (t) => {
   await assert.rejects(readdir(path.join(project.project, '.bedrock-core/cache/build')), { code: 'ENOENT' });
 });
 
-test('npm compilation inputs rebuild and changed package code appears in the output', async (t) => {
+test('npm imports reuse compiled code until a package input changes', async (t) => {
   const project = await projectFor(t);
 
   await put(project.project, 'node_modules/test-dependency/package.json', '{"name":"test-dependency","type":"module","exports":"./index.js"}');
@@ -196,10 +196,32 @@ test('npm compilation inputs rebuild and changed package code appears in the out
   const options = { configPath: project.configPath, logger: {} };
 
   await runBuild(options);
-  assert.equal(status(await runBuild(options), 'bundler'), 'executed');
+  assert.equal(status(await runBuild(options), 'bundler'), 'cached');
   await put(project.project, 'node_modules/test-dependency/index.js', 'export const value = 32;');
-  await runBuild(options);
+  assert.equal(status(await runBuild(options), 'bundler'), 'executed');
   assert.equal(await exportedValue(project), 32);
+  await put(project.project, 'node_modules/test-dependency/unrelated.js', 'export const unrelated = 99;');
+  assert.equal(status(await runBuild(options), 'bundler'), 'cached');
+  await put(project.project, 'node_modules/test-dependency/next.js', 'export const value = 33;');
+  await put(project.project, 'node_modules/test-dependency/package.json', '{"name":"test-dependency","type":"module","exports":"./next.js"}');
+  assert.equal(status(await runBuild(options), 'bundler'), 'executed');
+  assert.equal(await exportedValue(project), 33);
+});
+
+test('installing a nearer project dependency invalidates its importing bundle', async (t) => {
+  const project = await projectFor(t);
+
+  await put(project.root, 'node_modules/test-dependency/package.json', '{"name":"test-dependency","type":"module","exports":"./index.js"}');
+  await put(project.root, 'node_modules/test-dependency/index.js', 'export const value = 40;');
+  await put(project.project, 'packs/gameplay/scripts/main.ts', `export { value } from 'test-dependency';`);
+  const options = { configPath: project.configPath, logger: {} };
+
+  await runBuild(options);
+  assert.equal(status(await runBuild(options), 'bundler'), 'cached');
+  await put(project.project, 'node_modules/test-dependency/package.json', '{"name":"test-dependency","type":"module","exports":"./index.js"}');
+  await put(project.project, 'node_modules/test-dependency/index.js', 'export const value = 41;');
+  assert.equal(status(await runBuild(options), 'bundler'), 'executed');
+  assert.equal(await exportedValue(project), 41);
 });
 
 test('template and plugin execution repeat while changing generated inputs invalidate compilation', async (t) => {
@@ -257,13 +279,23 @@ test('cache hits still validate final artifacts and preserve the previous export
   assert.equal(status(await runBuild(options), 'bundler'), 'cached');
 });
 
-test('inherited tsconfig inputs rebuild rather than reusing incomplete cache fingerprints', async (t) => {
+test('JSONC configs and inherited aliases reuse compilation and track fallback candidates', async (t) => {
   const project = await projectFor(t);
 
-  await put(project.project, 'tsconfig.json', '{"extends":"./base.json"}');
-  await put(project.project, 'base.json', '{"compilerOptions":{"target":"ES2020"}}');
+  await put(project.project, 'tsconfig.json', '{// Project compiler settings\n "extends":"./base.json",}');
+  await put(project.project, 'base.json', '{"compilerOptions":{"paths":{"data":["./shared/preferred.ts","./shared/fallback.ts"]}}}');
+  await put(project.project, 'shared/fallback.ts', 'export const value = 10;');
+  await put(project.project, 'packs/gameplay/scripts/main.ts', `export { value } from 'data';`);
   const options = { configPath: project.configPath, logger: {} };
 
   await runBuild(options);
+  assert.equal(status(await runBuild(options), 'bundler'), 'cached');
+  await put(project.project, 'shared/unrelated.ts', 'export const value = 0;');
+  assert.equal(status(await runBuild(options), 'bundler'), 'cached');
+  await put(project.project, 'shared/preferred.ts', 'export const value = 20;');
   assert.equal(status(await runBuild(options), 'bundler'), 'executed');
+  assert.equal(await exportedValue(project), 20);
+  await put(project.project, 'base.json', '{"compilerOptions":{"paths":{"data":["./shared/fallback.ts"]}}}');
+  assert.equal(status(await runBuild(options), 'bundler'), 'executed');
+  assert.equal(await exportedValue(project), 10);
 });

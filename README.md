@@ -130,7 +130,7 @@ guides and UI compilation remain pending.
 | Runner      | Configuration, scheduling, staging and export     | No server/UI runtime required                                               |
 | Manifest    | Apply profile overrides to staged manifests                       | Explicit manifest inputs and outputs                                        |
 | Generator   | Execute typed content templates                   | Shared esbuild bundler and template dependencies; no framework runtime       |
-| Bundler     | Compile an explicit TS/JS entry                   | esbuild only; screen JSX integration is pending                             |
+| Bundler     | Compile an explicit TS/JS entry                   | esbuild and TypeScript config parsing; screen JSX integration is pending    |
 | i18n        | Generate language files and translation artifacts | Shared esbuild bundler; runtime translation helpers when code uses them     |
 | Guides      | Compile guide content                             | MDX tooling; translations and guide runtime when content requires them      |
 | UI compiler | Compile screen modules into pack assets           | UI compiler libraries; runtime registration dependencies for generated code |
@@ -148,21 +148,30 @@ compiler adapters resolve them automatically. Optional `generatedImports` settin
 defaults or name custom artifacts. Import resolution uses the current build's registered files.
 Imports do not enable additional stages; producer inputs determine automatic participation.
 
-## Compilation cache
+## Incremental builds
 
-Profiles reuse verified local bundles by default. The fingerprint includes staged and generated
-file content, compiler options, generated import registrations and Node/compiler versions.
-Edits or added files invalidate it. A cache hit restores outputs into fresh staging, including
-source maps, artifacts and dependency tracking. Final validation and export still run.
+Build and watch automatically reuse compiled TS/JS files. Each script entry, generator template
+and locale module checks its transitive imports, resolver candidates, compiler configuration and
+Node/compiler versions. Unrelated edits keep compiled files cached; editing a shared helper
+rebuilds its consumers. Installed package code and metadata, tsconfig path mappings, inherited
+configs and JSONC configs participate in dependency tracking. No cache registration is required.
 
-Set `"cache": false` on a profile to recompile every bundle. Cache files live under
-`.bedrock-core/cache/build/bundler`; removing that directory also forces compilation.
-The cache conservatively snapshots the whole staged/generated project. npm or other external
-compiler inputs and inherited tsconfigs currently recompile each time.
+Data-only objects, relative TS/JS/JSON imports and simple Many callbacks can reuse generated
+documents automatically. Templates with runtime calls, side effects, Node I/O or environment
+access execute every build while reusing their unchanged compiled code. Locale modules also
+evaluate freshly. Default exports and async template behavior retain their contract. Generated
+JSON is compared by content, so an unchanged output keeps its consuming script cached. Plugin
+hooks execute each build.
 
-Templates, locale resources and trusted plugins execute every build because they can use Node
-I/O, environment values or time. Schema declarations and optional vanilla downloads retain their
-own content/freshness caches. Watch mode still creates a complete staged build each time.
+`BuildResult.compilations` reports `executed` or `cached` for compiled files and generator outputs.
+Stage logs distinguish compilation from template evaluation. Set `"cache": false` on a profile to bypass reuse, or remove
+`.bedrock-core/cache/build`. Cache hits restore files into fresh staging and preserve artifact
+registration and dependency tracking. Final validation and coordinated export always run.
+
+See [automatic compilation reuse](docs/incremental.md) for examples and dependency boundaries.
+UI compilation is not integrated yet. Staging and export still copy complete packs, and the
+first build compiles every file. Schema declarations and optional vanilla downloads keep their
+own content/freshness caches.
 
 ## Extension vocabulary
 
@@ -236,6 +245,24 @@ builds. Replacements happen sequentially. `BuildResult.outputPaths` reports reso
 `BuildResult.packs` contains final manifest classification and published paths.
 The standalone `exportPacks({ packs, paths, signal })` API from `@bedrock-core/builder/export`
 uses the same validation and publication transaction without the runner.
+
+## Regolith configuration migration
+
+Preview a configuration migration without changing files:
+
+```sh
+yarn migrate path/to/config.json
+```
+
+The command converts supported `@bedrock-core` filters, profile references, watch paths
+and local/exact export targets. Shared metadata and other tool sections are retained.
+Only manifests already using v3 are supported. Project code, tsconfig, manifest variants
+and pack assets are not rewritten. Unsupported behavior produces diagnostics and prevents writing.
+
+Use `--write` to update the source config with an exclusive `.regolith.bak` backup, or
+`--write --output config.builder.json` to create a sibling config. Development exports
+need exact per-pack folders supplied with `--export profile:pack=path`.
+See [migration options and limits](docs/migration.md).
 
 ## Watch builds
 

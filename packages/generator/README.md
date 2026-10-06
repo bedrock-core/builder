@@ -114,8 +114,8 @@ boundaries. Cancellation cannot interrupt synchronous template execution or an u
 Serialization follows `JSON.stringify`: undefined object fields are omitted, and BigInt or circular
 references fail. Single exports must be objects; array exports must be the three-part tuple.
 Compiler inputs track static imports; runtime filesystem reads must be declared separately through
-builder plugin dependencies or profile watch paths. Each template gets a fresh compiled module per
-invocation so import edits are visible on subsequent builds.
+builder plugin dependencies or profile watch paths. Each invocation loads a fresh module instance
+so current runtime values are visible even when its compiled code is reused.
 
 `generateTemplates` performs no declaration generation. Call
 `generateSchemaTypes({ root, schemaVersion, typesDir, typePrefix, strict, maxAgeHours })` separately
@@ -141,3 +141,13 @@ Settings are described by [the schema](../../schemas/generator.schema.json).
 The adapter prepares editor declarations in the authored project and generates pack JSON only
 in staging. Type directories are excluded from watch inputs. This private native-TS package
 requires Node 22.18 or later; publishing requires a JavaScript distribution with declarations.
+
+The adapter reuses each deterministic template independently, including its static imports and
+missing resolution candidates. Plain data expressions and simple Many callbacks are recognized
+automatically. Runtime calls, Node I/O and other side effects keep evaluating while unchanged
+compiled code is reused. An unchanged JSON
+output retains its consuming script's cache even if its template was rebuilt. Profile
+`cache: false` disables reuse; final validation and export always run. The standalone API
+compiles and evaluates every template by default. Optional `compile(options)` and
+`reuse(source, evaluate)` callbacks support runner integrations; addon projects need no cache
+configuration. Cache hits still pass every document to the validation callback.

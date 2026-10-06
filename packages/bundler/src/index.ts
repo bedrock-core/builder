@@ -1,6 +1,7 @@
 import { context as createContext, version, type Plugin, type Metafile } from 'esbuild';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { CompilationDependencies } from './dependencies.ts';
 
 export const compilerVersion = version;
 
@@ -23,7 +24,11 @@ export interface BundleResult {
   files: string[];
   inputs: string[];
   metafile: Metafile;
+  /** Resolution candidates include missing files that could shadow an import. */
+  watchFiles: string[];
+  cacheable: boolean;
 }
+export type CompiledModule = Pick<BundleResult, 'files' | 'inputs' | 'watchFiles' | 'cacheable'>;
 
 /** Bundle one explicit TS/JS entry without requiring the builder or Minecraft runtime libraries. */
 export async function bundleScripts(options: BundleOptions): Promise<BundleResult> {
@@ -31,6 +36,9 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
   const outfile = path.resolve(root, options.outfile);
   const aliases = options.aliases ?? {};
   const resolving = Symbol('project-dependency');
+  const dependencies = new CompilationDependencies(root, options.tsconfig);
+  let cacheable = true;
+
   const resolver: Plugin = {
     name: '@bedrock-core/project-imports',
     setup(build) {
@@ -42,8 +50,16 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
         ],
       }));
       build.onResolve({ filter: /.*/ }, async (args) => {
+        if (args.pluginData === resolving) {
+          return;
+        }
+
         if (Object.hasOwn(aliases, args.path)) {
-          return { path: path.resolve(root, aliases[args.path]) };
+          const file = path.resolve(root, aliases[args.path]);
+
+          dependencies.candidates(file);
+
+          return { path: file };
         }
 
         if (args.path.startsWith('@bedrock-core/generated/')) {
@@ -56,16 +72,6 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
           };
         }
 
-        if (
-          !options.dependencyRoot
-          || args.pluginData === resolving
-          || args.kind === 'entry-point'
-          || args.path.startsWith('.')
-          || path.isAbsolute(args.path)
-        ) {
-          return;
-        }
-
         // Try staged resolution first so tsconfig aliases retain their project-relative meaning.
         const local = await build.resolve(args.path, {
           resolveDir: args.resolveDir,
@@ -73,15 +79,29 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
           pluginData: resolving,
         });
 
-        if (!local.errors.length) {
-          return local;
+        const resolved = !local.errors.length || !options.dependencyRoot
+          ? local
+          : await build.resolve(args.path, {
+              resolveDir: options.dependencyRoot,
+              kind: args.kind,
+              pluginData: resolving,
+            });
+
+        if (!resolved.external && path.isAbsolute(resolved.path)) {
+          dependencies.imports(args.path, args.resolveDir || root);
+
+          if (options.dependencyRoot) {
+            dependencies.imports(args.path, options.dependencyRoot);
+          }
+
+          for (const directory of (process.env.NODE_PATH ?? '').split(path.delimiter).filter(Boolean)) {
+            dependencies.candidates(path.resolve(directory, args.path));
+          }
+
+          dependencies.candidates(resolved.path);
         }
 
-        return build.resolve(args.path, {
-          resolveDir: options.dependencyRoot,
-          kind: args.kind,
-          pluginData: resolving,
-        });
+        return resolved;
       });
     },
   };
@@ -127,10 +147,31 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
       await writeFile(file.path, file.contents);
     }
 
+    const inputs = Object.keys(result.metafile!.inputs).map(file => path.resolve(root, file));
+
+    for (const input of inputs) {
+      dependencies.parents(path.dirname(input));
+
+      try {
+        if (!(await stat(input)).isFile()) {
+          cacheable = false;
+        }
+      } catch (error) {
+        if (!['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) {
+          throw error;
+        }
+
+        // Virtual package files need their loader's own dependency tracking.
+        cacheable = false;
+      }
+    }
+
     return {
       files: result.outputFiles!.map(file => file.path),
-      inputs: Object.keys(result.metafile!.inputs).map(file => path.resolve(root, file)),
+      inputs,
       metafile: result.metafile!,
+      watchFiles: [...dependencies.files],
+      cacheable,
     };
   } finally {
     options.signal?.removeEventListener('abort', cancel);

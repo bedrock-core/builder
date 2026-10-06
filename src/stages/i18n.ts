@@ -2,6 +2,7 @@ import path from 'node:path';
 import { compileI18n, type I18nSettings, type TranslationPack } from '../../packages/i18n/src/index.ts';
 import type { BuildContext } from '../contract.d.ts';
 import { generatedAliases } from '../imports.ts';
+import { compileModule } from '../compile.ts';
 
 function within(root: string, file: string): boolean {
   const relative = path.relative(root, file);
@@ -39,6 +40,7 @@ export async function run(context: BuildContext, settings: I18nSettings): Promis
     typesDir: path.join(context.projectRoot, '.bedrock-core/generated/i18n'),
     cacheDir: path.join(context.projectRoot, '.bedrock-core/cache/i18n'),
     signal: context.signal,
+    compile: options => compileModule(context, options),
     warn: message => context.logger.warn?.(`@bedrock-core/i18n: ${message}`),
   });
 

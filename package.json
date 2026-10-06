@@ -14,6 +14,7 @@
     "./manifest": "./src/manifest.ts",
     "./export": "./src/export.ts",
     "./watch": "./src/watch.ts",
+    "./migrate": "./src/migrate.ts",
     "./schemas/config.schema.json": "./schemas/config.schema.json",
     "./schemas/manifest.schema.json": "./schemas/manifest.schema.json",
     "./schemas/bundler.schema.json": "./schemas/bundler.schema.json",
@@ -29,7 +30,8 @@
     "lint:fix": "eslint . --fix --max-warnings=0",
     "format": "eslint . --fix --max-warnings=0",
     "check": "yarn lint && yarn typecheck && yarn test",
-    "watch": "node bin/watch.ts"
+    "watch": "node bin/watch.ts",
+    "migrate": "node bin/migrate.ts"
   },
   "engines": {
     "node": ">=22.18"

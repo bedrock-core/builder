@@ -19,6 +19,8 @@ import { detectStage } from './detect.ts';
 import { inspectPack, type PackInfo } from './packs.ts';
 import { validatePackManifests } from './manifest.ts';
 import { resolveExportPaths, withExportPaths } from './export.ts';
+import { createHash } from 'node:crypto';
+import { createFileCache, attachCache, trackLocations } from './file-cache.ts';
 import type { Artifact, BuildContext, BuildOptions, BuildResult } from './contract.d.ts';
 export type {
   Artifact,
@@ -210,6 +212,32 @@ export async function runBuild({
         ]),
       );
       let owner = 'prepare';
+      const dependencyLocations = new Set<string>();
+      const cache = await createFileCache({
+        directory: path.join(project, '.bedrock-core/cache/build', createHash('sha256').update(profile).digest('hex')),
+        roots: { project: staged, generated, workspace },
+        enabled: config.bedrockCore.profiles[profile]?.cache !== false,
+        signal,
+        scope: () => owner,
+        warn: message => logger.warn?.(`@bedrock-core/builder: ${message}`),
+        dependency(file, location) {
+          let source: string | undefined;
+
+          if (inside(staged, file)) {
+            source = path.join(project, path.relative(staged, file));
+          } else if (!inside(workspace!, file)) {
+            source = file;
+          }
+
+          if (source) {
+            dependencies.add(source);
+
+            if (location) {
+              dependencyLocations.add(source);
+            }
+          }
+        },
+      });
       const context: BuildContext = Object.freeze({
         projectRoot: project,
         namespace: config.namespace,
@@ -280,9 +308,12 @@ export async function runBuild({
         },
       });
 
+      attachCache(context, cache);
+
       for (const [index, step] of plan.entries()) {
         check(signal);
         owner = step.kind === 'plugin' ? `${step.plugin}:${index}` : step.stage;
+        cache.boundary();
 
         if (step.kind === 'plugin' || ['prepare', 'validate', 'export'].includes(owner)) {
           logger.info?.(`@bedrock-core/builder: ${owner}`);
@@ -291,7 +322,8 @@ export async function runBuild({
         if (step.kind === 'plugin') {
           const module = modules.get(step.module)!;
           const local = step.module.startsWith('.') || path.isAbsolute(step.module);
-          const url = pathToFileURL(local ? path.join(staged, path.relative(project, module)) : module);
+          const pluginFile = local ? path.join(staged, path.relative(project, module)) : module;
+          const url = pathToFileURL(pluginFile);
 
           url.searchParams.set('build', path.basename(workspace));
           const plugin = await import(url.href);
@@ -336,14 +368,28 @@ export async function runBuild({
         }
       }
 
-      return Object.freeze({
+      // Publication has committed; cancellation can skip this optional cache write.
+      try {
+        await cache.save();
+      } catch (error) {
+        if (!signal?.aborted) {
+          throw error;
+        }
+      }
+
+      const result = Object.freeze({
         outputPaths,
         profile,
         stages: stageResults,
         dependencies: [...dependencies],
+        compilations: cache.results,
         artifacts: [...artifacts.values()].map(({ id, owner, importAs }) => ({ id, owner, ...(importAs ? { importAs } : {}) })),
         packs: publishedPacks.map(pack => ({ ...pack, path: outputPaths[pack.id]! })),
       });
+
+      trackLocations(result, dependencyLocations);
+
+      return result;
     } finally {
     // Cleanup removes owned directories and dependency links without following link targets.
       if (workspace) {

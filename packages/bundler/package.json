@@ -11,6 +11,7 @@
     "node": ">=22.18"
   },
   "dependencies": {
-    "esbuild": "0.25.12"
+    "esbuild": "0.25.12",
+    "typescript": "5.9.3"
   }
 }
