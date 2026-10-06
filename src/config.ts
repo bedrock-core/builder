@@ -10,6 +10,8 @@ export interface BuildProfile {
   stages?: Partial<Record<StageName, boolean | Settings>>;
   steps?: PluginStep[];
   export?: { target?: 'local'; path: string };
+  deploy?: boolean | { path?: string; channel?: 'retail' | 'preview' };
+  watch?: { debounceMs?: number; paths?: string[] };
 }
 export interface ProjectConfig {
   type: 'minecraftBedrock';
@@ -28,14 +30,16 @@ export interface ProjectConfig {
 }
 
 export const configSchema = JSON.parse(
-  readFileSync(new URL('../config.schema.json', import.meta.url), 'utf8'),
+  readFileSync(new URL('../schemas/config.schema.json', import.meta.url), 'utf8'),
 );
 const bundlerSchema = JSON.parse(
-  readFileSync(new URL('../packages/bundler/schema.json', import.meta.url), 'utf8'),
+  readFileSync(new URL('../schemas/bundler.schema.json', import.meta.url), 'utf8'),
 );
 const ajv = new Ajv({ allErrors: true, strict: false });
 
-ajv.addSchema(bundlerSchema, 'packages/bundler/schema.json');
+ajv.addSchema(bundlerSchema, 'bundler.schema.json');
+ajv.addSchema(JSON.parse(readFileSync(new URL('../schemas/manifest.schema.json', import.meta.url), 'utf8')), 'manifest.schema.json');
+ajv.addSchema(JSON.parse(readFileSync(new URL('../schemas/generator.schema.json', import.meta.url), 'utf8')), 'generator.schema.json');
 const validate = ajv.compile<ProjectConfig>(configSchema);
 
 /** Validate without adding defaults or removing other tools' configuration. */

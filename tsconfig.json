@@ -7,8 +7,21 @@
     "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
-    "types": ["node"],
+    "resolveJsonModule": true,
+    "types": [
+      "node"
+    ],
     "skipLibCheck": false
   },
-  "include": ["src/**/*.ts", "bin/**/*.ts", "examples/**/*.ts", "packages/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "bin/**/*.ts",
+    "examples/**/*.ts",
+    "packages/**/*.ts"
+  ],
+  "exclude": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "examples/generator-project/**"
+  ]
 }

@@ -1,3 +1,4 @@
+import { manifestFor } from '../test-support/manifest.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, writeFile, rm, readdir } from 'node:fs/promises';
@@ -10,7 +11,7 @@ async function fixture(t, plugin, steps = [{ plugin: 'custom', after: 'prepare' 
 
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(path.join(root, 'packs/BP'), { recursive: true });
-  await writeFile(path.join(root, 'packs/BP/manifest.json'), JSON.stringify({ modules: [{ type: 'data' }] }));
+  await writeFile(path.join(root, 'packs/BP/manifest.json'), JSON.stringify(manifestFor('data')));
   await mkdir(path.join(root, 'dist'));
   await writeFile(path.join(root, 'packs/BP/source.json'), '{"source":true}');
   await writeFile(path.join(root, 'dist/previous.txt'), 'previous successful export');
@@ -148,7 +149,7 @@ test('validation failure and cooperative cancellation prevent export', async (t)
 test('unimplemented stages and unsafe output fail before plugins run', async (t) => {
   const project = await fixture(t, 'throw new Error("plugin loaded");');
 
-  project.config.bedrockCore.profiles.default.stages = { manifest: true };
+  project.config.bedrockCore.profiles.default.stages = { guides: true };
   await writeFile(project.configPath, JSON.stringify(project.config));
   await assert.rejects(runBuild(project.options), /Stage implementation unavailable/);
   project.config.bedrockCore.profiles.default.export.path = './packs/BP';

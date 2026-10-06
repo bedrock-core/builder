@@ -1,0 +1,29 @@
+{
+  "format_version": 3,
+  "header": {
+    "name": "@bedrock-core gameplay example",
+    "description": "Standalone bundler fixture",
+    "uuid": "b743a43f-0855-4195-91a2-79eea945b519",
+    "version": "1.0.0",
+    "min_engine_version": "1.26.50"
+  },
+  "modules": [
+    {
+      "type": "data",
+      "uuid": "b7436270-ba82-499d-9092-86d1ad5bb4d0",
+      "version": "1.0.0"
+    },
+    {
+      "type": "script",
+      "language": "javascript",
+      "entry": "scripts/main.js",
+      "uuid": "fff2b69d-e24d-4d99-952a-773f951b2364",
+      "version": "1.0.0"
+    }
+  ],
+  "metadata": {
+    "authors": [
+      "@bedrock-core"
+    ]
+  }
+}

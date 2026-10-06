@@ -1,0 +1,360 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "@bedrock-core project configuration",
+  "description": "Project Config Standard metadata and @bedrock-core profiles.",
+  "type": "object",
+  "required": [
+    "type",
+    "name",
+    "targetVersion",
+    "namespace",
+    "packs",
+    "worlds",
+    "bedrockCore"
+  ],
+  "allOf": [
+    {
+      "required": [
+        "authors"
+      ]
+    }
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "type": {
+      "const": "minecraftBedrock"
+    },
+    "name": {
+      "$ref": "#/definitions/nonempty"
+    },
+    "description": {
+      "type": "string"
+    },
+    "authors": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "logo": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "targetVersion": {
+      "$ref": "#/definitions/nonempty"
+    },
+    "namespace": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/nonempty"
+        },
+        {
+          "not": {
+            "const": "minecraft"
+          }
+        }
+      ]
+    },
+    "experimentalGameplay": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "packs": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Named pack paths. Manifest modules determine pack type, not names.",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/definitions/nonempty"
+      }
+    },
+    "worlds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "description": "World path/glob. Consumers warn and ignore patterns ending in **."
+      }
+    },
+    "packDefinitions": {
+      "type": "object",
+      "properties": {
+        "families": {
+          "$ref": "#/definitions/packDefinition"
+        },
+        "tags": {
+          "$ref": "#/definitions/packDefinition"
+        },
+        "scoreboardObjectives": {
+          "$ref": "#/definitions/packDefinition"
+        },
+        "names": {
+          "$ref": "#/definitions/packDefinition"
+        }
+      }
+    },
+    "bedrockCore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "profiles"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": "1.0.0"
+        },
+        "plugins": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/definitions/nonempty"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "module"
+            ],
+            "properties": {
+              "module": {
+                "$ref": "#/definitions/nonempty",
+                "description": "Local TS/JS module or npm package specifier."
+              }
+            }
+          }
+        },
+        "profiles": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "$ref": "#/definitions/nonempty"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/profile"
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "nonempty": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "packDefinition": {
+      "type": "object",
+      "required": [
+        "include",
+        "exclude"
+      ],
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "stage": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "object"
+        }
+      ],
+      "description": "True/settings enables the stage; false/omission disables it. Stage packages validate their own settings."
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "export": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path"
+          ],
+          "properties": {
+            "target": {
+              "const": "local"
+            },
+            "path": {
+              "$ref": "#/definitions/nonempty"
+            }
+          }
+        },
+        "stages": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "manifest": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "$ref": "./manifest.schema.json"
+                }
+              ]
+            },
+            "generator": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "$ref": "./generator.schema.json"
+                }
+              ]
+            },
+            "guides": {
+              "$ref": "#/definitions/stage"
+            },
+            "i18n": {
+              "$ref": "#/definitions/stage"
+            },
+            "ui-compiler": {
+              "$ref": "#/definitions/stage"
+            },
+            "bundler": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "$ref": "./bundler.schema.json"
+                }
+              ]
+            }
+          }
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/step"
+          }
+        },
+        "deploy": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "path": {
+                  "$ref": "#/definitions/nonempty"
+                },
+                "channel": {
+                  "enum": [
+                    "retail",
+                    "preview"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "watch": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "debounceMs": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            },
+            "paths": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/nonempty"
+              }
+            }
+          }
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plugin"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "before"
+          ]
+        },
+        {
+          "required": [
+            "after"
+          ]
+        }
+      ],
+      "properties": {
+        "plugin": {
+          "$ref": "#/definitions/nonempty"
+        },
+        "before": {
+          "enum": [
+            "manifest",
+            "generator",
+            "guides",
+            "i18n",
+            "ui-compiler",
+            "bundler",
+            "export"
+          ]
+        },
+        "after": {
+          "enum": [
+            "prepare",
+            "manifest",
+            "generator",
+            "guides",
+            "i18n",
+            "ui-compiler",
+            "bundler"
+          ]
+        },
+        "settings": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

@@ -8,6 +8,7 @@ import {
   rename,
   rm,
   stat,
+  symlink,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -18,6 +19,8 @@ import { randomUUID } from 'node:crypto';
 import { validateConfig } from './config.ts';
 import { planBuild } from './plan.ts';
 import { inspectPack, type PackInfo } from './packs.ts';
+import { validatePackManifests } from './manifest.ts';
+import { resolveDeploymentRoot, withDeployment, type DeployedPack } from './deploy.ts';
 import type { Artifact, BuildContext, BuildOptions, BuildResult } from './contract.d.ts';
 export type {
   Artifact,
@@ -77,6 +80,14 @@ export async function runBuild({
     implementations.bundler = (await import('./stages/bundler.ts')).run;
   }
 
+  if (plan.some(step => step.kind === 'stage' && step.stage === 'manifest') && !implementations.manifest) {
+    implementations.manifest = (await import('./stages/manifest.ts')).run;
+  }
+
+  if (plan.some(step => step.kind === 'stage' && step.stage === 'generator') && !implementations.generator) {
+    implementations.generator = (await import('./stages/generator.ts')).run;
+  }
+
   const exportConfig = config.bedrockCore.profiles[profile]?.export;
 
   if (!exportConfig) {
@@ -84,6 +95,21 @@ export async function runBuild({
   }
 
   const output = path.resolve(project, exportConfig.path);
+  const deployment = config.bedrockCore.profiles[profile]?.deploy;
+  const deploymentSettings = deployment ? (typeof deployment === 'object' ? deployment : {}) : undefined;
+  const deploymentRoot = deploymentSettings ? resolveDeploymentRoot(project, deploymentSettings) : undefined;
+
+  if (deploymentRoot && !deploymentSettings?.path && !await exists(deploymentRoot)) {
+    throw new Error(`Minecraft data directory does not exist: ${deploymentRoot}; set deploy.path`);
+  }
+
+  if (deploymentRoot && (
+    deploymentRoot === project || inside(deploymentRoot, project)
+    || deploymentRoot === output || inside(output, deploymentRoot) || inside(deploymentRoot, output)
+    || (inside(project, deploymentRoot) && ['.git', 'node_modules', '.bedrock-core'].includes(path.relative(project, deploymentRoot).split(path.sep)[0]))
+  )) {
+    throw new Error('Deployment, project sources and local export must be separate directories');
+  }
 
   // Export is a dedicated project directory. Reject source roots and pack overlap.
   if (
@@ -105,6 +131,7 @@ export async function runBuild({
       || source === output
       || inside(source, output)
       || inside(output, source)
+      || (deploymentRoot && (source === deploymentRoot || inside(source, deploymentRoot) || inside(deploymentRoot, source)))
     ) {
       throw new Error('Pack and export paths must be separate project directories');
     }
@@ -147,7 +174,7 @@ export async function runBuild({
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       const source = path.join(directory, entry.name);
 
-      if (skipIgnored && (source === output || ignored.has(entry.name))) {
+      if (skipIgnored && (source === output || source === deploymentRoot || ignored.has(entry.name))) {
         continue;
       }
 
@@ -185,6 +212,7 @@ export async function runBuild({
   const dependencies = new Set([file, ...modules.values()]);
   const artifacts = new Map<string, Artifact>();
   let publishedPacks: PackInfo[] = [];
+  let deployments: DeployedPack[] = [];
 
   try {
     workspace = await mkdtemp(path.join(tmpdir(), 'bedrock-core-build-'));
@@ -193,11 +221,16 @@ export async function runBuild({
     await cp(project, staged, {
       recursive: true,
       filter: source =>
-        source !== output && source !== lock && !ignored.has(path.basename(source)),
+        source !== output && source !== deploymentRoot && source !== lock && !ignored.has(path.basename(source)),
     });
     const generated = path.join(workspace, 'generated');
 
     await mkdir(generated);
+
+    if (await exists(path.join(project, 'node_modules'))) {
+      await symlink(path.join(project, 'node_modules'), path.join(workspace, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
+    }
+
     const stagedPacks = Object.fromEntries(
       Object.entries(packs).map(([id, source]) => [
         id,
@@ -262,7 +295,9 @@ export async function runBuild({
       logger.info?.(`@bedrock-core/builder: ${owner}`);
 
       if (step.kind === 'plugin') {
-        const url = pathToFileURL(modules.get(step.module)!);
+        const module = modules.get(step.module)!;
+        const local = step.module.startsWith('.') || path.isAbsolute(step.module);
+        const url = pathToFileURL(local ? path.join(staged, path.relative(project, module)) : module);
 
         url.searchParams.set('build', path.basename(workspace));
         const plugin = await import(url.href);
@@ -282,6 +317,7 @@ export async function runBuild({
         }
 
         await validateArtifacts?.(context);
+        await validatePackManifests(stagedPacks);
       } else if (step.stage === 'export') {
         publishedPacks = await Promise.all(Object.keys(stagedPacks).map(id => context.inspectPack(id)));
         await inspect(staged, false);
@@ -298,22 +334,30 @@ export async function runBuild({
         );
         check(signal);
 
-        if (await exists(output)) {
-          backup = `${output}.builder-backup-${randomUUID()}`;
-          await rename(output, backup);
-        }
-
-        try {
-          await rename(candidate, output);
-          candidate = undefined;
-          published = true;
-        } catch (error) {
-          if (backup) {
-            await rename(backup, output);
-            backup = undefined;
+        const publishLocal = async () => {
+          if (await exists(output)) {
+            backup = `${output}.builder-backup-${randomUUID()}`;
+            await rename(output, backup);
           }
 
-          throw error;
+          try {
+            await rename(candidate!, output);
+            candidate = undefined;
+            published = true;
+          } catch (error) {
+            if (backup) {
+              await rename(backup, output);
+              backup = undefined;
+            }
+
+            throw error;
+          }
+        };
+
+        if (deploymentRoot) {
+          deployments = await withDeployment({ packs: stagedPacks, root: deploymentRoot, signal }, publishLocal);
+        } else {
+          await publishLocal();
         }
       } else if (step.stage !== 'prepare') {
         await implementations[step.stage]!(context, step.settings ?? {});
@@ -325,10 +369,11 @@ export async function runBuild({
       profile,
       dependencies: [...dependencies],
       artifacts: [...artifacts.values()].map(({ id, owner }) => ({ id, owner })),
+      deployments,
       packs: publishedPacks.map(pack => ({ ...pack, path: path.join(output, pack.id) })),
     });
   } finally {
-    // All cleanup targets are owned mkdtemp/UUID paths or the lock acquired above.
+    // Cleanup removes owned directories and dependency links without following link targets.
     if (candidate) {
       await rm(candidate, { recursive: true, force: true });
     }

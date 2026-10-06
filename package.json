@@ -11,7 +11,13 @@
       "types": "./src/contract.d.ts",
       "default": "./src/run.ts"
     },
-    "./config.schema.json": "./config.schema.json"
+    "./manifest": "./src/manifest.ts",
+    "./deploy": "./src/deploy.ts",
+    "./watch": "./src/watch.ts",
+    "./schemas/config.schema.json": "./schemas/config.schema.json",
+    "./schemas/manifest.schema.json": "./schemas/manifest.schema.json",
+    "./schemas/bundler.schema.json": "./schemas/bundler.schema.json",
+    "./schemas/generator.schema.json": "./schemas/generator.schema.json"
   },
   "scripts": {
     "test": "node --test",
@@ -21,7 +27,8 @@
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix --max-warnings=0",
     "format": "eslint . --fix --max-warnings=0",
-    "check": "yarn lint && yarn typecheck && yarn test"
+    "check": "yarn lint && yarn typecheck && yarn test",
+    "watch": "node bin/watch.ts"
   },
   "engines": {
     "node": ">=22.18"
@@ -39,7 +46,8 @@
     "typescript-eslint": "8.62.0"
   },
   "workspaces": [
-    "packages/bundler"
+    "packages/bundler",
+    "packages/generator"
   ],
   "packageManager": "yarn@4.16.0"
 }

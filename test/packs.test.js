@@ -1,3 +1,4 @@
+import { manifestFor } from '../test-support/manifest.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, writeFile, readFile, readdir, rm } from 'node:fs/promises';
@@ -32,7 +33,7 @@ for (const packId of ['resourcePack', 'behaviorPack']) {
     const pack = path.join(root, 'pack');
 
     await mkdir(pack);
-    await writeFile(path.join(pack, 'manifest.json'), JSON.stringify({ modules: [{ type: packId === 'resourcePack' ? 'resources' : 'data' }] }));
+    await writeFile(path.join(pack, 'manifest.json'), JSON.stringify(manifestFor(packId === 'resourcePack' ? 'resources' : 'data')));
     await writeFile(path.join(pack, 'asset.json'), '{}');
     const configPath = path.join(root, 'config.json');
 
@@ -44,19 +45,21 @@ for (const packId of ['resourcePack', 'behaviorPack']) {
   });
 }
 
-test('a resource-only project reports bundler-specific missing BP', async (t) => {
+test('bundler skips resource packs without requiring a behavior pack', async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), 'builder-pack-'));
 
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(path.join(root, 'RP'));
-  await writeFile(path.join(root, 'RP/manifest.json'), JSON.stringify({ modules: [{ type: 'resources' }] }));
+  await writeFile(path.join(root, 'RP/manifest.json'), JSON.stringify(manifestFor('resources')));
   const config = configFor({ resourcePack: './RP' });
 
-  config.bedrockCore.profiles.default.stages = { bundler: { entry: './main.ts' } };
+  config.bedrockCore.profiles.default.stages = { bundler: true };
   const configPath = path.join(root, 'config.json');
 
   await writeFile(configPath, JSON.stringify(config));
-  await assert.rejects(runBuild({ configPath, logger: {} }), /bundler requires a behavior pack/);
+  const result = await runBuild({ configPath, logger: {} });
+
+  assert.equal(result.artifacts.length, 0);
 });
 
 test('multiple packs use manifest classification rather than configured names', async (t) => {
@@ -68,8 +71,11 @@ test('multiple packs use manifest classification rather than configured names', 
 
   for (const [index, directory] of Object.values(packs).entries()) {
     await mkdir(path.join(root, directory));
-    await writeFile(path.join(root, directory, 'manifest.json'), JSON.stringify({ modules: [{ type: modules[index] }] }));
+    await writeFile(path.join(root, directory, 'manifest.json'), JSON.stringify(manifestFor(modules[index])));
   }
+
+  await mkdir(path.join(root, 'two/scripts'));
+  await writeFile(path.join(root, 'two/scripts/main.js'), 'export const existing = 1;');
 
   const config = configFor(packs);
   const configPath = path.join(root, 'config.json');
@@ -81,12 +87,48 @@ test('multiple packs use manifest classification rather than configured names', 
   assert.equal(result.packs[2].defaultDeploymentFolder, 'development_resource_packs');
   assert.deepEqual((await readdir(result.outputPath)).sort(), ['build.json', ...Object.keys(packs)].sort());
 
-  await writeFile(path.join(root, 'main.ts'), 'export const value = 1;');
-  config.bedrockCore.profiles.default.stages = { bundler: { entry: './main.ts' } };
-  await writeFile(configPath, JSON.stringify(config));
-  await assert.rejects(runBuild({ configPath, logger: {} }), /set bundler.pack/);
-  config.bedrockCore.profiles.default.stages.bundler.pack = 'scripts';
+  await rm(path.join(root, 'two/scripts/main.js'));
+  await writeFile(path.join(root, 'two/scripts/main.ts'), 'export const value = 1;');
+  config.bedrockCore.profiles.default.stages = { bundler: true };
   await writeFile(configPath, JSON.stringify(config));
   await runBuild({ configPath, logger: {} });
   assert.match(await readFile(path.join(root, 'dist/scripts/scripts/main.js'), 'utf8'), /value/);
+});
+
+test('final plugin manifest changes are validated before replacing an export', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'builder-manifest-hook-'));
+
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, 'pack'));
+  await writeFile(path.join(root, 'pack/manifest.json'), JSON.stringify(manifestFor('data')));
+  const config = configFor({ gameplay: './pack' });
+  const configPath = path.join(root, 'config.json');
+
+  await writeFile(configPath, JSON.stringify(config));
+  await runBuild({ configPath, logger: {} });
+  const previous = await readFile(path.join(root, 'dist/gameplay/manifest.json'), 'utf8');
+
+  await writeFile(path.join(root, 'modify.ts'), `
+    import { readFile, writeFile } from 'node:fs/promises';
+    import path from 'node:path';
+    export async function run(context, settings) {
+      const file = path.join(context.packs.gameplay, 'manifest.json');
+      const manifest = JSON.parse(await readFile(file, 'utf8'));
+      manifest.header.uuid = settings.uuid;
+      await writeFile(file, JSON.stringify(manifest));
+    }
+  `);
+  config.bedrockCore.plugins = { modify: { module: './modify.ts' } };
+  const hook = { plugin: 'modify', before: 'export', settings: { uuid: 'invalid' } };
+
+  config.bedrockCore.profiles.default.steps = [hook];
+  await writeFile(configPath, JSON.stringify(config));
+  await assert.rejects(runBuild({ configPath, logger: {} }), /manifest.header.uuid/);
+  assert.equal(await readFile(path.join(root, 'dist/gameplay/manifest.json'), 'utf8'), previous);
+  assert.equal(await readFile(path.join(root, 'pack/manifest.json'), 'utf8'), previous);
+
+  hook.settings.uuid = 'abcdefff-1234-1234-1234-123456789abc';
+  await writeFile(configPath, JSON.stringify(config));
+  await runBuild({ configPath, logger: {} });
+  assert.equal(JSON.parse(await readFile(path.join(root, 'dist/gameplay/manifest.json'), 'utf8')).header.uuid, hook.settings.uuid);
 });

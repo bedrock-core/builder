@@ -1,18 +1,44 @@
 {
-  "$schema": "../../config.schema.json",
+  "$schema": "../../schemas/config.schema.json",
   "type": "minecraftBedrock",
   "name": "Script-only example",
   "authors": [],
   "targetVersion": "1.26.50",
   "namespace": "builder_example",
-  "packs": { "behaviorPack": "./packs/BP" },
+  "packs": {
+    "behaviorPack": "./packs/BP"
+  },
   "worlds": [],
   "bedrockCore": {
     "formatVersion": "1.0.0",
     "profiles": {
       "default": {
-        "stages": { "bundler": { "entry": "./packs/BP/scripts/main.ts", "debug": true } },
-        "export": { "target": "local", "path": "./dist" }
+        "stages": {
+          "bundler": {
+            "debug": true
+          }
+        },
+        "export": {
+          "target": "local",
+          "path": "./dist"
+        }
+      },
+      "tests": {
+        "stages": {
+          "manifest": {
+            "packs": {
+              "behaviorPack": {
+                "scriptEntry": "scripts/tests.js"
+              }
+            }
+          },
+          "bundler": {
+            "debug": true
+          }
+        },
+        "export": {
+          "path": "./dist/tests"
+        }
       }
     }
   }

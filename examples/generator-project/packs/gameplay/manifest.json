@@ -1,0 +1,27 @@
+{
+  "format_version": 3,
+  "header": {
+    "name": "@bedrock-core generator example",
+    "description": "Typed loot templates and a shared JSON input",
+    "uuid": "7b4ca910-ff52-4237-98b2-6d6b6b9852e7",
+    "version": "1.0.0",
+    "min_engine_version": "1.26.50"
+  },
+  "modules": [
+    {
+      "type": "data",
+      "uuid": "e371a2e7-d88d-4843-a5da-f7a7d81f5c2e",
+      "version": "1.0.0"
+    },
+    {
+      "type": "script",
+      "language": "javascript",
+      "entry": "scripts/main.js",
+      "uuid": "a2571a01-bbf9-481b-8b14-6478b02cf14e",
+      "version": "1.0.0"
+    }
+  ],
+  "metadata": {
+    "authors": ["@bedrock-core"]
+  }
+}

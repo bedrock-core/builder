@@ -13,6 +13,9 @@ export interface BundleOptions {
   external?: string[];
   aliases?: Record<string, string>;
   signal?: AbortSignal;
+  platform?: 'neutral' | 'node';
+  banner?: string;
+  inject?: string[];
 }
 export interface BundleResult {
   files: string[];
@@ -90,7 +93,9 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
     write: false,
     metafile: true,
     format: 'esm',
-    platform: 'neutral',
+    platform: options.platform ?? 'neutral',
+    banner: options.banner ? { js: options.banner } : undefined,
+    inject: options.inject?.map(file => path.resolve(root, file)),
     mainFields: ['module', 'main'],
     target: options.target ?? 'es2020',
     minify: !options.debug,

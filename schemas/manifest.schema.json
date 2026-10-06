@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "@bedrock-core manifest settings",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "packs": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "header": {
+            "type": "object"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "modules": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object"
+            }
+          },
+          "scriptEntry": {
+            "type": "string",
+            "pattern": "^scripts/.+\\.js$"
+          }
+        }
+      }
+    }
+  }
+}

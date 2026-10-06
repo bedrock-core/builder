@@ -12,6 +12,10 @@ try {
   });
 
   console.log(`@bedrock-core/builder: exported ${result.outputPath}`);
+
+  for (const pack of result.deployments) {
+    console.log(`@bedrock-core/builder: deployed ${pack.id} to ${pack.path}`);
+  }
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;

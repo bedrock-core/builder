@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "@bedrock-core bundler settings",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "debug": {
+      "type": "boolean"
+    },
+    "target": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "tsconfig": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "external": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "\\S"
+      }
+    },
+    "generatedImports": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "\\S"
+      }
+    }
+  }
+}

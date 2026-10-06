@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "@bedrock-core generator settings",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "include": {
+      "$ref": "#/$defs/patterns"
+    },
+    "exclude": {
+      "$ref": "#/$defs/patterns"
+    },
+    "types": {
+      "type": "boolean",
+      "default": true,
+      "description": "Generate Minecraft schema declarations for editor completion."
+    },
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "\\S",
+      "default": "latest"
+    },
+    "typesDir": {
+      "type": ["string", "null"],
+      "description": "Project-relative declaration output directory; defaults to .bedrock-core/generated/mc."
+    },
+    "typePrefix": {
+      "type": "string",
+      "default": ""
+    },
+    "strict": {
+      "type": "boolean",
+      "default": false
+    },
+    "maxAgeHours": {
+      "type": "number",
+      "minimum": 0,
+      "default": 24
+    },
+    "tsconfig": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "generatedImports": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "\\S"
+      }
+    },
+    "pretty": {
+      "anyOf": [
+        {
+          "const": false
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "indent": {
+              "enum": [
+                "tab",
+                "space"
+              ]
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "patterns": {
+      "anyOf": [
+        { "type": "string", "pattern": "\\S" },
+        { "type": "array", "items": { "type": "string", "pattern": "\\S" } }
+      ]
+    }
+  }
+}

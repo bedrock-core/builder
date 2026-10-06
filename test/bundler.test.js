@@ -1,3 +1,4 @@
+import { manifestFor } from '../test-support/manifest.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm, readdir } from 'node:fs/promises';
@@ -12,7 +13,7 @@ async function fixture(t) {
 
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(path.join(root, 'packs/BP/scripts'), { recursive: true });
-  await writeFile(path.join(root, 'packs/BP/manifest.json'), JSON.stringify({ modules: [{ type: 'data' }] }));
+  await writeFile(path.join(root, 'packs/BP/manifest.json'), JSON.stringify(manifestFor('script')));
   await writeFile(path.join(root, 'packs/BP/scripts/custom.js'), 'export const custom = true;');
   const config = {
     type: 'minecraftBedrock',
@@ -26,7 +27,7 @@ async function fixture(t) {
       formatVersion: '1.0.0',
       profiles: {
         default: {
-          stages: { bundler: { entry: './main.ts', debug: true } },
+          stages: { bundler: { debug: true } },
           export: { path: './dist' },
         },
       },
@@ -75,7 +76,7 @@ test('runner bundles a generated artifact and project npm dependency without oth
     'export const multiplier = 3;',
   );
   await writeFile(
-    path.join(root, 'main.ts'),
+    path.join(root, 'packs/BP/scripts/main.ts'),
     `import data from '@bedrock-core/generated/items'; import { multiplier } from 'test-dependency'; export const result = data.value * multiplier;`,
   );
   await writeFile(
@@ -98,10 +99,10 @@ test('runner bundles a generated artifact and project npm dependency without oth
   await writeFile(executable, bundle);
   assert.equal((await import(pathToFileURL(executable).href)).result, 27);
   assert.equal(
-    result.artifacts.some(artifact => artifact.id === 'bundler:script'),
+    result.artifacts.some(artifact => artifact.id === 'bundler:behaviorPack:scripts/main.js:script'),
     true,
   );
-  assert.deepEqual(await readdir(path.join(root, 'packs/BP/scripts')), ['custom.js']);
+  assert.deepEqual(await readdir(path.join(root, 'packs/BP/scripts')), ['custom.js', 'main.ts']);
   assert.equal(
     await readFile(path.join(result.outputPath, 'behaviorPack/scripts/custom.js'), 'utf8'),
     'export const custom = true;',
@@ -116,7 +117,7 @@ test('Minecraft imports remain external and staged tsconfig aliases resolve', as
     JSON.stringify({ compilerOptions: { baseUrl: '.', paths: { '@local/*': ['./*'] } } }),
   );
   await writeFile(
-    path.join(root, 'main.ts'),
+    path.join(root, 'packs/BP/scripts/main.ts'),
     `import { value } from '@local/helper'; import { world } from '@minecraft/server'; world.sendMessage(String(value));`,
   );
   await runBuild({ configPath, logger: {} });
@@ -130,13 +131,12 @@ test('pack-local TypeScript entry compiles without exporting its consumed source
   const input = path.join(root, 'packs/BP/scripts/main.ts');
 
   await writeFile(input, 'export const value: number = 42;');
-  config.bedrockCore.profiles.default.stages.bundler.entry = './packs/BP/scripts/main.ts';
   await writeFile(configPath, JSON.stringify(config));
   await runBuild({ configPath, logger: {} });
   assert.match(await readFile(input, 'utf8'), /number/);
   assert.match(await readFile(path.join(root, 'dist/behaviorPack/scripts/main.js'), 'utf8'), /42/);
   await assert.rejects(readFile(path.join(root, 'dist/behaviorPack/scripts/main.ts')), { code: 'ENOENT' });
-  assert.equal(JSON.parse(await readFile(path.join(root, 'dist/behaviorPack/manifest.json'), 'utf8')).modules[0].type, 'data');
+  assert.equal(JSON.parse(await readFile(path.join(root, 'dist/behaviorPack/manifest.json'), 'utf8')).modules[0].type, 'script');
 });
 
 test('invalid imports and claimed output paths keep prior exports intact', async (t) => {
@@ -145,13 +145,117 @@ test('invalid imports and claimed output paths keep prior exports intact', async
   await mkdir(path.join(root, 'dist'));
   await writeFile(path.join(root, 'dist/previous'), 'previous');
   await writeFile(
-    path.join(root, 'main.ts'),
+    path.join(root, 'packs/BP/scripts/main.ts'),
     `import missing from '@bedrock-core/generated/missing'; console.log(missing);`,
   );
   await assert.rejects(runBuild({ configPath, logger: {} }), /Missing generated import/);
   assert.equal(await readFile(path.join(root, 'dist/previous'), 'utf8'), 'previous');
-  await writeFile(path.join(root, 'main.ts'), 'export const result = 1;');
+  await writeFile(path.join(root, 'packs/BP/scripts/main.ts'), 'export const result = 1;');
   await writeFile(path.join(root, 'packs/BP/scripts/main.js'), 'plugin-owned');
   await assert.rejects(runBuild({ configPath, logger: {} }), /output already exists/);
   assert.equal(await readFile(path.join(root, 'dist/previous'), 'utf8'), 'previous');
+});
+
+test('multiple script packs bundle shared inputs before staged source cleanup', async (t) => {
+  const { root, config, configPath } = await fixture(t);
+
+  await mkdir(path.join(root, 'packs/extra/scripts'), { recursive: true });
+  await writeFile(path.join(root, 'packs/BP/manifest.json'), JSON.stringify(manifestFor('script', 'scripts/start.js')));
+  await writeFile(path.join(root, 'packs/extra/manifest.json'), JSON.stringify(manifestFor('script', 'scripts/extra.js')));
+  await writeFile(path.join(root, 'packs/BP/scripts/shared.ts'), 'export const shared: number = 17;');
+  await writeFile(path.join(root, 'packs/BP/scripts/start.ts'), 'export { shared } from \'./shared.ts\';');
+  await writeFile(path.join(root, 'packs/extra/scripts/extra.ts'), 'export { shared } from \'../../BP/scripts/shared.ts\';');
+  config.packs.extra = './packs/extra';
+  config.bedrockCore.profiles.default.stages.bundler = { debug: true };
+  await writeFile(configPath, JSON.stringify(config));
+  const result = await runBuild({ configPath, logger: {} });
+
+  for (const [pack, filename] of [['behaviorPack', 'start.js'], ['extra', 'extra.js']]) {
+    const output = await readFile(path.join(result.outputPath, pack, 'scripts', filename), 'utf8');
+    const executable = path.join(root, `${pack}.mjs`);
+
+    await writeFile(executable, output);
+    assert.equal((await import(pathToFileURL(executable).href)).shared, 17);
+    assert.equal(result.artifacts.some(artifact => artifact.id === `bundler:${pack}:scripts/${filename}:script`), true);
+  }
+
+  await assert.rejects(readFile(path.join(result.outputPath, 'behaviorPack/scripts/shared.ts')), { code: 'ENOENT' });
+  assert.match(await readFile(path.join(root, 'packs/BP/scripts/shared.ts'), 'utf8'), /number/);
+});
+
+test('missing manifest sources in a later pack preserve the previous export', async (t) => {
+  const { root, config, configPath } = await fixture(t);
+
+  await writeFile(path.join(root, 'packs/BP/scripts/main.ts'), 'export const result = 1;');
+  await runBuild({ configPath, logger: {} });
+  const output = path.join(root, 'dist/behaviorPack/scripts/main.js');
+  const previous = await readFile(output, 'utf8');
+
+  await mkdir(path.join(root, 'second/scripts'), { recursive: true });
+  await writeFile(path.join(root, 'second/manifest.json'), JSON.stringify(manifestFor('script', 'scripts/missing.js')));
+  config.packs.second = './second';
+  await writeFile(configPath, JSON.stringify(config));
+  await assert.rejects(runBuild({ configPath, logger: {} }), /no TS\/JS source matching.*missing.js/);
+  assert.equal(await readFile(output, 'utf8'), previous);
+});
+
+test('a manifest plugin selects a test entry before bundling without changing the authored manifest', async (t) => {
+  const { root, config, configPath } = await fixture(t);
+  const manifestPath = path.join(root, 'packs/BP/manifest.json');
+  const original = await readFile(manifestPath, 'utf8');
+
+  await writeFile(path.join(root, 'packs/BP/scripts/main.ts'), 'export const mode = "production";');
+  await writeFile(path.join(root, 'packs/BP/scripts/tests.ts'), 'export const mode = "tests";');
+  await writeFile(path.join(root, 'manifest-plugin.ts'), `
+    import { readFile, writeFile } from 'node:fs/promises';
+    import path from 'node:path';
+    export async function run(context) {
+      const file = path.join(context.packs.behaviorPack, 'manifest.json');
+      const manifest = JSON.parse(await readFile(file, 'utf8'));
+      manifest.modules[0].entry = 'scripts/tests.js';
+      await writeFile(file, JSON.stringify(manifest));
+    }
+  `);
+  config.bedrockCore.plugins = { manifest: { module: './manifest-plugin.ts' } };
+  config.bedrockCore.profiles.default.steps = [{ plugin: 'manifest', before: 'bundler' }];
+  await writeFile(configPath, JSON.stringify(config));
+  const result = await runBuild({ configPath, logger: {} });
+  const output = await readFile(path.join(result.outputPath, 'behaviorPack/scripts/tests.js'), 'utf8');
+
+  assert.match(output, /tests/);
+  assert.doesNotMatch(output, /production/);
+  assert.equal(JSON.parse(await readFile(path.join(result.outputPath, 'behaviorPack/manifest.json'), 'utf8')).modules[0].entry, 'scripts/tests.js');
+  assert.equal(await readFile(manifestPath, 'utf8'), original);
+  assert.equal(result.dependencies.includes(manifestPath), true);
+});
+
+test('JavaScript manifest entries bundle in place after all shared inputs are read', async (t) => {
+  const { root, configPath } = await fixture(t);
+  const manifest = manifestFor('script');
+
+  manifest.modules.push(manifestFor('script', 'scripts/other.js').modules[0]);
+  await writeFile(path.join(root, 'packs/BP/manifest.json'), JSON.stringify(manifest));
+  const main = path.join(root, 'packs/BP/scripts/main.js');
+  const original = 'export const value = 23;';
+
+  await writeFile(main, original);
+  await writeFile(path.join(root, 'packs/BP/scripts/other.js'), 'export { value } from "./main.js";');
+  const result = await runBuild({ configPath, logger: {} });
+
+  for (const entry of ['main', 'other']) {
+    const executable = path.join(root, `${entry}.mjs`);
+
+    await writeFile(executable, await readFile(path.join(result.outputPath, `behaviorPack/scripts/${entry}.js`), 'utf8'));
+    assert.equal((await import(pathToFileURL(executable).href)).value, 23);
+  }
+
+  assert.equal(await readFile(main, 'utf8'), original);
+});
+
+test('ambiguous TypeScript sources fail without choosing a different entry', async (t) => {
+  const { root, configPath } = await fixture(t);
+
+  await writeFile(path.join(root, 'packs/BP/scripts/main.ts'), 'export const value = 1;');
+  await writeFile(path.join(root, 'packs/BP/scripts/main.tsx'), 'export const value = 2;');
+  await assert.rejects(runBuild({ configPath, logger: {} }), /ambiguous sources/);
 });

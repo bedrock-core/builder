@@ -1,22 +1,40 @@
 {
-  "$schema": "../../config.schema.json",
+  "$schema": "../../schemas/config.schema.json",
   "type": "minecraftBedrock",
   "name": "@bedrock-core plugin example",
   "authors": [],
   "targetVersion": "1.26.50",
   "namespace": "builder_example",
-  "packs": { "behaviorPack": "./packs/BP" },
+  "packs": {
+    "behaviorPack": "./packs/BP"
+  },
   "worlds": [],
   "bedrockCore": {
     "formatVersion": "1.0.0",
-    "plugins": { "items": { "module": "./build/items.ts" } },
+    "plugins": {
+      "items": {
+        "module": "./build/items.ts"
+      }
+    },
     "profiles": {
       "default": {
         "steps": [
-          { "plugin": "items", "after": "prepare" },
-          { "plugin": "items", "before": "export", "settings": { "consume": true } }
+          {
+            "plugin": "items",
+            "after": "prepare"
+          },
+          {
+            "plugin": "items",
+            "before": "export",
+            "settings": {
+              "consume": true
+            }
+          }
         ],
-        "export": { "target": "local", "path": "./dist" }
+        "export": {
+          "target": "local",
+          "path": "./dist"
+        }
       }
     }
   }

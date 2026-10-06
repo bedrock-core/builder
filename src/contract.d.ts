@@ -1,3 +1,4 @@
+import type { DeployedPack } from './deploy.ts';
 import type { PackInfo } from './packs.ts';
 
 export interface Artifact {
@@ -40,5 +41,6 @@ export interface BuildResult {
   readonly dependencies: string[];
   readonly artifacts: Pick<Artifact, 'id' | 'owner'>[];
   readonly packs: PackInfo[];
+  readonly deployments: DeployedPack[];
 }
 export function runBuild(options: BuildOptions): Promise<BuildResult>;

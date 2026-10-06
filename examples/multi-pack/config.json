@@ -1,0 +1,29 @@
+{
+  "$schema": "../../schemas/config.schema.json",
+  "type": "minecraftBedrock",
+  "name": "Multi-pack scripts",
+  "authors": [],
+  "targetVersion": "1.26.50",
+  "namespace": "builder_example",
+  "packs": {
+    "gameplay": "./packs/gameplay",
+    "extraGameplay": "./packs/extra"
+  },
+  "worlds": [],
+  "bedrockCore": {
+    "formatVersion": "1.0.0",
+    "profiles": {
+      "default": {
+        "stages": {
+          "bundler": {
+            "debug": true
+          }
+        },
+        "export": {
+          "target": "local",
+          "path": "./dist"
+        }
+      }
+    }
+  }
+}

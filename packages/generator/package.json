@@ -1,0 +1,19 @@
+{
+  "name": "@bedrock-core/builder-generator",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone typed TS/JS content generation for @bedrock-core projects",
+  "exports": {
+    ".": "./src/index.ts",
+    "./templates": "./src/templates.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "@bedrock-core/builder-bundler": "workspace:*",
+    "json-schema-to-typescript": "15.0.4",
+    "typescript": "5.9.3"
+  }
+}
