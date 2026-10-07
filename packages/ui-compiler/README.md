@@ -1,5 +1,10 @@
 # @bedrock-core/builder-ui
 
+When the guides stage is active, the shared toolkit bundle also owns the installed
+`@bedrock-core/guides` factories. Generated guide screens use that shared instance, so runtime
+initialization is evaluated once per compiler worker and unchanged rendered screens can be reused.
+Standalone library callers select this integration with `bundleUiLibrary({ ..., guides: true })`.
+
 Typed Node build integration for the addon's installed UI toolkit. The runner uses these
 functions to compile screens, link their current set and write staged pack assets. Calling
 them directly requires no builder configuration, generator, guides or server framework.

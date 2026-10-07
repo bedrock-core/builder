@@ -20,6 +20,9 @@ both build and watch. Addon projects need no cache IDs, dependency lists or regi
 | A script or unrelated asset changes | Reuse unchanged screen modules and rendered screens |
 | A UI compiler/runtime input changes | Rebuild the shared toolkit and render screens whose compiler bundle changed |
 | A screen is added or removed | Link the current set and replace generated UI outputs |
+| A guide page changes | Compile that locale page and reuse unrelated guide pages |
+| A guide category or page set changes | Assemble navigation and validate links without reparsing unchanged pages |
+| A guide texture changes or appears | Recompile pages that use that texture |
 
 Tracking includes transitive imports, package resolution metadata, missing resolver candidates,
 tsconfig path mappings, JSONC configs and inherited configuration files. Content fingerprints
@@ -62,6 +65,12 @@ runtime registrations and test metadata remain complete on cache hits. Formattin
 stamps apply to output without rerendering screens. Locale content participates in rendering
 invalidation. Screens with Node I/O or ambient values evaluate freshly while reusing their
 unchanged compiled modules. Runtime external file reads need profile watch paths to trigger watch.
+
+Guides `page:` records contain parsed page IR and localization entries. Their cached diagnostics
+are replayed and internal links are checked against the current default page set. Categories,
+operator access, navigation and translated link text are assembled each build. Generated guide
+screens import the complete manifest, and UI text measurement uses locale tables; edits to
+those inputs can invalidate downstream screen compilation while guide page parsing stays selective.
 
 The runner continues to stage and export complete packs. Final validation and publication run
 on cache hits. Measure UI compilation with the isolated fixture harness:

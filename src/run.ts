@@ -22,6 +22,7 @@ import { resolveExportPaths, withExportPaths } from './export.ts';
 import { createHash } from 'node:crypto';
 import { createFileCache, attachCache, trackLocations } from './file-cache.ts';
 import type { Artifact, BuildContext, BuildOptions, BuildResult } from './contract.d.ts';
+import { validatePackContent, type ContentValidationResult } from '@bedrock-core/builder-validation';
 export type {
   Artifact,
   BuildContext,
@@ -80,6 +81,8 @@ export async function runBuild({
         implementations.manifest = (await import('./stages/manifest.ts')).run;
       } else if (stage === 'generator') {
         implementations.generator = (await import('./stages/generator.ts')).run;
+      } else if (stage === 'guides') {
+        implementations.guides = (await import('./stages/guides.ts')).run;
       } else if (stage === 'i18n') {
         implementations.i18n = (await import('./stages/i18n.ts')).run;
       } else if (stage === 'bundler') {
@@ -189,6 +192,7 @@ export async function runBuild({
     const generatedImports = new Map<string, string>();
     const stageResults: BuildResult['stages'] = [];
     let publishedPacks: PackInfo[] = [];
+    let validation: ContentValidationResult;
 
     try {
       workspace = await mkdtemp(path.join(tmpdir(), 'bedrock-core-build-'));
@@ -346,6 +350,29 @@ export async function runBuild({
 
           await validateArtifacts?.(context);
           await validatePackManifests(stagedPacks);
+          validation = await validatePackContent({
+            packs: await Promise.all(Object.keys(stagedPacks).map(id => context.inspectPack(id))),
+            signal,
+            async reuse(file, inputs, revision, validate) {
+              const result = await cache.reuse(path.relative(staged, file).replaceAll('\\', '/'), {
+                inputs: [file, ...inputs],
+                key: { revision },
+                async run() {
+                  return { value: await validate() };
+                },
+              });
+
+              return result.value;
+            },
+          });
+          const checked = validation.files.filter(file => file.schema).length;
+
+          logger.info?.(`@bedrock-core/builder: validated ${checked} content documents against Mojang schemas ${validation.schemaVersion}; ${validation.files.length - checked} additional JSON documents checked for syntax`);
+          const schemaIssues = new Set(validation.files.flatMap(file => file.schemaIssue ? [file.schemaIssue] : []));
+
+          for (const issue of schemaIssues) {
+            logger.warn?.(`@bedrock-core/builder: ${issue}`);
+          }
         } else if (step.stage === 'export') {
           publishedPacks = await Promise.all(Object.keys(stagedPacks).map(id => context.inspectPack(id)));
           await inspect(staged, false);
@@ -380,6 +407,7 @@ export async function runBuild({
       }
 
       const result = Object.freeze({
+        validation: validation!,
         outputPaths,
         profile,
         stages: stageResults,

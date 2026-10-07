@@ -20,11 +20,11 @@ expressions, runs shell commands or downloads filters.
 | Regolith `formatVersion` 1.4.0 or 1.8.0 | `bedrockCore.formatVersion` 1.0.0; source `regolith` section retained |
 | Project metadata and other tool sections | Preserved; singular `author` becomes `authors` when no authors list exists |
 | Profile references | Flattened with cycle detection; repeated or reordered built-in stages require manual conversion |
-| Verified `@bedrock-core` manifest, generator, i18n, UI compiler and bundler filters | Built-in stages with supported settings; absent and disabled stages stay disabled |
+| Verified `@bedrock-core` manifest, generator, guides, i18n, UI compiler and bundler filters | Built-in stages with supported settings; absent and disabled stages stay disabled |
 | `core` | Shared settings merged into stages; generator opt-in preserved |
 | `watchPaths` | Copied to each selected profile's `watch.paths` |
 | Bundler `tsConfigPath` | Bundler `tsconfig`; script entries remain owned by pack manifests |
-| Generator pack paths, local UI screen modules and i18n data paths | Converted from Regolith workspace paths to project-relative paths |
+| Generator pack paths, local UI screen modules, guides and i18n data paths | Converted from Regolith workspace paths to project-relative paths |
 | Local and exact exports | Exact per-pack paths; local defaults use `build/<project-name>_bp` and `_rp` |
 
 Remote filters are recognized by their `github.com/bedrock-core/regolith-filters`
@@ -87,7 +87,8 @@ conditions remain errors.
 ## Manual conversion and acceptance
 
 Conditions, shell commands, CLI arguments, parallel groups and custom filters require trusted
-TS/JS plugins or separate profiles. Guides are unavailable and block automatic conversion.
+TS/JS plugins or separate profiles. Guides retain locale-relative include/exclude patterns;
+content, manifest, screen and component paths resolve against the authored project.
 Manifest variants and `extends` chains require per-pack manifest overrides
 or a plugin that also handles variant cleanup. Unknown properties and unsupported stage settings
 are reported at their configuration paths.

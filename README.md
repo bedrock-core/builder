@@ -1,9 +1,12 @@
 # @bedrock-core/builder
 
-Build tools for TS/JS Bedrock projects. This private package resolves plans and executes trusted
-plugins in an isolated staged project. Manifest, generator, i18n, UI compiler and bundler stages are integrated;
-guides and full Minecraft content validation remain pending. Library callers can supply stage
-functions and a final artifact validator.
+Build tools for TS/JS Bedrock projects. The builder resolves plans, executes trusted plugins
+in an isolated staged project and validates pack content before exporting. Manifest, generator,
+guides, i18n, UI compiler and bundler stages activate automatically when their inputs exist.
+Library callers can supply stage functions and additional artifact checks.
+
+Install the prerelease with `yarn add --dev @bedrock-core/builder@next`, then run
+`yarn bc-build build config.json` or `yarn bc-build watch config.json`.
 
 ## Inspect a plan
 
@@ -33,7 +36,7 @@ Library callers can use `validateConfig` from `@bedrock-core/builder/config`.
 
 The schema requires `authors` and preserves unused top-level metadata and other tool
 namespaces, and rejects unknown builder fields, stage names and malformed hook placement.
-Manifest, generator, i18n, UI compiler and bundler options have schemas under `schemas/`; plugin settings remain extensible.
+Every built-in stage has an options schema under `schemas/`; plugin settings remain extensible.
 Cross-reference checks (plugin names and enabled boundaries) belong to the planner. Each profile's
 `export` maps configured pack IDs to destination paths; the runner checks that every pack has one.
 Watch settings belong to each profile; script entries come from pack manifests.
@@ -49,6 +52,8 @@ The example generates JSON, registers it and consumes it in a second TS step.
 The `examples` directory contains independent sibling projects, each with its own config and
 pack manifests. `script-only` uses `packs/BP/scripts/main.ts`; `plugin-project` demonstrates
 build hooks in a data-only behavior pack.
+`guides-project` demonstrates localized guide content and generated imports without installing
+the guide/UI runtime stack.
 Each pack is written directly to its configured export folder. Authored pack files remain unchanged by the runner. Plugin failures,
 validation failures and cancellation retain the previous export. A destination lock rejects
 simultaneous exports. Cancellation is cooperative at step boundaries and through `context.signal`.
@@ -70,16 +75,16 @@ Later compiler stages resolve it automatically. `context.generatedImports` expos
 build's registered names. Import names have one owner; conflicting producers fail the build.
 
 `runBuild` from `@bedrock-core/builder/runner` accepts named stage functions and `validateArtifacts`.
-Manifest, generator, i18n, UI compiler and bundler stages load when needed. Explicitly enabled unavailable stages
-fail before plugins run; automatically detected unavailable stages fail at their boundary.
+Built-in stages load when needed. Their generated import names are registered by producers
+and resolved by downstream compilers from the current staged build.
 `BuildResult.stages` and build logs report `executed`, `skipped` or `cached` for each participating
 stage. Default validation checks registered files and v3 manifest integrity. Full
 Minecraft content validation and runtime acceptance require separate checks.
 
 Implementation files are strictly typed `.ts`, executed directly by Node 22.18 or later.
 `yarn typecheck` emits no code and enforces erasable syntax. Node does not apply tsconfig
-aliases or support TSX in plugins. Native TS under node_modules is unsupported, so publishing
-this private package will require a JavaScript distribution with declarations.
+aliases or support TSX in plugins. Published packages provide JavaScript and declarations;
+checkout development runs the typed TypeScript source directly.
 
 ## Choose only what you use
 
@@ -101,14 +106,15 @@ enables it even without detected inputs. Installed npm packages do not activate 
 | Manifest | Configured pack manifests |
 | Generator | `.ts` templates inside packs, excluding `scripts/` and declarations |
 | Guides | `guides/**/*.md` or `.mdx` |
-| i18n | `i18n/<locale>.ts`, `.js`, `.mts` or `.mjs` |
+| i18n | `i18n/<locale>.ts`, `.js`, `.mts` or `.mjs`, or pack `texts/*.lang` |
 | UI compiler | Pack `scripts/**/*.screen.tsx`, generated UI imports, or framework declarations with an installed UI toolkit |
 | Bundler | Script modules declared in staged manifests |
 
 Detection runs after each stage's before hooks. After hooks run even when automatic detection
 skips a stage. Explicitly disabled stages have no boundary, so hooks targeting them are rejected.
-Guides remain unimplemented; their detected inputs report an unavailable-stage error unless
-that stage is disabled.
+Guides read locale directories under `guides/`, preserve Markdown/MDX authoring, and produce
+the manifest, language sections and screens before i18n and UI run. See the
+[guides package](packages/guides/README.md) for authoring, options and runtime requirements.
 
 For example, a profile can skip translations while bundling detected scripts:
 
@@ -119,11 +125,11 @@ For example, a profile can skip translations while bundling detected scripts:
 }
 ```
 
-The intended distribution separates the runner and independently installable stage packages.
+The distribution separates the runner and independently installable stage packages.
 A shared plugin contract has no Minecraft runtime dependency.
 Standalone stage functions accept explicit inputs and return artifacts; builder adapters schedule
-them. `packages/bundler`, `packages/generator`, `packages/i18n` and `packages/ui-compiler`
-implement this boundary; guides remain pending.
+them. `packages/bundler`, `packages/generator`, `packages/guides`, `packages/i18n` and
+`packages/ui-compiler` implement this boundary.
 
 | Component   | Build-time purpose                                | Standalone boundary                                                         |
 | ----------- | ------------------------------------------------- | --------------------------------------------------------------------------- |
@@ -132,10 +138,11 @@ implement this boundary; guides remain pending.
 | Generator   | Execute typed content templates                   | Shared esbuild bundler and template dependencies; no framework runtime       |
 | Bundler     | Compile an explicit TS/JS entry                   | esbuild and TypeScript config parsing; shared UI JSX transform when UI is active |
 | i18n        | Generate language files and translation artifacts | Shared esbuild bundler; runtime translation helpers when code uses them     |
-| Guides      | Compile guide content                             | MDX tooling; translations and guide runtime when content requires them      |
+| Guides      | Compile guide content                             | MDX tooling alone for content; guide/UI runtime packages for screen compilation |
 | UI compiler | Compile screen modules into pack assets           | UI compiler libraries; runtime registration dependencies for generated code |
+| Validation  | Check final pack JSON and schema coverage          | Mojang schemas, Ajv and JSON parsing; no framework or script compiler needed |
 
-Unimplemented rows are extraction targets. Runtime apps
+Each stage package can be installed independently. Runtime apps
 such as config, catalog and guides have their own dependencies; changing the builder does not
 remove those. Document each extracted package's direct dependencies, consumed/provided artifact
 IDs, optional integrations and runtime requirements. Declare unconditional prerequisites and
@@ -150,7 +157,7 @@ Imports do not enable additional stages; producer inputs determine automatic par
 
 ## Incremental builds
 
-Build and watch automatically reuse compiled TS/JS files. Each script entry, generator template
+Build and watch automatically reuse compiled TS/JS files and guide pages. Each script entry, generator template
 and locale module checks its transitive imports, resolver candidates, compiler configuration and
 Node/compiler versions. Unrelated edits keep compiled files cached; editing a shared helper
 rebuilds its consumers. Installed package code and metadata, tsconfig path mappings, inherited
@@ -169,7 +176,8 @@ Stage logs distinguish compilation from template evaluation. Set `"cache": false
 registration and dependency tracking. Final validation and coordinated export always run.
 
 See [automatic compilation reuse](docs/incremental.md) for examples and dependency boundaries.
-UI screen modules and rendered results also reuse their unchanged inputs. The shared toolkit
+Guide pages reuse source and texture inputs; navigation and localization are assembled from
+current pages and categories. UI screen modules and rendered results also reuse their unchanged inputs. The shared toolkit
 is bundled once, and the current screen set is linked into complete pack outputs each build.
 Staging and export still copy complete packs, and the first build compiles every file.
 Schema declarations and optional vanilla downloads keep their
@@ -378,8 +386,8 @@ catalog. Include `.bedrock-core/generated/mc/globals.d.ts` alongside authored so
 project's tsconfig after the first build. `types: false` disables this; `schemaVersion` pins
 the schema package, and `typesDir`, `typePrefix`, `strict` and `maxAgeHours` control output and
 checking. Small single-use types are inlined, repeated shapes share declarations, and output uses
-two-space indentation. Cached declarations are reused. Minecraft content validation and in-game acceptance
-remain separate checks. The generator example has its own tsconfig:
+two-space indentation. Cached declarations are reused. Final pack checks run separately from
+declaration generation; in-game acceptance verifies runtime behavior. The generator example has its own tsconfig:
 
 ```sh
 yarn exec tsc --project examples/generator-project/tsconfig.json
@@ -417,8 +425,9 @@ remain unchanged. Other scripts are retained.
 Only manifest v3 is supported. Pack/module versions and `min_engine_version` use SemVer strings.
 Final validation checks headers, module identities and versions, unique UUIDs across all packs,
 script language and entry paths, and the existence of declared script files. It runs after
-modifying hooks and before export. Optional manifest fields, dependency compatibility and
-in-game content require separate validation. The standalone `validatePackManifests` function
+modifying hooks and before export. Optional manifest fields and dependency compatibility require
+additional checks. Pack JSON receives final schema validation; in-game behavior needs native acceptance.
+The standalone `validatePackManifests` function
 accepts a pack-name-to-directory map and requires no runner.
 Manifest field requirements follow the [Microsoft manifest reference](https://learn.microsoft.com/en-us/minecraft/creator/reference/content/addonsreference/packmanifest).
 See [the package](packages/bundler/README.md)
@@ -428,4 +437,17 @@ for standalone use and limits.
 node bin/build.ts examples/script-only/config.json
 ```
 
-The workspace-root PLAN.md owns delivery order and acceptance criteria.
+## Final content validation
+
+Every pack JSON document receives syntax checks after modifying hooks. Matching behavior and
+resource documents receive checks against the bundled Mojang schema catalog. Comments and
+trailing commas are accepted. Schema errors include pack paths and JSON pointers and prevent
+export. Unchanged documents reuse checks automatically; changes to their schemas invalidate reuse.
+`BuildResult.validation` reports the schema version and per-file coverage. Unknown JSON and
+unavailable upstream schemas receive syntax checks, with unavailable schemas reported explicitly.
+The documented language catalog array is validated separately. These checks do not establish
+Molang, assets, JSON UI binding/layout or client behavior. See the
+[validation package](packages/validation/README.md).
+
+The [release guide](docs/releasing.md) describes independent package installation, clean-consumer
+checks and addon/native acceptance. The workspace-root PLAN.md owns delivery order and acceptance criteria.

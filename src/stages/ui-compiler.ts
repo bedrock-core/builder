@@ -1,3 +1,4 @@
+import { implementationFile } from '../implementation.ts';
 import { createHash } from 'node:crypto';
 import { glob, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -25,8 +26,8 @@ import {
   type LinkedUi,
   type PackLocales,
   type UiSettings,
-} from '../../packages/ui-compiler/src/index.ts';
-import { writeTestMetadata } from '../../packages/ui-compiler/src/metadata.ts';
+} from '@bedrock-core/builder-ui';
+import { writeTestMetadata } from '@bedrock-core/builder-ui/internal/metadata';
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 
@@ -34,7 +35,11 @@ async function implementation(files: string[]): Promise<string> {
   const hash = createHash('sha256');
 
   for (const file of files) {
-    hash.update(await readFile(new URL(`../../packages/ui-compiler/src/${file}`, import.meta.url)));
+    const module = file.startsWith('../../bundler/src/')
+      ? `@bedrock-core/builder-bundler/internal/${file.slice('../../bundler/src/'.length)}`
+      : `@bedrock-core/builder-ui/internal/${file}`;
+
+    hash.update(await readFile(implementationFile(module, import.meta.url)));
   }
 
   return hash.digest('hex');
@@ -74,6 +79,7 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
     root: context.stagedRoot,
     dependencyRoot: context.projectRoot,
     aliases: generatedAliases(context),
+    guides: Object.hasOwn(context.generatedImports, '@bedrock-core/generated/guides'),
     tsconfig: settings.tsconfig,
     signal: context.signal,
   };

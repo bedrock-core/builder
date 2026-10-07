@@ -1,13 +1,14 @@
+import { implementationFile } from '../implementation.ts';
 import { readFile, unlink } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import type { BuildContext, BuildStepResult } from '../contract.d.ts';
-import { compilerVersion } from '../../packages/bundler/src/index.ts';
+import { compilerVersion } from '@bedrock-core/builder-bundler';
 import { generatedAliases } from '../imports.ts';
 import { templateFiles } from '../template-files.ts';
 import { buildCache } from '../file-cache.ts';
 import { compileModule } from '../compile.ts';
-import { generateTemplates, generateSchemaTypes, type JsonFormatting, type SchemaTypeSettings } from '../../packages/generator/src/index.ts';
+import { generateTemplates, generateSchemaTypes, type JsonFormatting, type SchemaTypeSettings } from '@bedrock-core/builder-generator';
 
 export interface GeneratorSettings extends SchemaTypeSettings {
   include?: string | string[];
@@ -38,9 +39,9 @@ export async function run(context: BuildContext, settings: GeneratorSettings): P
   const aliases = generatedAliases(context, settings.generatedImports);
   const version = createHash('sha256');
 
-  for (const file of [import.meta.url, '../../packages/generator/src/index.ts', '../../packages/generator/src/category.ts',
-    '../../packages/generator/src/deterministic.ts', '../../packages/bundler/src/index.ts', '../../packages/bundler/src/dependencies.ts']) {
-    version.update(await readFile(new URL(file, import.meta.url)));
+  for (const file of [import.meta.url, '@bedrock-core/builder-generator', '@bedrock-core/builder-generator/internal/category',
+    '@bedrock-core/builder-generator/internal/deterministic', '@bedrock-core/builder-bundler', '@bedrock-core/builder-bundler/internal/dependencies']) {
+    version.update(await readFile(implementationFile(file, import.meta.url)));
   }
 
   const implementation = version.digest('hex');

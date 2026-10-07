@@ -1,9 +1,10 @@
+import { implementationFile } from '../implementation.ts';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { copyFile, lstat, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import type { BuildContext, BuildStepResult } from '../contract.d.ts';
 import { readScriptEntries } from '../manifest.ts';
-import { bundleScripts, compilerVersion } from '../../packages/bundler/src/index.ts';
+import { bundleScripts, compilerVersion } from '@bedrock-core/builder-bundler';
 import { generatedAliases } from '../imports.ts';
 import { buildCache } from '../file-cache.ts';
 
@@ -128,13 +129,13 @@ export async function run(context: BuildContext, settings: BundlerSettings): Pro
   const outputs: { temporary: string; destination: string; artifactId: string }[] = [];
   const aliases = generatedAliases(context, settings.generatedImports);
   const ui = Object.hasOwn(context.generatedImports, '@bedrock-core/generated/ui');
-  const transformScreen = ui ? (await import('../../packages/ui-compiler/src/sugar.ts')).desugarJsxConditionals : undefined;
+  const transformScreen = ui ? (await import('@bedrock-core/builder-ui/internal/sugar')).desugarJsxConditionals : undefined;
   const version = createHash('sha256')
     .update(await readFile(new URL(import.meta.url)))
-    .update(await readFile(new URL('../../packages/bundler/src/index.ts', import.meta.url)))
-    .update(await readFile(new URL('../../packages/bundler/src/dependencies.ts', import.meta.url)))
+    .update(await readFile(implementationFile('@bedrock-core/builder-bundler', import.meta.url)))
+    .update(await readFile(implementationFile('@bedrock-core/builder-bundler/internal/dependencies', import.meta.url)))
     .digest('hex');
-  const uiVersion = ui ? createHash('sha256').update(await readFile(new URL('../../packages/ui-compiler/src/sugar.ts', import.meta.url))).digest('hex') : null;
+  const uiVersion = ui ? createHash('sha256').update(await readFile(implementationFile('@bedrock-core/builder-ui/internal/sugar', import.meta.url))).digest('hex') : null;
   let cached = 0;
 
   for (const script of scripts) {

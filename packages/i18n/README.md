@@ -78,6 +78,11 @@ overrides. Behavior packs receive only `pack.name` and `pack.description` aliase
 the runtime bundle's `extra` tables, merging resource packs first and behavior packs second
 in their configured order.
 
+Existing pack `.lang` files also select output locales. Without authored resource modules,
+the compiler still collects passthrough text and installed libraries into a runtime bundle
+and declarations. If a pack locale has no authored module, project resources fall back to the
+default module. This supports guides without requiring an empty `i18n/en_US.ts` file.
+
 ## Libraries and vanilla
 
 Installed dependencies declare resources and type exports with:

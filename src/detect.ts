@@ -41,6 +41,11 @@ export async function detectStage(context: BuildContext, stage: StageName): Prom
     // Let the compiler validate locale names and report malformed resource modules.
     needed = await hasFiles(context.stagedRoot, 'i18n/*.{ts,js,mts,mjs}', ['**/*.d.{ts,mts}']);
     input = 'locale resource modules under i18n/';
+
+    if (!needed) {
+      needed = await hasFiles(context.stagedRoot, packPaths.map(directory => `${directory}/texts/*.lang`));
+      input = 'pack language files';
+    }
   } else if (stage === 'ui-compiler') {
     needed = await hasFiles(context.stagedRoot, packPaths.map(directory => `${directory}/scripts/**/*.screen.tsx`));
     input = 'screen modules in pack scripts';

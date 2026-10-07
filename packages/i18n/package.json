@@ -1,16 +1,41 @@
 {
   "name": "@bedrock-core/builder-i18n",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0-alpha.0",
   "type": "module",
   "description": "Compile typed translation resources into Bedrock language files and runtime bundles",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./internal/*": "./src/*.ts"
   },
   "engines": {
     "node": ">=22.18"
   },
   "dependencies": {
     "@bedrock-core/builder-bundler": "workspace:*"
+  },
+  "license": "MIT",
+  "repository": {
+    "url": "git+https://github.com/bedrock-core/builder.git",
+    "directory": "packages/i18n",
+    "type": "git"
+  },
+  "files": [
+    "dist/**",
+    "./README.md",
+    "./LICENSE"
+  ],
+  "publishConfig": {
+    "exports": {
+      "./internal/*": {
+        "types": "./dist/src/*.d.ts",
+        "default": "./dist/src/*.js"
+      },
+      ".": {
+        "types": "./dist/src/index.d.ts",
+        "default": "./dist/src/index.js"
+      }
+    },
+    "access": "public",
+    "tag": "next"
   }
 }

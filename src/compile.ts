@@ -1,7 +1,8 @@
+import { implementationFile } from './implementation.ts';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { bundleScripts, compilerVersion, type BundleOptions, type CompiledModule } from '../packages/bundler/src/index.ts';
+import { bundleScripts, compilerVersion, type BundleOptions, type CompiledModule } from '@bedrock-core/builder-bundler';
 import { buildCache } from './file-cache.ts';
 import type { BuildContext } from './contract.d.ts';
 
@@ -12,8 +13,8 @@ function implementationFor(context: BuildContext): Promise<string> {
     implementations.set(context, (async () => {
       const version = createHash('sha256');
 
-      for (const file of [import.meta.url, '../packages/bundler/src/index.ts', '../packages/bundler/src/dependencies.ts']) {
-        version.update(await readFile(new URL(file, import.meta.url)));
+      for (const file of [import.meta.url, '@bedrock-core/builder-bundler', '@bedrock-core/builder-bundler/internal/dependencies']) {
+        version.update(await readFile(implementationFile(file, import.meta.url)));
       }
 
       return version.digest('hex');

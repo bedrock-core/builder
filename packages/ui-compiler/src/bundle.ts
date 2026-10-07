@@ -20,6 +20,7 @@ export const libraryModules: Record<string, string> = {
   '@bedrock-core/ui-runtime/entity': 'entity',
   '@bedrock-core/ui-compiler': 'compiler',
   '@bedrock-core/i18n': 'i18n',
+  '@bedrock-core/guides': 'guides',
 };
 
 export interface UiBundleOptions {
@@ -30,6 +31,8 @@ export interface UiBundleOptions {
   source?: string;
   exports?: Record<string, string[]>;
   signal?: AbortSignal;
+  /** Share the active guides stage's installed factories with the UI toolkit. */
+  guides?: boolean;
 }
 
 export interface UiBundle {
@@ -48,7 +51,8 @@ export async function bundleUiLibrary(options: UiBundleOptions): Promise<UiBundl
     import * as container from '@bedrock-core/ui-runtime/container';
     import * as entity from '@bedrock-core/ui-runtime/entity';
     import * as i18n from '@bedrock-core/i18n';
-    export { ui, jsx, compiler, runtime, container, entity, i18n };
+    ${options.guides ? 'import * as guides from \'@bedrock-core/guides\';' : ''}
+    export { ui, jsx, compiler, runtime, container, entity, i18n${options.guides ? ', guides' : ''} };
   `);
 }
 
@@ -84,7 +88,7 @@ async function bundle(options: UiBundleOptions, contents: string, declaration = 
     plugins.push({
       name: '@bedrock-core/ui-optional-surfaces',
       setup(builder) {
-        builder.onResolve({ filter: /^@bedrock-core\/ui-runtime\/(?:container|entity)$/ }, async (args) => {
+        builder.onResolve({ filter: /^@bedrock-core\/(?:ui-runtime\/(?:container|entity)|guides)$/ }, async (args) => {
           if (args.pluginData === resolving) {
             return;
           }
@@ -125,7 +129,7 @@ async function bundle(options: UiBundleOptions, contents: string, declaration = 
 
           const member = Object.hasOwn(libraryModules, args.path) ? libraryModules[args.path] : undefined;
 
-          if (member) {
+          if (member && Object.hasOwn(options.exports!, member)) {
             return { path: member, namespace: 'ui-library' };
           }
         });

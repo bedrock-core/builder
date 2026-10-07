@@ -63,14 +63,14 @@ test('templates and locale modules automatically enable their producers and gene
 
   await automatic(project);
   await seedSchemas(project.project);
-  await put(project.project, 'packs/gameplay/items/value.ts', 'export default { value: 7 };');
+  await put(project.project, 'packs/gameplay/data/value.ts', 'export default { value: 7 };');
   await put(project.project, 'packs/gameplay/scripts/main.ts', `import data from '@bedrock-core/generated/i18n'; export const value = data.namespace;`);
   const result = await runBuild({ configPath: project.configPath, logger: {} });
 
   assert.equal(status(result, 'generator'), 'executed');
   assert.equal(status(result, 'i18n'), 'executed');
   assert.equal(await exportedValue(project), 'flow_test');
-  assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPaths.gameplay, 'items/value.json'), 'utf8')), { value: 7 });
+  assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPaths.gameplay, 'data/value.json'), 'utf8')), { value: 7 });
   assert.equal(result.artifacts.find(artifact => artifact.id === 'i18n:bundle').importAs, '@bedrock-core/generated/i18n');
 });
 
@@ -84,7 +84,7 @@ test('automatic detection sees inputs created by before hooks and still runs aft
     import path from 'node:path';
     export async function run(context, settings) {
       if (settings.create) {
-        const directory = path.join(context.packs.gameplay, 'items');
+        const directory = path.join(context.packs.gameplay, 'data');
         await mkdir(directory);
         await writeFile(path.join(directory, 'new.ts'), 'export default { created: true };');
       } else {
@@ -102,14 +102,14 @@ test('automatic detection sees inputs created by before hooks and still runs aft
 
   assert.equal(status(result, 'generator'), 'executed');
   assert.equal(status(result, 'i18n'), 'skipped');
-  assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPaths.gameplay, 'items/new.json'), 'utf8')), { created: true });
+  assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPaths.gameplay, 'data/new.json'), 'utf8')), { created: true });
   assert.equal(await readFile(path.join(result.outputPaths.visuals, 'hook.txt'), 'utf8'), 'after skipped stage');
 });
 
 test('false disables detected stages and auto is accepted by the configuration schema', async (t) => {
   const project = await translationsFor(t);
 
-  await put(project.project, 'guides/start.md', '# Start');
+  await put(project.project, 'guides/en_US/start.md', '# Start');
   project.config.bedrockCore.profiles.default.stages = { guides: false, i18n: false, bundler: 'auto' };
   validateConfig(project.config);
   await writeFile(project.configPath, JSON.stringify(project.config));
@@ -118,9 +118,12 @@ test('false disables detected stages and auto is accepted by the configuration s
   assert.equal(status(result, 'guides'), undefined);
   assert.equal(status(result, 'i18n'), undefined);
   assert.equal(status(result, 'bundler'), 'executed');
-  delete project.config.bedrockCore.profiles.default.stages.guides;
+  project.config.bedrockCore.profiles.default.stages.guides = { compileScreens: false };
   await writeFile(project.configPath, JSON.stringify(project.config));
-  await assert.rejects(runBuild({ configPath: project.configPath, logger: {} }), /Stage implementation unavailable: guides/);
+  const enabled = await runBuild({ configPath: project.configPath, logger: {} });
+
+  assert.equal(status(enabled, 'guides'), 'executed');
+  assert.ok(enabled.artifacts.some(artifact => artifact.id === 'guides:manifest'));
 });
 
 test('unchanged local bundles restore to fresh staging and preserve artifacts and dependencies', async (t) => {
@@ -231,7 +234,7 @@ test('template and plugin execution repeat while changing generated inputs inval
 
   await automatic(project);
   await seedSchemas(project.project);
-  await put(project.project, 'packs/gameplay/items/random.ts', 'export default { value: Math.random() };');
+  await put(project.project, 'packs/gameplay/data/random.ts', 'export default { value: Math.random() };');
   await put(project.project, 'packs/gameplay/scripts/main.ts', `import data from '@bedrock-core/generated/value'; export const value = data.value;`);
   await put(project.project, 'producer.ts', `
     import { writeFile } from 'node:fs/promises';
@@ -249,13 +252,13 @@ test('template and plugin execution repeat while changing generated inputs inval
 
   t.mock.method(Math, 'random', () => 0.25);
   await runBuild(options);
-  const first = JSON.parse(await readFile(path.join(project.project, 'dist/gameplay/items/random.json'), 'utf8'));
+  const first = JSON.parse(await readFile(path.join(project.project, 'dist/gameplay/data/random.json'), 'utf8'));
 
   t.mock.method(Math, 'random', () => 0.75);
   const second = await runBuild(options);
 
   assert.deepEqual(first, { value: 0.25 });
-  assert.deepEqual(JSON.parse(await readFile(path.join(second.outputPaths.gameplay, 'items/random.json'), 'utf8')), { value: 0.75 });
+  assert.deepEqual(JSON.parse(await readFile(path.join(second.outputPaths.gameplay, 'data/random.json'), 'utf8')), { value: 0.75 });
   assert.equal(await exportedValue(project), 0.75);
   assert.equal(status(second, 'bundler'), 'executed');
 });

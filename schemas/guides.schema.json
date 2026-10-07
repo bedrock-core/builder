@@ -1,0 +1,96 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "@bedrock-core guides stage settings",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "namespace": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Overrides the project namespace for guide keys."
+    },
+    "sourceDir": {
+      "type": "string",
+      "minLength": 1,
+      "default": "guides",
+      "description": "Project-relative content root containing locale directories."
+    },
+    "defaultLocale": {
+      "type": "string",
+      "pattern": "^[a-z]{2}_[A-Z]{2}$",
+      "default": "en_US"
+    },
+    "include": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [
+        "**/*.md",
+        "**/*.mdx"
+      ]
+    },
+    "exclude": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "maxCodeLineBytes": {
+      "type": "integer",
+      "minimum": 4,
+      "maximum": 80,
+      "default": 60
+    },
+    "strictLocales": {
+      "type": "boolean",
+      "default": false
+    },
+    "compileScreens": {
+      "type": "boolean",
+      "default": true
+    },
+    "screensDir": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Project-relative directory inside a behavior pack's scripts. Defaults to scripts/guides in the first behavior pack."
+    },
+    "screenTitle": {
+      "type": "string",
+      "default": "Guide"
+    },
+    "componentsModule": {
+      "type": "string",
+      "description": "Project-relative module default-exporting a guide component registry."
+    },
+    "manifestPath": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional project-relative staged manifest output. Normally owned by the generated artifact directory."
+    },
+    "pretty": {
+      "oneOf": [
+        {
+          "const": false
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "indent": {
+              "enum": [
+                "space",
+                "tab"
+              ]
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      ]
+    }
+  }
+}

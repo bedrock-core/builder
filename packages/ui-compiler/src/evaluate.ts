@@ -26,7 +26,7 @@ export class UiEvaluator {
     }
 
     this.pending = true;
-    const worker = this.worker ??= new Worker(new URL('./worker.ts', import.meta.url), {
+    const worker = this.worker ??= new Worker(new URL(import.meta.url.endsWith('.ts') ? './worker.ts' : './worker.js', import.meta.url), {
       workerData: this.environment,
       ...(process.execArgv.some(argument => argument.startsWith('--input-type')) ? { execArgv: [] } : {}),
     });

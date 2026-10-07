@@ -1,7 +1,6 @@
 {
   "name": "@bedrock-core/builder",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0-alpha.0",
   "type": "module",
   "description": "Composable build planning for TypeScript Bedrock projects",
   "exports": {
@@ -15,12 +14,14 @@
     "./export": "./src/export.ts",
     "./watch": "./src/watch.ts",
     "./migrate": "./src/migrate.ts",
+    "./validation": "./src/validation.ts",
     "./schemas/config.schema.json": "./schemas/config.schema.json",
     "./schemas/manifest.schema.json": "./schemas/manifest.schema.json",
     "./schemas/bundler.schema.json": "./schemas/bundler.schema.json",
     "./schemas/generator.schema.json": "./schemas/generator.schema.json",
     "./schemas/i18n.schema.json": "./schemas/i18n.schema.json",
-    "./schemas/ui-compiler.schema.json": "./schemas/ui-compiler.schema.json"
+    "./schemas/ui-compiler.schema.json": "./schemas/ui-compiler.schema.json",
+    "./schemas/guides.schema.json": "./schemas/guides.schema.json"
   },
   "scripts": {
     "test": "node --test",
@@ -32,18 +33,30 @@
     "format": "eslint . --fix --max-warnings=0",
     "check": "yarn lint && yarn typecheck && yarn test",
     "watch": "node bin/watch.ts",
-    "migrate": "node bin/migrate.ts"
+    "migrate": "node bin/migrate.ts",
+    "prepare-release": "node scripts/prepare-release.ts",
+    "pack-release": "yarn prepare-release && node scripts/pack-release.ts",
+    "test:packages": "node scripts/verify-packages.ts",
+    "acceptance": "node scripts/acceptance.ts",
+    "acceptance:native": "node scripts/acceptance.ts --native",
+    "release": "yarn check && yarn acceptance && yarn pack-release && yarn test:packages && node scripts/publish-release.ts"
   },
   "engines": {
     "node": ">=22.18"
   },
   "dependencies": {
+    "@bedrock-core/builder-bundler": "workspace:*",
+    "@bedrock-core/builder-generator": "workspace:*",
+    "@bedrock-core/builder-guides": "workspace:*",
+    "@bedrock-core/builder-i18n": "workspace:*",
+    "@bedrock-core/builder-ui": "workspace:*",
+    "@bedrock-core/builder-validation": "workspace:*",
+    "@types/node": "25.9.9",
     "ajv": "8.17.1"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@stylistic/eslint-plugin": "5.10.0",
-    "@types/node": "25.9.9",
     "eslint": "10.5.0",
     "globals": "17.7.0",
     "typescript": "5.9.3",
@@ -53,7 +66,72 @@
     "packages/bundler",
     "packages/generator",
     "packages/i18n",
-    "packages/ui-compiler"
+    "packages/ui-compiler",
+    "packages/guides",
+    "packages/validation"
   ],
-  "packageManager": "yarn@4.16.0"
+  "packageManager": "yarn@4.16.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bedrock-core/builder.git"
+  },
+  "files": [
+    "dist/**",
+    "./README.md",
+    "./LICENSE",
+    "schemas/**",
+    "docs/**"
+  ],
+  "publishConfig": {
+    "bin": {
+      "bc-build": "./dist/bin/builder.js"
+    },
+    "exports": {
+      "./schemas/config.schema.json": "./schemas/config.schema.json",
+      "./export": {
+        "types": "./dist/src/export.d.ts",
+        "default": "./dist/src/export.js"
+      },
+      "./watch": {
+        "types": "./dist/src/watch.d.ts",
+        "default": "./dist/src/watch.js"
+      },
+      "./schemas/guides.schema.json": "./schemas/guides.schema.json",
+      "./migrate": {
+        "types": "./dist/src/migrate.d.ts",
+        "default": "./dist/src/migrate.js"
+      },
+      "./schemas/i18n.schema.json": "./schemas/i18n.schema.json",
+      "./config": {
+        "types": "./dist/src/config.d.ts",
+        "default": "./dist/src/config.js"
+      },
+      "./schemas/manifest.schema.json": "./schemas/manifest.schema.json",
+      ".": {
+        "types": "./dist/src/plan.d.ts",
+        "default": "./dist/src/plan.js"
+      },
+      "./manifest": {
+        "types": "./dist/src/manifest.d.ts",
+        "default": "./dist/src/manifest.js"
+      },
+      "./schemas/bundler.schema.json": "./schemas/bundler.schema.json",
+      "./schemas/generator.schema.json": "./schemas/generator.schema.json",
+      "./runner": {
+        "types": "./dist/src/contract.d.ts",
+        "default": "./dist/src/run.js"
+      },
+      "./schemas/ui-compiler.schema.json": "./schemas/ui-compiler.schema.json",
+      "./validation": {
+        "types": "./dist/src/validation.d.ts",
+        "default": "./dist/src/validation.js"
+      }
+    },
+    "access": "public",
+    "tag": "next"
+  },
+  "bin": {
+    "bc-build": "./bin/builder.ts"
+  }
 }

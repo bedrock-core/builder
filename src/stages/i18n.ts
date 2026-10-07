@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { compileI18n, type I18nSettings, type TranslationPack } from '../../packages/i18n/src/index.ts';
+import { compileI18n, type I18nSettings, type TranslationPack } from '@bedrock-core/builder-i18n';
 import type { BuildContext } from '../contract.d.ts';
 import { generatedAliases } from '../imports.ts';
 import { compileModule } from '../compile.ts';

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Resource pack language catalog",
+  "description": "The locale array in texts/languages.json, as documented by the Bedrock Wiki text guide.",
+  "type": "array",
+  "items": { "type": "string", "minLength": 1 },
+  "uniqueItems": true
+}

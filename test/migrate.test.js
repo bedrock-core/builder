@@ -132,6 +132,26 @@ test('UI settings migrate local screen modules as project paths and preserve pac
   assert.equal(codes(result).length, 0);
 });
 
+test('guides settings preserve locale patterns and map authored paths into staging', () => {
+  const config = legacy();
+
+  config.regolith.profiles.default.filters = [{ filter: 'guides', settings: {
+    sourceDir: 'data/manual', screensDir: 'BP/scripts/manual', componentsModule: 'BP/scripts/components.tsx',
+    manifestPath: 'data/manual/guides.generated.json', include: ['**/*.mdx'], exclude: ['draft/**'],
+    defaultLocale: 'es_ES', strictLocales: true, maxCodeLineBytes: 40, screenTitle: 'Manual',
+  } }];
+  const result = migrateRegolithConfig(config);
+
+  assert.equal(result.ready, true);
+  assert.deepEqual(result.config.bedrockCore.profiles.default.stages.guides, {
+    sourceDir: './packs/data/manual', screensDir: 'packs/BP/scripts/manual',
+    componentsModule: 'packs/BP/scripts/components.tsx', manifestPath: './packs/data/manual/guides.generated.json',
+    include: ['**/*.mdx'], exclude: ['draft/**'], defaultLocale: 'es_ES', strictLocales: true,
+    maxCodeLineBytes: 40, screenTitle: 'Manual',
+  });
+  assert.ok(result.diagnostics.some(item => item.code === 'guides-declarations'));
+});
+
 test('disabled filters and profile references cannot activate automatic stages', () => {
   const config = legacy();
 
@@ -190,7 +210,6 @@ test('unsupported behavior is reported rather than dropped or reordered', () => 
     ['profile-reference', (config) => { config.regolith.profiles.default.filters = [{ profile: 'missing' }]; }],
     ['filter-setting', (config) => { config.regolith.profiles.default.filters[1].settings.entry = 'other.ts'; }],
     ['manifest-variant', (config) => { config.regolith.profiles.default.filters[0].settings = { manifestPath: 'BP/manifest.test.json' }; }],
-    ['stage-unavailable', (config) => { config.regolith.profiles.default.filters = [{ filter: 'guides' }]; }],
     ['export-target', (config) => { config.regolith.profiles.default.export = { target: 'none' }; }],
     ['export-target', (config) => { config.regolith.profiles.default.export = { target: 'world', worldPath: './worlds/test' }; }],
     ['multiple-exports', (config) => { config.regolith.profiles.default.export = [{ target: 'local' }, { target: 'development' }]; }],

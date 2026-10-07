@@ -1,0 +1,17 @@
+{
+  "format_version": 3,
+  "header": {
+    "name": "@bedrock-core builder acceptance", "description": "Native build pipeline checks",
+    "uuid": "1d21f50f-f1a0-45b3-9c53-0dafc44f0630", "version": "1.0.0", "min_engine_version": "1.26.50"
+  },
+  "modules": [
+    { "type": "data", "uuid": "5883a73f-53b9-4e7c-8ad4-2d7e26cb49c6", "version": "1.0.0" },
+    { "type": "script", "language": "javascript", "entry": "scripts/main.js", "uuid": "0ab451a5-f008-46b4-908d-b5e3d4f621b1", "version": "1.0.0" }
+  ],
+  "dependencies": [
+    { "uuid": "5bfd7f92-c16d-4ff1-b837-abdbf92b4e84", "version": "1.0.0" },
+    { "uuid": "8453c14b-69ad-4491-bc58-c54a44b5596f", "version": "1.0.0" },
+    { "module_name": "@minecraft/server", "version": "2.10.0" },
+    { "module_name": "@minecraft/server-gametest", "version": "1.0.0-beta" }
+  ]
+}

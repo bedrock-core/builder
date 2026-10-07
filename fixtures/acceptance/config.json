@@ -1,0 +1,19 @@
+{
+  "$schema": "../../schemas/config.schema.json",
+  "type": "minecraftBedrock",
+  "name": "@bedrock-core builder acceptance",
+  "authors": [],
+  "targetVersion": "1.26.50",
+  "namespace": "builder_acceptance",
+  "worlds": [],
+  "packs": { "logic": "./packs/BP", "assets": "./packs/RP", "theme": "./packs/theme" },
+  "bedrockCore": {
+    "formatVersion": "1.0.0",
+    "profiles": {
+      "default": {
+        "stages": { "generator": { "types": false }, "guides": { "compileScreens": false } },
+        "export": { "logic": "./dist/BP", "assets": "./dist/RP", "theme": "./dist/theme" }
+      }
+    }
+  }
+}

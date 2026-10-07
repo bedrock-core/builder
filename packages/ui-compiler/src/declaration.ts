@@ -14,7 +14,7 @@ export interface DeclarationResult {
 /** Evaluate fresh in isolation; a registration may contain runtime side effects. */
 export async function readUiDeclaration(module: string, signal?: AbortSignal): Promise<DeclarationResult> {
   signal?.throwIfAborted();
-  const worker = new Worker(new URL('./declaration-worker.ts', import.meta.url), {
+  const worker = new Worker(new URL(import.meta.url.endsWith('.ts') ? './declaration-worker.ts' : './declaration-worker.js', import.meta.url), {
     workerData: module,
     ...(process.execArgv.some(argument => argument.startsWith('--input-type')) ? { execArgv: [] } : {}),
   });

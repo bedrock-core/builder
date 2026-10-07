@@ -1,0 +1,47 @@
+{
+  "name": "@bedrock-core/builder-validation",
+  "version": "0.1.0-alpha.0",
+  "type": "module",
+  "description": "Standalone pack content validation against Mojang's Bedrock schema catalog",
+  "exports": {
+    ".": "./src/index.ts",
+    "./internal/*": "./src/*.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "@minecraft/bedrock-schemas": "1.26.50",
+    "ajv": "8.17.1",
+    "jsonc-parser": "3.3.1",
+    "picomatch": "^4.0.2"
+  },
+  "devDependencies": {
+    "@types/picomatch": "^4.0.2"
+  },
+  "license": "MIT",
+  "repository": {
+    "url": "git+https://github.com/bedrock-core/builder.git",
+    "directory": "packages/validation",
+    "type": "git"
+  },
+  "files": [
+    "dist/**",
+    "./README.md",
+    "./LICENSE"
+  ],
+  "publishConfig": {
+    "exports": {
+      "./internal/*": {
+        "types": "./dist/src/*.d.ts",
+        "default": "./dist/src/*.js"
+      },
+      ".": {
+        "types": "./dist/src/index.d.ts",
+        "default": "./dist/src/index.js"
+      }
+    },
+    "access": "public",
+    "tag": "next"
+  }
+}

@@ -12,6 +12,8 @@ export type { JsonValue, ManyTemplate, TemplateName, TemplateData } from './temp
 export { generateSchemaTypes } from './types.ts';
 export type { SchemaTypeSettings, SchemaTypeOptions, SchemaTypeResult } from './types.ts';
 
+const sourceExtension = import.meta.url.endsWith('.ts') ? 'ts' : 'js';
+
 export interface JsonFormatting {
   indent?: 'tab' | 'space';
   size?: number;
@@ -125,7 +127,7 @@ export async function generateTemplates(options: GeneratorOptions): Promise<Gene
           aliases: options.aliases,
           tsconfig: options.tsconfig,
           platform: 'node',
-          inject: [path.join(import.meta.dirname, 'templates.ts')],
+          inject: [path.join(import.meta.dirname, `templates.${sourceExtension}`)],
           // Bundled CommonJS dependencies can require Node built-ins from this ESM module.
           banner: 'import { createRequire as __bedrockCoreCreateRequire } from \'node:module\'; const require = __bedrockCoreCreateRequire(import.meta.url);',
           debug: true,
@@ -159,7 +161,7 @@ export async function generateTemplates(options: GeneratorOptions): Promise<Gene
           throw new Error(`Unsupported template: expected a default export object or [nameFn, dataFn, items] in ${source}`);
         }
 
-        const helpers = ['templates.ts', 'category.ts'].map(file => path.join(import.meta.dirname, file));
+        const helpers = ['templates', 'category'].map(file => path.join(import.meta.dirname, `${file}.${sourceExtension}`));
 
         return {
           documents: emitted,

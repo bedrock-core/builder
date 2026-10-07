@@ -1,12 +1,12 @@
 {
   "name": "@bedrock-core/builder-bundler",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0-alpha.0",
   "type": "module",
   "description": "Standalone TS/JS script bundling for @bedrock-core projects",
   "exports": {
     ".": "./src/index.ts",
-    "./dependencies": "./src/dependencies.ts"
+    "./dependencies": "./src/dependencies.ts",
+    "./internal/*": "./src/*.ts"
   },
   "engines": {
     "node": ">=22.18"
@@ -14,5 +14,34 @@
   "dependencies": {
     "esbuild": "0.25.12",
     "typescript": "5.9.3"
+  },
+  "license": "MIT",
+  "repository": {
+    "url": "git+https://github.com/bedrock-core/builder.git",
+    "directory": "packages/bundler",
+    "type": "git"
+  },
+  "files": [
+    "dist/**",
+    "./README.md",
+    "./LICENSE"
+  ],
+  "publishConfig": {
+    "exports": {
+      "./internal/*": {
+        "types": "./dist/src/*.d.ts",
+        "default": "./dist/src/*.js"
+      },
+      ".": {
+        "types": "./dist/src/index.d.ts",
+        "default": "./dist/src/index.js"
+      },
+      "./dependencies": {
+        "types": "./dist/src/dependencies.d.ts",
+        "default": "./dist/src/dependencies.js"
+      }
+    },
+    "access": "public",
+    "tag": "next"
   }
 }

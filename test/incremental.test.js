@@ -52,43 +52,43 @@ test('generator imports invalidate their template and only changed output invali
   project.config.bedrockCore.profiles.default.stages.generator = { types: false };
   await writeFile(project.configPath, JSON.stringify(project.config));
   await put(project.project, 'shared/data.json', '{"value":7}');
-  await put(project.project, 'packs/gameplay/items/value.ts', `import data from '../../../shared/data.json'; export default { value: data.value };`);
-  await put(project.project, 'packs/gameplay/items/other.ts', 'export default { unrelated: true };');
-  await put(project.project, 'packs/gameplay/scripts/main.ts', `import data from '../items/value.json'; export const value = data.value;`);
+  await put(project.project, 'packs/gameplay/data/value.ts', `import data from '../../../shared/data.json'; export default { value: data.value };`);
+  await put(project.project, 'packs/gameplay/data/other.ts', 'export default { unrelated: true };');
+  await put(project.project, 'packs/gameplay/scripts/main.ts', `import data from '../data/value.json'; export const value = data.value;`);
   await runBuild(options);
   const unchanged = await runBuild(options);
 
-  assert.equal(status(unchanged, 'generator/packs/gameplay/items/value.ts'), 'cached');
-  assert.equal(status(unchanged, 'generator/packs/gameplay/items/other.ts'), 'cached');
+  assert.equal(status(unchanged, 'generator/packs/gameplay/data/value.ts'), 'cached');
+  assert.equal(status(unchanged, 'generator/packs/gameplay/data/other.ts'), 'cached');
   assert.equal(status(unchanged, 'bundler/gameplay:scripts/main.js'), 'cached');
-  await put(project.project, 'packs/gameplay/scripts/main.ts', `import data from '../items/value.json'; export const value = data.value + 1;`);
+  await put(project.project, 'packs/gameplay/scripts/main.ts', `import data from '../data/value.json'; export const value = data.value + 1;`);
   const script = await runBuild(options);
 
-  assert.equal(status(script, 'generator/packs/gameplay/items/value.ts'), 'cached');
-  assert.equal(status(script, 'generator/packs/gameplay/items/other.ts'), 'cached');
+  assert.equal(status(script, 'generator/packs/gameplay/data/value.ts'), 'cached');
+  assert.equal(status(script, 'generator/packs/gameplay/data/other.ts'), 'cached');
   assert.equal(status(script, 'bundler/gameplay:scripts/main.js'), 'executed');
   await put(project.project, 'shared/data.json', '{"value":8}');
   const dependency = await runBuild(options);
 
-  assert.equal(status(dependency, 'generator/packs/gameplay/items/value.ts'), 'executed');
-  assert.equal(status(dependency, 'generator/packs/gameplay/items/other.ts'), 'cached');
+  assert.equal(status(dependency, 'generator/packs/gameplay/data/value.ts'), 'executed');
+  assert.equal(status(dependency, 'generator/packs/gameplay/data/other.ts'), 'cached');
   assert.equal(status(dependency, 'bundler/gameplay:scripts/main.js'), 'executed');
-  await put(project.project, 'packs/gameplay/items/value.ts', `import data from '../../../shared/data.json'; export default { value: data.value }; // same JSON`);
+  await put(project.project, 'packs/gameplay/data/value.ts', `import data from '../../../shared/data.json'; export default { value: data.value }; // same JSON`);
   const equivalent = await runBuild(options);
 
-  assert.equal(status(equivalent, 'generator/packs/gameplay/items/value.ts'), 'executed');
+  assert.equal(status(equivalent, 'generator/packs/gameplay/data/value.ts'), 'executed');
   assert.equal(status(equivalent, 'bundler/gameplay:scripts/main.js'), 'cached');
-  assert.deepEqual(JSON.parse(await readFile(path.join(equivalent.outputPaths.gameplay, 'items/value.json'), 'utf8')), { value: 8 });
-  await rm(path.join(project.project, 'packs/gameplay/items/other.ts'));
+  assert.deepEqual(JSON.parse(await readFile(path.join(equivalent.outputPaths.gameplay, 'data/value.json'), 'utf8')), { value: 8 });
+  await rm(path.join(project.project, 'packs/gameplay/data/other.ts'));
   const removed = await runBuild(options);
 
-  assert.equal(status(removed, 'generator/packs/gameplay/items/other.ts'), undefined);
-  await assert.rejects(readFile(path.join(removed.outputPaths.gameplay, 'items/other.json')), { code: 'ENOENT' });
-  await put(project.project, 'packs/gameplay/items/added.ts', 'export default { added: true };');
+  assert.equal(status(removed, 'generator/packs/gameplay/data/other.ts'), undefined);
+  await assert.rejects(readFile(path.join(removed.outputPaths.gameplay, 'data/other.json')), { code: 'ENOENT' });
+  await put(project.project, 'packs/gameplay/data/added.ts', 'export default { added: true };');
   const added = await runBuild(options);
 
-  assert.equal(status(added, 'generator/packs/gameplay/items/added.ts'), 'executed');
-  assert.equal(status(added, 'generator/packs/gameplay/items/value.ts'), 'cached');
+  assert.equal(status(added, 'generator/packs/gameplay/data/added.ts'), 'executed');
+  assert.equal(status(added, 'generator/packs/gameplay/data/value.ts'), 'cached');
 });
 
 test('plain Many callbacks and data-only TS imports cache without changing their exports', async (t) => {
@@ -97,16 +97,16 @@ test('plain Many callbacks and data-only TS imports cache without changing their
   project.config.bedrockCore.profiles.default.stages.generator = { types: false };
   await writeFile(project.configPath, JSON.stringify(project.config));
   await put(project.project, 'shared/items.ts', 'export const items = [{ name: "a", value: 3 }, { name: "b", value: 4 }] as const;');
-  await put(project.project, 'packs/gameplay/items/many.ts', `
+  await put(project.project, 'packs/gameplay/data/many.ts', `
     import { items } from '../../../shared/items.ts';
     export default [(item) => item.name, (item) => ({ value: item.value }), items];
   `);
   await runBuild(optionsFor(project));
   const result = await runBuild(optionsFor(project));
 
-  assert.equal(status(result, 'generator/packs/gameplay/items/many.ts'), 'cached');
-  assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPaths.gameplay, 'items/a.json'), 'utf8')), { value: 3 });
-  assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPaths.gameplay, 'items/b.json'), 'utf8')), { value: 4 });
+  assert.equal(status(result, 'generator/packs/gameplay/data/many.ts'), 'cached');
+  assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPaths.gameplay, 'data/a.json'), 'utf8')), { value: 3 });
+  assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPaths.gameplay, 'data/b.json'), 'utf8')), { value: 4 });
 });
 
 test('Node environment imports and side-effect modules keep evaluating', async (t) => {
@@ -114,7 +114,7 @@ test('Node environment imports and side-effect modules keep evaluating', async (
 
   project.config.bedrockCore.profiles.default.stages.generator = { types: false };
   await writeFile(project.configPath, JSON.stringify(project.config));
-  await put(project.project, 'packs/gameplay/items/environment.ts', `import process from 'node:process'; export default { value: process.env.BUILDER_INCREMENTAL_TEST };`);
+  await put(project.project, 'packs/gameplay/data/environment.ts', `import process from 'node:process'; export default { value: process.env.BUILDER_INCREMENTAL_TEST };`);
   t.after(() => {
     delete process.env.BUILDER_INCREMENTAL_TEST;
   });
@@ -123,9 +123,9 @@ test('Node environment imports and side-effect modules keep evaluating', async (
   process.env.BUILDER_INCREMENTAL_TEST = 'second';
   const result = await runBuild(optionsFor(project));
 
-  assert.equal(status(result, 'generator/packs/gameplay/items/environment.ts'), 'executed');
-  assert.equal(status(result, 'generator/compiled:packs/gameplay/items/environment.ts'), 'cached');
-  assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPaths.gameplay, 'items/environment.json'), 'utf8')), { value: 'second' });
+  assert.equal(status(result, 'generator/packs/gameplay/data/environment.ts'), 'executed');
+  assert.equal(status(result, 'generator/compiled:packs/gameplay/data/environment.ts'), 'cached');
+  assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPaths.gameplay, 'data/environment.json'), 'utf8')), { value: 'second' });
 });
 
 test('output formatting and unrelated config changes reuse existing compiled modules', async (t) => {
@@ -133,7 +133,7 @@ test('output formatting and unrelated config changes reuse existing compiled mod
 
   project.config.bedrockCore.profiles.default.stages.generator = { types: false };
   await writeFile(project.configPath, JSON.stringify(project.config));
-  await put(project.project, 'packs/gameplay/items/value.ts', 'export default { value: 5 };');
+  await put(project.project, 'packs/gameplay/data/value.ts', 'export default { value: 5 };');
   await runBuild(optionsFor(project));
   await runBuild(optionsFor(project));
   project.config.namespace = 'other_namespace';
@@ -141,10 +141,10 @@ test('output formatting and unrelated config changes reuse existing compiled mod
   await writeFile(project.configPath, JSON.stringify(project.config));
   const formatted = await runBuild(optionsFor(project));
 
-  assert.equal(status(formatted, 'generator/packs/gameplay/items/value.ts'), 'executed');
-  assert.equal(status(formatted, 'generator/compiled:packs/gameplay/items/value.ts'), 'cached');
+  assert.equal(status(formatted, 'generator/packs/gameplay/data/value.ts'), 'executed');
+  assert.equal(status(formatted, 'generator/compiled:packs/gameplay/data/value.ts'), 'cached');
   assert.equal(status(formatted, 'bundler/gameplay:scripts/main.js'), 'cached');
-  assert.equal(await readFile(path.join(formatted.outputPaths.gameplay, 'items/value.json'), 'utf8'), '{\n  "value": 5\n}\n');
+  assert.equal(await readFile(path.join(formatted.outputPaths.gameplay, 'data/value.json'), 'utf8'), '{\n  "value": 5\n}\n');
   project.config.bedrockCore.profiles.default.stages.bundler.debug = false;
   await writeFile(project.configPath, JSON.stringify(project.config));
   const release = await runBuild(optionsFor(project));
@@ -192,11 +192,11 @@ test('profile cache false compiles runtime templates again without persistent re
   project.config.bedrockCore.profiles.default.cache = false;
   project.config.bedrockCore.profiles.default.stages.generator = { types: false };
   await writeFile(project.configPath, JSON.stringify(project.config));
-  await put(project.project, 'packs/gameplay/items/runtime.ts', 'export default { value: Math.random() };');
+  await put(project.project, 'packs/gameplay/data/runtime.ts', 'export default { value: Math.random() };');
   await runBuild(optionsFor(project));
   const result = await runBuild(optionsFor(project));
 
-  assert.equal(status(result, 'generator/compiled:packs/gameplay/items/runtime.ts'), 'executed');
+  assert.equal(status(result, 'generator/compiled:packs/gameplay/data/runtime.ts'), 'executed');
   await assert.rejects(readFile(path.join(project.project, '.bedrock-core/cache/build')), { code: 'ENOENT' });
 });
 

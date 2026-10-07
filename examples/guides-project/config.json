@@ -1,0 +1,29 @@
+{
+  "$schema": "../../schemas/config.schema.json",
+  "type": "minecraftBedrock",
+  "name": "@bedrock-core guides example",
+  "authors": [],
+  "targetVersion": "1.26.50",
+  "namespace": "example_guides",
+  "worlds": [],
+  "packs": {
+    "logic": "./packs/BP",
+    "assets": "./packs/RP"
+  },
+  "bedrockCore": {
+    "formatVersion": "1.0.0",
+    "profiles": {
+      "default": {
+        "stages": {
+          "guides": {
+            "compileScreens": false
+          }
+        },
+        "export": {
+          "logic": "./dist/BP",
+          "assets": "./dist/RP"
+        }
+      }
+    }
+  }
+}

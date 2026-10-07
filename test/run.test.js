@@ -147,12 +147,9 @@ test('validation failure and cooperative cancellation prevent export', async (t)
   );
   await preservation(project.root);
 });
-test('unimplemented stages and unsafe output fail before plugins run', async (t) => {
+test('unsafe output fails before plugins run', async (t) => {
   const project = await fixture(t, 'throw new Error("plugin loaded");');
 
-  project.config.bedrockCore.profiles.default.stages = { guides: true };
-  await writeFile(project.configPath, JSON.stringify(project.config));
-  await assert.rejects(runBuild(project.options), /Stage implementation unavailable/);
   project.config.bedrockCore.profiles.default.export.behaviorPack = './packs/BP';
   await writeFile(project.configPath, JSON.stringify(project.config));
   await assert.rejects(runBuild(project.options), /separate directories/);

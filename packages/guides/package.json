@@ -1,0 +1,64 @@
+{
+  "name": "@bedrock-core/builder-guides",
+  "version": "0.1.0-alpha.0",
+  "type": "module",
+  "description": "Standalone typed Markdown and MDX guide compilation for @bedrock-core",
+  "exports": {
+    ".": "./src/index.ts",
+    "./screens": "./src/screens.ts",
+    "./types": "./src/types.ts",
+    "./internal/*": "./src/*.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "@types/mdast": "^4.0.4",
+    "mdast-util-definitions": "^6.0.0",
+    "mdast-util-to-string": "^4.0.0",
+    "picomatch": "^4.0.2",
+    "remark-directive": "^4.0.0",
+    "remark-frontmatter": "^5.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-mdx": "^3.1.0",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5",
+    "yaml": "^2.8.0"
+  },
+  "devDependencies": {
+    "@types/picomatch": "^4.0.2"
+  },
+  "license": "MIT",
+  "repository": {
+    "url": "git+https://github.com/bedrock-core/builder.git",
+    "directory": "packages/guides",
+    "type": "git"
+  },
+  "files": [
+    "dist/**",
+    "./README.md",
+    "./LICENSE"
+  ],
+  "publishConfig": {
+    "exports": {
+      "./types": {
+        "types": "./dist/src/types.d.ts",
+        "default": "./dist/src/types.js"
+      },
+      "./screens": {
+        "types": "./dist/src/screens.d.ts",
+        "default": "./dist/src/screens.js"
+      },
+      ".": {
+        "types": "./dist/src/index.d.ts",
+        "default": "./dist/src/index.js"
+      },
+      "./internal/*": {
+        "types": "./dist/src/*.d.ts",
+        "default": "./dist/src/*.js"
+      }
+    },
+    "access": "public",
+    "tag": "next"
+  }
+}

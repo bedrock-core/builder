@@ -1,0 +1,8 @@
+{
+  "format_version": 3,
+  "header": {
+    "name": "@bedrock-core builder acceptance theme", "description": "An independently exported resource pack",
+    "uuid": "8453c14b-69ad-4491-bc58-c54a44b5596f", "version": "1.0.0", "min_engine_version": "1.26.50"
+  },
+  "modules": [{ "type": "resources", "uuid": "564a0f0e-993f-437c-a1a9-09108cb7f7ae", "version": "1.0.0" }]
+}

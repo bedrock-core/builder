@@ -13,7 +13,7 @@ interface FilterEntry {
 const keys: Record<StageName, readonly string[]> = {
   'manifest': ['manifestPath', 'pretty'],
   'generator': ['include', 'exclude', 'pretty', 'types', 'schemaVersion', 'typesDir', 'strict', 'typePrefix', 'maxAgeHours'],
-  'guides': [],
+  'guides': ['namespace', 'sourceDir', 'defaultLocale', 'include', 'exclude', 'manifestPath', 'maxCodeLineBytes', 'strictLocales', 'compileScreens', 'screensDir', 'screenTitle', 'componentsModule', 'pretty'],
   'i18n': ['namespace', 'sourceDir', 'defaultLocale', 'strict', 'vanilla', 'vanillaLangUrlTemplate', 'cacheMaxAgeHours', 'pretty'],
   'ui-compiler': ['namespace', 'testMetadata', 'stamp', 'screens', 'pretty'],
   'bundler': ['debug', 'tsConfigPath'],
@@ -71,12 +71,6 @@ function settingsFor(
 ): StageSelection {
   const { stage, settings, location } = entry;
 
-  if (stage === 'guides') {
-    report('stage-unavailable', location, `The ${stage} builder stage is not implemented. Keep this profile on Regolith until its integration is available.`);
-
-    return Object.keys(settings).length ? settings : 'auto';
-  }
-
   const converted: Settings = {};
 
   function pattern(value: unknown, key: string): unknown {
@@ -100,7 +94,7 @@ function settingsFor(
   }
 
   for (const [key, value] of Object.entries(settings)) {
-    if (key === 'namespace' && stage !== 'i18n' && stage !== 'ui-compiler') {
+    if (key === 'namespace' && stage !== 'i18n' && stage !== 'ui-compiler' && stage !== 'guides') {
       continue;
     }
 
@@ -133,7 +127,7 @@ function settingsFor(
       continue;
     }
 
-    if (key === 'include' || key === 'exclude') {
+    if ((key === 'include' || key === 'exclude') && stage !== 'guides') {
       converted[key] = Array.isArray(value) ? value.map(value => pattern(value, key)) : pattern(value, key);
     } else if (key === 'screens' && Array.isArray(value)) {
       converted.screens = value.map((source) => {
@@ -145,11 +139,17 @@ function settingsFor(
 
         return mapped.startsWith('.') || path.isAbsolute(mapped) ? mapped : `./${mapped}`;
       });
-    } else if (key === 'sourceDir' && typeof value === 'string') {
-      converted.sourceDir = projectPath(value, packs, dataPath, report, location);
+    } else if (['sourceDir', 'manifestPath', 'screensDir', 'componentsModule'].includes(key) && typeof value === 'string' && value !== '') {
+      converted[key] = projectPath(value, packs, dataPath, report, location);
     } else {
       converted[key === 'tsConfigPath' ? 'tsconfig' : key] = structuredClone(value);
     }
+  }
+
+  if (stage === 'guides') {
+    converted.sourceDir ??= projectPath('data/guides', packs, dataPath, report, location);
+    converted.screensDir ??= projectPath('BP/scripts/guides', packs, dataPath, report, location);
+    report('guides-declarations', location, 'Include .bedrock-core/generated/guides in tsconfig. Runtime imports use @bedrock-core/generated/guides.', 'warning');
   }
 
   if (stage === 'i18n') {

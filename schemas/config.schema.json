@@ -247,7 +247,11 @@
               "description": "Omission or auto detects inputs; false disables; true or settings enables the stage even without detected inputs."
             },
             "guides": {
-              "$ref": "#/definitions/stage"
+              "anyOf": [
+                { "const": "auto" },
+                { "type": "boolean" },
+                { "$ref": "./guides.schema.json" }
+              ]
             },
             "i18n": {
               "anyOf": [

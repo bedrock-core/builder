@@ -1,0 +1,19 @@
+{
+  "format_version": 3,
+  "header": {
+    "name": "@bedrock-core guides example",
+    "description": "Generated guide data and translations",
+    "uuid": "e12d7c3c-5cb9-4360-b2f1-04443507b5b2",
+    "version": "1.0.0",
+    "min_engine_version": "1.26.50"
+  },
+  "modules": [
+    {
+      "type": "script",
+      "language": "javascript",
+      "entry": "scripts/main.js",
+      "uuid": "6b1f4b26-cbb3-4b70-a813-bb5da5af92a5",
+      "version": "1.0.0"
+    }
+  ]
+}

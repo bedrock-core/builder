@@ -70,6 +70,7 @@ export type UiRequest
     | { kind: 'link'; screens: ScreenData[]; namespace: string };
 
 export interface UiLibrary {
+  guides?: Record<string, unknown>;
   ui: Record<string, unknown>;
   jsx: Record<string, unknown>;
   compiler: {

@@ -1,5 +1,6 @@
 import type { PackInfo } from './packs.ts';
 import type { StageName } from './config.ts';
+import type { ContentValidationResult } from '@bedrock-core/builder-validation';
 
 export interface Artifact {
   readonly id: string;
@@ -44,6 +45,7 @@ export interface BuildOptions {
   validateArtifacts?: (context: BuildContext) => void | Promise<void>;
 }
 export interface BuildResult {
+  readonly validation: ContentValidationResult;
   readonly outputPaths: Readonly<Record<string, string>>;
   readonly profile: string;
   readonly stages: { stage: StageName; status: 'executed' | 'skipped' | 'cached'; reason?: string }[];

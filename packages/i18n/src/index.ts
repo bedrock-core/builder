@@ -63,6 +63,24 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
   const pending = new Map<string, string>();
   const declarations: string[] = [];
   const result: I18nResult = { files: [], inputs: [], declarations, warnings };
+  const packs = (options.packs ?? []).map(pack => ({ ...pack, path: path.resolve(root, pack.path) }));
+  const localeNames = new Set(files.keys());
+
+  for (const pack of packs) {
+    const directory = path.join(pack.path, 'texts');
+
+    inputs.add(directory);
+
+    if (fs.existsSync(directory)) {
+      for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+        const match = /^([a-z]{2}_[A-Z]{2})\.lang$/.exec(entry.name);
+
+        if (match && entry.isFile()) {
+          localeNames.add(match[1]);
+        }
+      }
+    }
+  }
 
   if (options.tsconfig) {
     inputs.add(path.resolve(root, options.tsconfig));
@@ -109,7 +127,7 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
 
   assertValid();
 
-  if (!files.size) {
+  if (!localeNames.size) {
     return { ...result, inputs: [...inputs] };
   }
 
@@ -117,11 +135,11 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
     error('namespace', 'must be lowercase a-z0-9_');
   }
 
-  if (!files.has(defaultLocale)) {
+  if ((files.size && !files.has(defaultLocale)) || !localeNames.has(defaultLocale)) {
     error('defaultLocale', `${defaultLocale} has no resource module; it must define the resource shape`);
   }
 
-  for (const locale of files.keys()) {
+  for (const locale of localeNames) {
     if (!BEDROCK_LOCALES.has(locale)) {
       problem(locale, 'not a locale code the Bedrock client ships');
     }
@@ -149,6 +167,12 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
 
     for (const [locale, file] of files) {
       ownRaw.set(locale, await load(file, locale));
+    }
+
+    for (const locale of localeNames) {
+      if (!ownRaw.has(locale)) {
+        ownRaw.set(locale, new Map(ownRaw.get(defaultLocale)));
+      }
     }
 
     const libs = discoverI18nLibs(options.dependencyRoot ?? root, inputs);
@@ -272,7 +296,6 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
       problem(base, 'plural group requires its _other form');
     }
 
-    const packs = (options.packs ?? []).map(pack => ({ ...pack, path: path.resolve(root, pack.path) }));
     const vanillaTables = new Map<string, Table>();
     let vanillaKeys = new Set<string>();
 
@@ -298,7 +321,7 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
 
       const used = [...scanVanillaUsage(sources, vanillaKeys)].sort();
 
-      for (const locale of files.keys()) {
+      for (const locale of localeNames) {
         let table = vanillaDefault;
 
         if (locale !== defaultLocale) {
@@ -322,7 +345,7 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
 
     const tables = new Map<string, Table>();
 
-    for (const locale of files.keys()) {
+    for (const locale of localeNames) {
       const combined: Table = new Map();
 
       for (const [branch, group] of groups) {
@@ -366,7 +389,7 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
 
     const args: Record<string, string[]> = Object.create(null);
 
-    for (const locale of [defaultLocale, ...files.keys()]) {
+    for (const locale of [defaultLocale, ...localeNames]) {
       for (const [key, value] of tables.get(locale)!) {
         const variables = templateVars(value);
 
@@ -396,7 +419,7 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
 
     const languagePacks = new Set<string>();
 
-    for (const locale of files.keys()) {
+    for (const locale of localeNames) {
       const extra: Table = new Map();
 
       for (const pack of extraPacks) {
@@ -467,7 +490,7 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
         }
       }
 
-      pending.set(file, jsonText([...new Set([...existing, ...files.keys()])], options.pretty));
+      pending.set(file, jsonText([...new Set([...existing, ...localeNames])], options.pretty));
     }
 
     const bundlePath = path.join(outputDir, 'i18n.generated.json');
@@ -475,13 +498,14 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
     pending.set(bundlePath, jsonText(bundle, options.pretty));
 
     if (options.types !== false) {
-      const authoredFile = path.join(options.declarationRoot ?? root, path.relative(root, files.get(defaultLocale)!));
-      const relative = path.relative(typesDir, authoredFile).replaceAll('\\', '/');
+      const authoredSource = files.get(defaultLocale);
+      const authoredFile = authoredSource ? path.join(options.declarationRoot ?? root, path.relative(root, authoredSource)) : undefined;
+      const relative = authoredFile ? path.relative(typesDir, authoredFile).replaceAll('\\', '/') : undefined;
       const declarationFile = path.join(typesDir, 'i18n.generated.d.ts');
 
       pending.set(declarationFile, bundleDtsText({
         defaultLocale,
-        ownModule: relative.startsWith('.') ? relative : `./${relative}`,
+        ownModule: relative ? relative.startsWith('.') ? relative : `./${relative}` : undefined,
         vanilla: options.vanilla ?? false,
         libs: [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([branch, group]) => ({ namespace: branch, typeRefs: group.typeRefs.sort() })),
       }));

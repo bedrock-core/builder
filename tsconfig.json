@@ -24,6 +24,7 @@
     "**/node_modules/**",
     "**/dist/**",
     "examples/generator-project/**",
-    "examples/i18n-project/**"
+    "examples/i18n-project/**",
+    "examples/guides-project/**"
   ]
 }
