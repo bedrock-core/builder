@@ -29,11 +29,6 @@
     "@types/picomatch": "^4.0.2"
   },
   "license": "MIT",
-  "repository": {
-    "url": "git+https://github.com/bedrock-core/builder.git",
-    "directory": "packages/guides",
-    "type": "git"
-  },
   "files": [
     "dist/**",
     "./README.md",
@@ -60,5 +55,6 @@
     },
     "access": "public",
     "tag": "next"
-  }
+  },
+  "private": true
 }

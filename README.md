@@ -5,8 +5,9 @@ in an isolated staged project and validates pack content before exporting. Manif
 guides, i18n, UI compiler and bundler stages activate automatically when their inputs exist.
 Library callers can supply stage functions and additional artifact checks.
 
-Install the prerelease with `yarn add --dev @bedrock-core/builder@next`, then run
-`yarn bc-build build config.json` or `yarn bc-build watch config.json`.
+Run locally with `yarn build path/to/config.json` or `yarn watch path/to/config.json`.
+All packages are private. `yarn release` prepares and verifies local package archives;
+registry publication is disabled.
 
 ## Inspect a plan
 

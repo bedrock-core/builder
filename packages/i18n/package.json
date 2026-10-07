@@ -14,11 +14,6 @@
     "@bedrock-core/builder-bundler": "workspace:*"
   },
   "license": "MIT",
-  "repository": {
-    "url": "git+https://github.com/bedrock-core/builder.git",
-    "directory": "packages/i18n",
-    "type": "git"
-  },
   "files": [
     "dist/**",
     "./README.md",
@@ -37,5 +32,6 @@
     },
     "access": "public",
     "tag": "next"
-  }
+  },
+  "private": true
 }

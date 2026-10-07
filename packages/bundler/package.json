@@ -16,11 +16,6 @@
     "typescript": "5.9.3"
   },
   "license": "MIT",
-  "repository": {
-    "url": "git+https://github.com/bedrock-core/builder.git",
-    "directory": "packages/bundler",
-    "type": "git"
-  },
   "files": [
     "dist/**",
     "./README.md",
@@ -43,5 +38,6 @@
     },
     "access": "public",
     "tag": "next"
-  }
+  },
+  "private": true
 }

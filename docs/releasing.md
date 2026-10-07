@@ -1,11 +1,14 @@
 # @bedrock-core release packages
 
-The repository publishes `@bedrock-core/builder` and six independently installable
+The repository prepares `@bedrock-core/builder` and six independently installable
 packages: `builder-bundler`, `builder-generator`, `builder-guides`, `builder-i18n`,
 `builder-ui` and `builder-validation`, all under the `@bedrock-core` scope.
 The builder depends on these packages to supply its automatic stages. Install a
 standalone package when a tool needs only that function; its README lists build-time
 dependencies and any runtime requirements of generated output.
+
+The repository remains local and all package manifests are private. `yarn release`
+runs the local checks and prepares archives without publishing anything.
 
 Source development runs typed TypeScript directly on Node 22.18 or newer. Published
 packages expose JavaScript and declarations because Node does not strip TypeScript
@@ -43,17 +46,20 @@ world. Two GameTests verify engine registration of the generated item and runtim
 to generated loot, guide and translation imports. Server acceptance does not test rendered
 JSON UI or client interaction. Keep client validation separate from this gate.
 
-## Publish
+## Registry publication
 
-The initial release is `0.1.0-alpha.0` on the `next` tag. All packages use public access.
-Authenticate through Yarn, then run the complete release gate:
+The preview archive version is `0.1.0-alpha.0`. Registry publication is disabled while
+any package is private. To enable a future public release, set all package manifests
+to public, configure their repository metadata, authenticate through Yarn, and run:
 
 ```sh
 yarn npm login --scope bedrock-core
 yarn release
+yarn publish-release
 ```
 
-The publication script publishes dependencies before the builder and verifies each
+The publication script uses public access and the `next` tag, publishes dependencies
+before the builder and verifies each
 registry tarball's integrity against the checked archive. Repeating a partial release
 skips only identical published versions; a different registry archive fails. Version
 changes must be applied to all seven package manifests before preparing new archives.

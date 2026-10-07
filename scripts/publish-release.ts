@@ -11,9 +11,18 @@ const packages = JSON.parse(await readFile(path.join(directory, 'index.json'), '
 const verification = JSON.parse(await readFile(path.join(directory, 'verified.json'), 'utf8')) as { integrities: Record<string, string> };
 const dryRun = process.argv.includes('--dry-run');
 
+if (!dryRun) {
+  for (const pkg of packages) {
+    const manifest = JSON.parse(await readFile(path.join(root, pkg.workspace, 'package.json'), 'utf8')) as { private?: boolean };
+
+    if (manifest.private) {
+      throw new Error(`Registry publication is disabled for private package ${pkg.name}`);
+    }
+  }
+}
+
 for (const pkg of packages) {
   const registry = `https://registry.npmjs.org/${encodeURIComponent(pkg.name)}/${pkg.version}`;
-  const existing = await fetch(registry);
   const integrity = `sha512-${createHash('sha512').update(await readFile(path.join(directory, pkg.file))).digest('base64')}`;
 
   if (verification.integrities[pkg.name] !== integrity) {
@@ -35,6 +44,13 @@ for (const pkg of packages) {
     await rm(candidate, { recursive: true, force: true });
   }
 
+  if (dryRun) {
+    console.log(`@bedrock-core/builder: checked ${pkg.name}@${pkg.version} archive (local dry run)`);
+    continue;
+  }
+
+  const existing = await fetch(registry);
+
   if (existing.ok) {
     const published = await existing.json() as { dist: { integrity: string } };
 
@@ -48,11 +64,6 @@ for (const pkg of packages) {
 
   if (existing.status !== 404) {
     throw new Error(`Cannot check ${pkg.name}: registry HTTP ${existing.status}`);
-  }
-
-  if (dryRun) {
-    console.log(`@bedrock-core/builder: checked ${pkg.name}@${pkg.version} for publication (dry run)`);
-    continue;
   }
 
   yarn(['workspace', pkg.name, 'npm', 'publish', '--access', 'public', '--tag', 'next'], root);

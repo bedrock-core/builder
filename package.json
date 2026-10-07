@@ -39,7 +39,8 @@
     "test:packages": "node scripts/verify-packages.ts",
     "acceptance": "node scripts/acceptance.ts",
     "acceptance:native": "node scripts/acceptance.ts --native",
-    "release": "yarn check && yarn acceptance && yarn pack-release && yarn test:packages && node scripts/publish-release.ts"
+    "release": "yarn check && yarn acceptance && yarn pack-release && yarn test:packages",
+    "publish-release": "node scripts/publish-release.ts"
   },
   "engines": {
     "node": ">=22.18"
@@ -72,10 +73,6 @@
   ],
   "packageManager": "yarn@4.16.0",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/bedrock-core/builder.git"
-  },
   "files": [
     "dist/**",
     "./README.md",
@@ -133,5 +130,6 @@
   },
   "bin": {
     "bc-build": "./bin/builder.ts"
-  }
+  },
+  "private": true
 }
