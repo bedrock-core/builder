@@ -114,6 +114,24 @@ test('referenced profiles flatten and template paths follow authored pack roots'
   assert.equal(stages.i18n.sourceDir, './packs/data/i18n');
 });
 
+test('UI settings migrate local screen modules as project paths and preserve package imports', () => {
+  const config = legacy();
+
+  config.regolith.profiles.default.filters = [{ filter: 'ui-compiler', settings: {
+    namespace: 'screens', testMetadata: true, stamp: true, pretty: { size: 2 },
+    screens: ['./BP/scripts/screens.ts', './data/screens.ts', '@bedrock-core/catalog/compiled'],
+  } }];
+  const result = migrateRegolithConfig(config);
+
+  assert.equal(result.ready, true);
+  validateConfig(result.config);
+  assert.deepEqual(result.config.bedrockCore.profiles.default.stages['ui-compiler'], {
+    namespace: 'screens', testMetadata: true, stamp: true, pretty: { size: 2 },
+    screens: ['./packs/BP/scripts/screens.ts', './packs/data/screens.ts', '@bedrock-core/catalog/compiled'],
+  });
+  assert.equal(codes(result).length, 0);
+});
+
 test('disabled filters and profile references cannot activate automatic stages', () => {
   const config = legacy();
 
@@ -173,7 +191,6 @@ test('unsupported behavior is reported rather than dropped or reordered', () => 
     ['filter-setting', (config) => { config.regolith.profiles.default.filters[1].settings.entry = 'other.ts'; }],
     ['manifest-variant', (config) => { config.regolith.profiles.default.filters[0].settings = { manifestPath: 'BP/manifest.test.json' }; }],
     ['stage-unavailable', (config) => { config.regolith.profiles.default.filters = [{ filter: 'guides' }]; }],
-    ['stage-unavailable', (config) => { config.regolith.profiles.default.filters = [{ filter: 'ui-compiler' }]; }],
     ['export-target', (config) => { config.regolith.profiles.default.export = { target: 'none' }; }],
     ['export-target', (config) => { config.regolith.profiles.default.export = { target: 'world', worldPath: './worlds/test' }; }],
     ['multiple-exports', (config) => { config.regolith.profiles.default.export = [{ target: 'local' }, { target: 'development' }]; }],

@@ -1,8 +1,8 @@
 # @bedrock-core/builder
 
 Build tools for TS/JS Bedrock projects. This private package resolves plans and executes trusted
-plugins in an isolated staged project. Manifest, generator, i18n and bundler stages are integrated; other built-in
-compilers and full Minecraft content validation remain pending. Library callers can supply stage
+plugins in an isolated staged project. Manifest, generator, i18n, UI compiler and bundler stages are integrated;
+guides and full Minecraft content validation remain pending. Library callers can supply stage
 functions and a final artifact validator.
 
 ## Inspect a plan
@@ -33,7 +33,7 @@ Library callers can use `validateConfig` from `@bedrock-core/builder/config`.
 
 The schema requires `authors` and preserves unused top-level metadata and other tool
 namespaces, and rejects unknown builder fields, stage names and malformed hook placement.
-Manifest, generator, i18n and bundler options have schemas under `schemas/`; plugin settings remain extensible.
+Manifest, generator, i18n, UI compiler and bundler options have schemas under `schemas/`; plugin settings remain extensible.
 Cross-reference checks (plugin names and enabled boundaries) belong to the planner. Each profile's
 `export` maps configured pack IDs to destination paths; the runner checks that every pack has one.
 Watch settings belong to each profile; script entries come from pack manifests.
@@ -70,7 +70,7 @@ Later compiler stages resolve it automatically. `context.generatedImports` expos
 build's registered names. Import names have one owner; conflicting producers fail the build.
 
 `runBuild` from `@bedrock-core/builder/runner` accepts named stage functions and `validateArtifacts`.
-Manifest, generator, i18n and bundler stages load when needed. Explicitly enabled unavailable stages
+Manifest, generator, i18n, UI compiler and bundler stages load when needed. Explicitly enabled unavailable stages
 fail before plugins run; automatically detected unavailable stages fail at their boundary.
 `BuildResult.stages` and build logs report `executed`, `skipped` or `cached` for each participating
 stage. Default validation checks registered files and v3 manifest integrity. Full
@@ -102,13 +102,13 @@ enables it even without detected inputs. Installed npm packages do not activate 
 | Generator | `.ts` templates inside packs, excluding `scripts/` and declarations |
 | Guides | `guides/**/*.md` or `.mdx` |
 | i18n | `i18n/<locale>.ts`, `.js`, `.mts` or `.mjs` |
-| UI compiler | Pack `scripts/**/*.screen.tsx` modules |
+| UI compiler | Pack `scripts/**/*.screen.tsx`, generated UI imports, or framework declarations with an installed UI toolkit |
 | Bundler | Script modules declared in staged manifests |
 
 Detection runs after each stage's before hooks. After hooks run even when automatic detection
 skips a stage. Explicitly disabled stages have no boundary, so hooks targeting them are rejected.
-Guides and UI compilation remain unimplemented; their detected inputs report an unavailable-stage
-error unless that stage is disabled.
+Guides remain unimplemented; their detected inputs report an unavailable-stage error unless
+that stage is disabled.
 
 For example, a profile can skip translations while bundling detected scripts:
 
@@ -122,15 +122,15 @@ For example, a profile can skip translations while bundling detected scripts:
 The intended distribution separates the runner and independently installable stage packages.
 A shared plugin contract has no Minecraft runtime dependency.
 Standalone stage functions accept explicit inputs and return artifacts; builder adapters schedule
-them. `packages/bundler`, `packages/generator` and `packages/i18n` implement this boundary;
-guides and UI compilation remain pending.
+them. `packages/bundler`, `packages/generator`, `packages/i18n` and `packages/ui-compiler`
+implement this boundary; guides remain pending.
 
 | Component   | Build-time purpose                                | Standalone boundary                                                         |
 | ----------- | ------------------------------------------------- | --------------------------------------------------------------------------- |
 | Runner      | Configuration, scheduling, staging and export     | No server/UI runtime required                                               |
 | Manifest    | Apply profile overrides to staged manifests                       | Explicit manifest inputs and outputs                                        |
 | Generator   | Execute typed content templates                   | Shared esbuild bundler and template dependencies; no framework runtime       |
-| Bundler     | Compile an explicit TS/JS entry                   | esbuild and TypeScript config parsing; screen JSX integration is pending    |
+| Bundler     | Compile an explicit TS/JS entry                   | esbuild and TypeScript config parsing; shared UI JSX transform when UI is active |
 | i18n        | Generate language files and translation artifacts | Shared esbuild bundler; runtime translation helpers when code uses them     |
 | Guides      | Compile guide content                             | MDX tooling; translations and guide runtime when content requires them      |
 | UI compiler | Compile screen modules into pack assets           | UI compiler libraries; runtime registration dependencies for generated code |
@@ -169,9 +169,45 @@ Stage logs distinguish compilation from template evaluation. Set `"cache": false
 registration and dependency tracking. Final validation and coordinated export always run.
 
 See [automatic compilation reuse](docs/incremental.md) for examples and dependency boundaries.
-UI compilation is not integrated yet. Staging and export still copy complete packs, and the
-first build compiles every file. Schema declarations and optional vanilla downloads keep their
+UI screen modules and rendered results also reuse their unchanged inputs. The shared toolkit
+is bundled once, and the current screen set is linked into complete pack outputs each build.
+Staging and export still copy complete packs, and the first build compiles every file.
+Schema declarations and optional vanilla downloads keep their
 own content/freshness caches.
+
+## UI compilation
+
+Place default-exported screen components in pack `scripts/**/*.screen.tsx` files. The UI stage
+uses the addon's installed compiler, runtime, JSX and translation libraries. It emits the
+current screen set into every configured resource pack, merges vanilla hooks, writes language
+sections and updates container hosts in their owning behavior packs. Compiled screens require
+a resource pack; container screens also require their named entity or block definition.
+
+The project namespace is the default UI namespace. Manifest script entries receive runtime
+registration automatically. Static form screens ship their compiled tables; live screens keep
+their component imports. UI conditional JSX is transformed identically during compilation
+and script bundling. No extra entry point or generated import map is required.
+
+Framework declarations in manifest entries are evaluated with `core.register` intercepted.
+Tagged apps provide their `compiled` modules, default screen records and optional `shape()`
+exports. Shape functions receive declared data and manifest display fields. Additional local
+or package screen records can be selected with `screens`.
+
+```json
+{
+  "stages": {
+    "ui-compiler": { "testMetadata": true, "pretty": { "size": 2 } }
+  }
+}
+```
+
+`namespace`, `testMetadata`, `stamp`, `screens`, `tsconfig` and `pretty` are described by
+`schemas/ui-compiler.schema.json`. Set the stage to `false` to disable it. Editor screen keys
+live in `.bedrock-core/generated/ui/screens.generated.d.ts`. Include that declaration in the
+project tsconfig. The generated runtime import is `@bedrock-core/generated/ui` (`ui:bundle`).
+The optional metadata sidecar fingerprints the UI bytes emitted by this stage.
+
+See [the UI adapter package](packages/ui-compiler/README.md) for standalone APIs and dependencies.
 
 ## Extension vocabulary
 

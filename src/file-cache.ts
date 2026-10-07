@@ -173,10 +173,11 @@ export async function createFileCache(options: FileCacheOptions): Promise<FileCa
   const roots = Object.entries(options.roots).map(([name, root]) => [name, path.resolve(root)] as const)
     .sort((a, b) => b[1].length - a[1].length);
   const file = path.join(options.directory, 'files.json');
+  const entries = path.join(options.directory, 'entries');
   const implementation = digest(await readFile(new URL(import.meta.url)));
-  let enabled = options.enabled !== false && await regularParents(file);
-  let previous: Record<string, RecordEntry> = {};
-  const current: Record<string, RecordEntry> = Object.create(null);
+  let enabled = options.enabled !== false && await regularParents(file) && await regularParents(path.join(entries, 'entry.json'));
+  let previous: Record<string, string> = {};
+  const current: Record<string, RecordEntry | string> = Object.create(null);
   const used = new Set<string>();
   const snapshots = new Map<string, Promise<string | undefined>>();
   const identities = new Map<string, boolean>();
@@ -275,15 +276,41 @@ export async function createFileCache(options: FileCacheOptions): Promise<FileCa
       if (!info.isFile() || info.isSymbolicLink()) {
         enabled = false;
       } else {
-        const record = JSON.parse(await readFile(file, 'utf8')) as { version?: number; files?: Record<string, RecordEntry> };
+        const record = JSON.parse(await readFile(file, 'utf8')) as { version?: number; files?: Record<string, string> };
 
-        if (record.version === 1 && record.files && typeof record.files === 'object') {
+        if (record.version === 2 && record.files && typeof record.files === 'object') {
           previous = record.files;
         }
       }
     } catch (error) {
       if (!(error instanceof SyntaxError) && (error as NodeJS.ErrnoException).code !== 'ENOENT') {
         options.warn?.(`Unable to read file cache: ${String(error)}`);
+      }
+    }
+  }
+
+  async function readEntry(reference: unknown): Promise<RecordEntry | undefined> {
+    if (typeof reference !== 'string' || !/^[a-f0-9]{64}$/.test(reference)) {
+      return;
+    }
+
+    const file = path.join(entries, `${reference}.json`);
+
+    try {
+      const info = await lstat(file);
+
+      if (!info.isFile() || info.isSymbolicLink()) {
+        return;
+      }
+
+      const record = JSON.parse(await readFile(file, 'utf8')) as RecordEntry;
+
+      return record?.hash === reference ? record : undefined;
+    } catch (error) {
+      options.signal?.throwIfAborted();
+
+      if (!(error instanceof SyntaxError) && !['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) {
+        options.warn?.(`Unable to read compiled cache entry: ${String(error)}`);
       }
     }
   }
@@ -307,11 +334,12 @@ export async function createFileCache(options: FileCacheOptions): Promise<FileCa
       used.add(id);
       const seeds = [...new Set(compilation.inputs.map(file => path.resolve(file)))].sort().map(location);
       const key = digest(json({ node: process.versions.node, implementation, key: compilation.key ?? null }));
-      const candidate = previous[id];
+      const reference = previous[id];
+      const candidate = enabled && compilation.cache !== false ? await readEntry(reference) : undefined;
       let hit = enabled && compilation.cache !== false && candidate?.key === key
         && JSON.stringify(candidate.seeds) === JSON.stringify(seeds);
 
-      if (hit) {
+      if (hit && candidate) {
         try {
           const { hash, ...body } = candidate;
 
@@ -354,7 +382,7 @@ export async function createFileCache(options: FileCacheOptions): Promise<FileCa
         }
       }
 
-      if (hit) {
+      if (hit && candidate) {
         const files: string[] = [];
         const inputs = candidate.inputs.map(input => resolve(input)!);
 
@@ -368,7 +396,7 @@ export async function createFileCache(options: FileCacheOptions): Promise<FileCa
           files.push(destination);
         }
 
-        current[id] = candidate;
+        current[id] = reference;
         await report(inputs);
         results.push({ id, status: 'cached' });
 
@@ -434,12 +462,12 @@ export async function createFileCache(options: FileCacheOptions): Promise<FileCa
       try {
         options.signal?.throwIfAborted();
 
-        if (!await regularParents(file)) {
+        if (!await regularParents(file) || !await regularParents(path.join(entries, 'entry.json'))) {
           return;
         }
 
-        await mkdir(options.directory, { recursive: true });
-        const records = { ...previous, ...current };
+        await mkdir(entries, { recursive: true });
+        const records = { ...previous };
 
         // An output hit may skip its compiler entirely. Keep that compiler's record.
         for (const id of used) {
@@ -448,9 +476,39 @@ export async function createFileCache(options: FileCacheOptions): Promise<FileCa
           }
         }
 
-        await writeFile(candidate, JSON.stringify({ version: 1, files: records }), { flag: 'wx' });
+        // Store each compilation separately: large fixture projects exceed the
+        // maximum JavaScript string size when all values share one JSON document.
+        for (const [id, record] of Object.entries(current)) {
+          options.signal?.throwIfAborted();
+
+          if (typeof record === 'string') {
+            records[id] = record;
+            continue;
+          }
+
+          const output = path.join(entries, `${record.hash}.json`);
+          const temporary = `${output}.${randomUUID()}.tmp`;
+
+          try {
+            await writeFile(temporary, json(record), { flag: 'wx' });
+            await rename(temporary, output);
+            records[id] = record.hash;
+          } finally {
+            await rm(temporary, { force: true });
+          }
+        }
+
+        await writeFile(candidate, JSON.stringify({ version: 2, files: records }), { flag: 'wx' });
         options.signal?.throwIfAborted();
         await rename(candidate, file);
+
+        const retained = new Set(Object.values(records));
+
+        for (const reference of new Set(Object.values(previous))) {
+          if (typeof reference === 'string' && /^[a-f0-9]{64}$/.test(reference) && !retained.has(reference)) {
+            await rm(path.join(entries, `${reference}.json`), { force: true });
+          }
+        }
       } catch (error) {
         options.signal?.throwIfAborted();
         options.warn?.(`Unable to save file cache: ${String(error)}`);

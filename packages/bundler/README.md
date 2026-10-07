@@ -20,7 +20,9 @@ finishes before output writes. The standalone API replaces its declared bundle/m
 not stage files or provide transactional export. Other files remain intact.
 
 `dependencyRoot` supplies the original project's npm installation for staged sources. Staged
-resolution runs first, preserving tsconfig aliases. `aliases` maps exact generated imports to
+resolution runs first, preserving tsconfig aliases. With `projectModules: true`, toolkit imports
+under `@bedrock-core/` resolve from `dependencyRoot` first so linked packages share the addon's
+instances. `aliases` maps exact generated imports to
 files; missing `@bedrock-core/generated/*` imports report a missing producer. The result contains
 output paths, input dependencies, resolution candidates (`watchFiles`), a conservative
 `cacheable` flag and esbuild metadata. Cancellation accepts an AbortSignal.
@@ -45,6 +47,10 @@ tsconfig path mappings, inherited configs and JSONC configs. Compiler option cha
 their compiled output. Profile `cache: false` disables reuse. Final pack validation and publication
 always run. Standalone `bundleScripts` calls compile each time; the runner manages reuse automatically.
 
-Screen JSX transforms, JSON5 support and Regolith parity remain pending. `.screen.tsx` modules
-fail explicitly until UI transformation is integrated. The default `es2020` compilation target
-does not establish Minecraft runtime compatibility.
+`jsxImportSource` selects automatic JSX runtime imports. `transformScreen` transforms
+`.screen.tsx` source before bundling. The builder UI integration provides the shared conditional
+JSX transform automatically; standalone callers can import it from
+`@bedrock-core/builder-ui/transform`. Screen modules require this transform.
+
+JSON5 support and broader Regolith parity remain pending. The default `es2020` compilation
+target does not establish Minecraft runtime compatibility.

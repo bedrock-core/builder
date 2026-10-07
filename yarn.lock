@@ -43,6 +43,16 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@bedrock-core/builder-ui@workspace:packages/ui-compiler":
+  version: 0.0.0-use.local
+  resolution: "@bedrock-core/builder-ui@workspace:packages/ui-compiler"
+  dependencies:
+    "@bedrock-core/builder-bundler": "workspace:*"
+    esbuild: "npm:0.25.12"
+    typescript: "npm:5.9.3"
+  languageName: unknown
+  linkType: soft
+
 "@bedrock-core/builder@workspace:.":
   version: 0.0.0-use.local
   resolution: "@bedrock-core/builder@workspace:."

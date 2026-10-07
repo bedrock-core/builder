@@ -264,7 +264,11 @@
               "description": "Omission or auto detects inputs; false disables; true or settings enables the stage even without detected inputs."
             },
             "ui-compiler": {
-              "$ref": "#/definitions/stage"
+              "anyOf": [
+                { "const": "auto" },
+                { "type": "boolean" },
+                { "$ref": "./ui-compiler.schema.json" }
+              ]
             },
             "bundler": {
               "anyOf": [

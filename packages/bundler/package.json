@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Standalone TS/JS script bundling for @bedrock-core projects",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./dependencies": "./src/dependencies.ts"
   },
   "engines": {
     "node": ">=22.18"

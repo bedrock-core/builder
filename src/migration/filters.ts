@@ -1,3 +1,4 @@
+import path from 'node:path';
 import type { StageName, StageSelection, Settings } from '../config.ts';
 import { stages } from '../plan.ts';
 import type { FilterKind, MigrationOptions, ReportDiagnostic } from './types.ts';
@@ -14,7 +15,7 @@ const keys: Record<StageName, readonly string[]> = {
   'generator': ['include', 'exclude', 'pretty', 'types', 'schemaVersion', 'typesDir', 'strict', 'typePrefix', 'maxAgeHours'],
   'guides': [],
   'i18n': ['namespace', 'sourceDir', 'defaultLocale', 'strict', 'vanilla', 'vanillaLangUrlTemplate', 'cacheMaxAgeHours', 'pretty'],
-  'ui-compiler': [],
+  'ui-compiler': ['namespace', 'testMetadata', 'stamp', 'screens', 'pretty'],
   'bundler': ['debug', 'tsConfigPath'],
 };
 
@@ -70,7 +71,7 @@ function settingsFor(
 ): StageSelection {
   const { stage, settings, location } = entry;
 
-  if (stage === 'guides' || stage === 'ui-compiler') {
+  if (stage === 'guides') {
     report('stage-unavailable', location, `The ${stage} builder stage is not implemented. Keep this profile on Regolith until its integration is available.`);
 
     return Object.keys(settings).length ? settings : 'auto';
@@ -99,7 +100,7 @@ function settingsFor(
   }
 
   for (const [key, value] of Object.entries(settings)) {
-    if (key === 'namespace' && stage !== 'i18n') {
+    if (key === 'namespace' && stage !== 'i18n' && stage !== 'ui-compiler') {
       continue;
     }
 
@@ -134,6 +135,16 @@ function settingsFor(
 
     if (key === 'include' || key === 'exclude') {
       converted[key] = Array.isArray(value) ? value.map(value => pattern(value, key)) : pattern(value, key);
+    } else if (key === 'screens' && Array.isArray(value)) {
+      converted.screens = value.map((source) => {
+        if (typeof source !== 'string' || !source.startsWith('.')) {
+          return source;
+        }
+
+        const mapped = projectPath(source, packs, dataPath, report, location);
+
+        return mapped.startsWith('.') || path.isAbsolute(mapped) ? mapped : `./${mapped}`;
+      });
     } else if (key === 'sourceDir' && typeof value === 'string') {
       converted.sourceDir = projectPath(value, packs, dataPath, report, location);
     } else {

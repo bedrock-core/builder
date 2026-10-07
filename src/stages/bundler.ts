@@ -45,13 +45,16 @@ async function exists(file: string): Promise<boolean> {
   }
 }
 
-async function scriptSource(packId: string, output: string): Promise<string> {
+export function scriptCandidates(output: string): string[] {
   const stem = output.slice(0, -3);
+
+  return ['.ts', '.tsx', '.mts', '.cts'].map(extension => `${stem}${extension}`).concat(output);
+}
+
+export async function scriptSource(packId: string, output: string): Promise<string> {
   const typedSources: string[] = [];
 
-  for (const extension of ['.ts', '.tsx', '.mts', '.cts']) {
-    const candidate = `${stem}${extension}`;
-
+  for (const candidate of scriptCandidates(output).slice(0, -1)) {
     if (await exists(candidate)) {
       typedSources.push(candidate);
     }
@@ -124,11 +127,14 @@ export async function run(context: BuildContext, settings: BundlerSettings): Pro
   const sources = new Set<string>();
   const outputs: { temporary: string; destination: string; artifactId: string }[] = [];
   const aliases = generatedAliases(context, settings.generatedImports);
+  const ui = Object.hasOwn(context.generatedImports, '@bedrock-core/generated/ui');
+  const transformScreen = ui ? (await import('../../packages/ui-compiler/src/sugar.ts')).desugarJsxConditionals : undefined;
   const version = createHash('sha256')
     .update(await readFile(new URL(import.meta.url)))
     .update(await readFile(new URL('../../packages/bundler/src/index.ts', import.meta.url)))
     .update(await readFile(new URL('../../packages/bundler/src/dependencies.ts', import.meta.url)))
     .digest('hex');
+  const uiVersion = ui ? createHash('sha256').update(await readFile(new URL('../../packages/ui-compiler/src/sugar.ts', import.meta.url))).digest('hex') : null;
   let cached = 0;
 
   for (const script of scripts) {
@@ -143,6 +149,7 @@ export async function run(context: BuildContext, settings: BundlerSettings): Pro
         target: settings.target ?? 'es2020',
         tsconfig: settings.tsconfig ?? null,
         external: settings.external ?? [],
+        uiVersion,
         aliases: Object.fromEntries(Object.entries(aliases).map(([name, file]) => [name, path.relative(context.stagedRoot, file)])),
       },
       async run() {
@@ -156,6 +163,9 @@ export async function run(context: BuildContext, settings: BundlerSettings): Pro
           tsconfig: settings.tsconfig,
           external: settings.external,
           aliases,
+          transformScreen,
+          projectModules: ui,
+          jsxImportSource: ui ? '@bedrock-core/ui' : undefined,
           signal: context.signal,
         });
 

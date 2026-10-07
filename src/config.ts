@@ -42,6 +42,7 @@ ajv.addSchema(bundlerSchema, 'bundler.schema.json');
 ajv.addSchema(JSON.parse(readFileSync(new URL('../schemas/manifest.schema.json', import.meta.url), 'utf8')), 'manifest.schema.json');
 ajv.addSchema(JSON.parse(readFileSync(new URL('../schemas/generator.schema.json', import.meta.url), 'utf8')), 'generator.schema.json');
 ajv.addSchema(JSON.parse(readFileSync(new URL('../schemas/i18n.schema.json', import.meta.url), 'utf8')), 'i18n.schema.json');
+ajv.addSchema(JSON.parse(readFileSync(new URL('../schemas/ui-compiler.schema.json', import.meta.url), 'utf8')), 'ui-compiler.schema.json');
 const validate = ajv.compile<ProjectConfig>(configSchema);
 
 /** Validate without adding defaults or removing other tools' configuration. */

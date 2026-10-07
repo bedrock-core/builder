@@ -1,0 +1,19 @@
+{
+  "name": "@bedrock-core/builder-ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "UI build integration using the addon's @bedrock-core compiler",
+  "exports": {
+    ".": "./src/index.ts",
+    "./transform": "./src/sugar.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "@bedrock-core/builder-bundler": "workspace:*",
+    "esbuild": "0.25.12",
+    "typescript": "5.9.3"
+  }
+}

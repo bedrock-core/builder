@@ -16,6 +16,10 @@ both build and watch. Addon projects need no cache IDs, dependency lists or regi
 | A resolver candidate appears | Recheck entries whose import may resolve differently |
 | Compiler options or an inherited config change | Compile entries that use that configuration |
 | An installed package input changes | Compile entries that import that package input |
+| A screen or its imported helper changes | Compile its consuming screen modules and render those screens |
+| A script or unrelated asset changes | Reuse unchanged screen modules and rendered screens |
+| A UI compiler/runtime input changes | Rebuild the shared toolkit and render screens whose compiler bundle changed |
+| A screen is added or removed | Link the current set and replace generated UI outputs |
 
 Tracking includes transitive imports, package resolution metadata, missing resolver candidates,
 tsconfig path mappings, JSONC configs and inherited configuration files. Content fingerprints
@@ -43,11 +47,32 @@ the compiler can automatically discover static imports.
 Caching is enabled by default. Set `"cache": false` on a profile to compile without reuse, or
 remove `.bedrock-core/cache/build` to clear persisted compiled results. Cache records are saved
 only after a successful build and export. Invalid records rebuild from source.
+The cache index references separately stored compilation records, keeping large screen sets
+out of a single JSON document. Unchanged records remain on disk without rewriting their values.
 
 `BuildResult.compilations` reports the current build's compiled-file and generated-output cache
 checks as `executed` or `cached`. Generator records prefixed with `compiled:` describe compiled
 JavaScript; its other records describe output evaluation. Generator stage logs count compilation
 and template evaluation separately.
 
+UI `module:` records describe source compilation; `screen:` records describe rendering. The
+toolkit has one shared `library` record. UI caches store unlinked screen data, so linking always
+uses the complete current screen set. Routers, hook merges, language sections, container hosts,
+runtime registrations and test metadata remain complete on cache hits. Formatting and build
+stamps apply to output without rerendering screens. Locale content participates in rendering
+invalidation. Screens with Node I/O or ambient values evaluate freshly while reusing their
+unchanged compiled modules. Runtime external file reads need profile watch paths to trigger watch.
+
 The runner continues to stage and export complete packs. Final validation and publication run
-on cache hits. UI compiler integration and measurements of real fixture builds remain pending.
+on cache hits. Measure UI compilation with the isolated fixture harness:
+
+```sh
+yarn node scripts/benchmark-ui.ts path/to/fixture-project path/to/project-with-node_modules
+```
+
+The fixture project must contain `packs/BP` and `packs/RP`. An optional third argument limits
+the screen count for a harness check. The command copies inputs into a temporary project and
+measures the UI stage with complete staging, manifest validation and export. It checks an
+unchanged build and a single-screen edit against the cold output's UI byte fingerprints.
+Language files and the test metadata sidecar must also retain their byte fingerprints.
+Fixture harness script bundling is excluded from these measurements.

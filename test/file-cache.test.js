@@ -77,7 +77,7 @@ test('failed and cancelled compilations do not replace a successful cache', asyn
   }), /Cancelled/);
   await assert.rejects(cancelled.save(), /Cancelled/);
   assert.equal(await readFile(path.join(options.directory, 'files.json'), 'utf8'), previous);
-  assert.deepEqual(await readdir(options.directory), ['files.json']);
+  assert.deepEqual((await readdir(options.directory)).sort(), ['entries', 'files.json']);
 });
 
 test('corrupt values rebuild, cache disabling bypasses reuse and duplicate IDs fail', async (t) => {
@@ -87,10 +87,12 @@ test('corrupt values rebuild, cache disabling bypasses reuse and duplicate IDs f
   await first.reuse('unit', { inputs: [], run: () => ({ value: { number: 1 } }) });
   await first.save();
   const file = path.join(options.directory, 'files.json');
-  const record = JSON.parse(await readFile(file, 'utf8'));
+  const index = JSON.parse(await readFile(file, 'utf8'));
+  const entry = path.join(options.directory, 'entries', `${index.files.unit}.json`);
+  const record = JSON.parse(await readFile(entry, 'utf8'));
 
-  record.files.unit.value.number = 999;
-  await writeFile(file, JSON.stringify(record));
+  record.value.number = 999;
+  await writeFile(entry, JSON.stringify(record));
   const second = await createFileCache(options);
   const result = await second.reuse('unit', { inputs: [], run: () => ({ value: { number: 2 } }) });
 
@@ -102,7 +104,10 @@ test('corrupt values rebuild, cache disabling bypasses reuse and duplicate IDs f
 
   assert.equal((await disabled.reuse('unit', { inputs: [], run: () => ({ value: 3 }) })).cached, false);
   await disabled.save();
-  assert.equal(JSON.parse(await readFile(file, 'utf8')).files.unit.value.number, 2);
+  const stored = JSON.parse(await readFile(file, 'utf8'));
+  const resultEntry = path.join(options.directory, 'entries', `${stored.files.unit}.json`);
+
+  assert.equal(JSON.parse(await readFile(resultEntry, 'utf8')).value.number, 2);
 });
 
 test('non-JSON values cannot enter a cached record', async (t) => {
@@ -112,4 +117,35 @@ test('non-JSON values cannot enter a cached record', async (t) => {
   for (const [index, value] of [new Date(), new Map(), undefined, { callback() {} }].entries()) {
     await assert.rejects(cache.reuse(String(index), { inputs: [], run: () => ({ value }) }), /only JSON data/);
   }
+});
+
+test('large compilation values keep the cache index small and unchanged entries need no rewrite', async (t) => {
+  const options = await fixture(t);
+  const cache = await createFileCache(options);
+  const value = 'x'.repeat(128 * 1024);
+
+  for (let index = 0; index < 24; index++) {
+    await cache.reuse(`screen-${index}`, { inputs: [], run: () => ({ value: { index, value } }) });
+  }
+
+  await cache.save();
+  const file = path.join(options.directory, 'files.json');
+  const content = await readFile(file, 'utf8');
+
+  assert.ok(content.length < 4096);
+  const second = await createFileCache(options);
+
+  for (let index = 0; index < 24; index++) {
+    const result = await second.reuse(`screen-${index}`, {
+      inputs: [],
+      run() { throw new Error('Unchanged compilation must be reused'); },
+    });
+
+    assert.equal(result.cached, true);
+    assert.deepEqual(result.value, { index, value });
+  }
+
+  await second.save();
+  assert.equal(await readFile(file, 'utf8'), content);
+  assert.equal((await readdir(path.join(options.directory, 'entries'))).length, 24);
 });

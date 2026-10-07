@@ -166,9 +166,11 @@ test('corrupt cache bytes are discarded and rebuilt', async (t) => {
   const directory = path.join(project.project, '.bedrock-core/cache/build');
   const file = path.join(directory, (await readdir(directory))[0], 'files.json');
   const record = JSON.parse(await readFile(file, 'utf8'));
+  const entry = path.join(path.dirname(file), 'entries', `${Object.values(record.files)[0]}.json`);
+  const compilation = JSON.parse(await readFile(entry, 'utf8'));
 
-  Object.values(record.files)[0].files[0].content = Buffer.from('export const value = 999;').toString('base64');
-  await writeFile(file, JSON.stringify(record));
+  compilation.files[0].content = Buffer.from('export const value = 999;').toString('base64');
+  await writeFile(entry, JSON.stringify(compilation));
   assert.equal(status(await runBuild(options), 'bundler'), 'executed');
   assert.equal(await exportedValue(project), 1);
   await writeFile(file, '{invalid');

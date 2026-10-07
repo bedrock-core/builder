@@ -63,6 +63,28 @@ test('unknown builder fields, malformed metadata and unsupported versions fail',
     assert.throws(() => validateConfig(config), /Invalid project configuration/);
   }
 });
+test('UI settings use the nested schema for screen modules, metadata and formatting', () => {
+  const config = example();
+
+  config.bedrockCore.profiles.default.stages['ui-compiler'] = {
+    namespace: 'screens', screens: ['./screens.tsx', '@bedrock-core/catalog/compiled'],
+    testMetadata: true, stamp: true, tsconfig: './tsconfig.json', pretty: { indent: 'space', size: 2 },
+  };
+  validateConfig(config);
+
+  for (const settings of [
+    { namespace: 'Bad Namespace' },
+    { screens: [42] },
+    { testMetadata: 'true' },
+    { pretty: { size: 0 } },
+    { pretty: { tabs: true } },
+    { entry: './screens.tsx' },
+  ]) {
+    config.bedrockCore.profiles.default.stages['ui-compiler'] = settings;
+    assert.throws(() => validateConfig(config), /Invalid project configuration/);
+  }
+});
+
 test('hooks require exactly one supported boundary and object settings', () => {
   for (const step of [
     { plugin: 'custom' },

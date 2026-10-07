@@ -1,5 +1,5 @@
 import { context as createContext, version, type Plugin, type Metafile } from 'esbuild';
-import { mkdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { CompilationDependencies } from './dependencies.ts';
 
@@ -19,6 +19,9 @@ export interface BundleOptions {
   platform?: 'neutral' | 'node';
   banner?: string;
   inject?: string[];
+  jsxImportSource?: string;
+  transformScreen?: (source: string, file: string) => string;
+  projectModules?: boolean;
 }
 export interface BundleResult {
   files: string[];
@@ -42,13 +45,18 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
   const resolver: Plugin = {
     name: '@bedrock-core/project-imports',
     setup(build) {
-      build.onLoad({ filter: /\.screen\.tsx$/ }, () => ({
-        errors: [
-          {
-            text: 'Screen JSX requires the shared UI transform; UI compiler integration is not implemented yet',
-          },
-        ],
-      }));
+      build.onLoad({ filter: /\.screen\.tsx$/ }, async args => options.transformScreen
+        ? {
+            contents: options.transformScreen(await readFile(args.path, 'utf8'), args.path),
+            loader: 'tsx',
+          }
+        : ({
+            errors: [
+              {
+                text: 'Screen JSX requires the UI compiler stage or an explicit screen transform',
+              },
+            ],
+          }));
       build.onResolve({ filter: /.*/ }, async (args) => {
         if (args.pluginData === resolving) {
           return;
@@ -72,9 +80,13 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
           };
         }
 
-        // Try staged resolution first so tsconfig aliases retain their project-relative meaning.
+        // Linked UI libraries share the addon's toolkit instances. Other imports
+        // retain source-relative resolution, including staged tsconfig aliases.
+        const shared = options.projectModules && args.path.startsWith('@bedrock-core/');
+        const primaryDirectory = shared ? options.dependencyRoot ?? root : args.resolveDir;
+        const fallbackDirectory = shared ? args.resolveDir : options.dependencyRoot ?? root;
         const local = await build.resolve(args.path, {
-          resolveDir: args.resolveDir,
+          resolveDir: primaryDirectory,
           kind: args.kind,
           pluginData: resolving,
         });
@@ -82,7 +94,7 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
         const resolved = !local.errors.length || !options.dependencyRoot
           ? local
           : await build.resolve(args.path, {
-              resolveDir: options.dependencyRoot,
+              resolveDir: fallbackDirectory,
               kind: args.kind,
               pluginData: resolving,
             });
@@ -116,6 +128,7 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
     metafile: true,
     format: 'esm',
     platform: options.platform ?? 'neutral',
+    ...(options.jsxImportSource ? { jsx: 'automatic', jsxImportSource: options.jsxImportSource } as const : {}),
     banner: options.banner ? { js: options.banner } : undefined,
     inject: options.inject?.map(file => path.resolve(root, file)),
     mainFields: ['module', 'main'],

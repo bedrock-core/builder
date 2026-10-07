@@ -1,8 +1,10 @@
-import { glob, stat } from 'node:fs/promises';
+import { glob, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { BuildContext } from './contract.d.ts';
 import type { StageName } from './config.ts';
 import { templateFiles } from './template-files.ts';
+import { readScriptEntries } from './manifest.ts';
+import { scriptCandidates } from './stages/bundler.ts';
 
 export interface StageDetection {
   needed: boolean;
@@ -42,6 +44,60 @@ export async function detectStage(context: BuildContext, stage: StageName): Prom
   } else if (stage === 'ui-compiler') {
     needed = await hasFiles(context.stagedRoot, packPaths.map(directory => `${directory}/scripts/**/*.screen.tsx`));
     input = 'screen modules in pack scripts';
+
+    if (!needed) {
+      needed = await hasFiles(context.projectRoot, '.bedrock-core/generated/ui/screens.generated.d.ts');
+      input = needed ? 'generated UI declarations to refresh' : input;
+    }
+
+    if (!needed) {
+      for (const id of Object.keys(context.packs)) {
+        const pack = await context.inspectPack(id);
+
+        if (pack.kind !== 'behavior') {
+          continue;
+        }
+
+        for (const entry of await readScriptEntries(id, pack.path)) {
+          let source = '';
+
+          for (const file of scriptCandidates(path.resolve(pack.path, entry))) {
+            try {
+              if ((await stat(file)).isFile()) {
+                source += await readFile(file, 'utf8');
+              }
+            } catch (error) {
+              if (!['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) {
+                throw error;
+              }
+            }
+          }
+
+          if (source.includes('@bedrock-core/generated/ui')) {
+            needed = true;
+            input = 'generated UI imports in manifest entries';
+          } else if (/['"]@bedrock-core\/server(?:-runtime)?['"]/.test(source)) {
+            let directory = context.projectRoot;
+
+            while (true) {
+              if (await hasFiles(directory, 'node_modules/@bedrock-core/ui/package.json')) {
+                needed = true;
+                input = 'addon declarations with the installed UI toolkit';
+                break;
+              }
+
+              const parent = path.dirname(directory);
+
+              if (directory === parent) {
+                break;
+              }
+
+              directory = parent;
+            }
+          }
+        }
+      }
+    }
   } else if (stage === 'bundler') {
     for (const id of Object.keys(context.packs)) {
       if ((await context.inspectPack(id)).moduleTypes.includes('script')) {

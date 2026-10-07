@@ -84,6 +84,8 @@ export async function runBuild({
         implementations.i18n = (await import('./stages/i18n.ts')).run;
       } else if (stage === 'bundler') {
         implementations.bundler = (await import('./stages/bundler.ts')).run;
+      } else if (stage === 'ui-compiler') {
+        implementations['ui-compiler'] = (await import('./stages/ui-compiler.ts')).run;
       }
     }
 
