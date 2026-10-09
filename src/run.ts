@@ -15,6 +15,7 @@ import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { validateConfig } from './config.ts';
 import { planBuild } from './plan.ts';
+import { runNodeFilter } from './regolith.ts';
 import { detectStage } from './detect.ts';
 import { inspectPack, type PackInfo } from './packs.ts';
 import { validatePackManifests } from './manifest.ts';
@@ -148,6 +149,10 @@ export async function runBuild({
   const modules = new Map<string, string>();
 
   for (const step of plan.filter(step => step.kind === 'plugin')) {
+    if (step.script !== undefined) {
+      continue;
+    }
+
     const local = step.module.startsWith('.') || path.isAbsolute(step.module);
     const modulePath = local ? path.resolve(project, step.module) : require.resolve(step.module);
 
@@ -326,19 +331,57 @@ export async function runBuild({
         }
 
         if (step.kind === 'plugin') {
-          const module = modules.get(step.module)!;
-          const local = step.module.startsWith('.') || path.isAbsolute(step.module);
-          const pluginFile = local ? path.join(staged, path.relative(project, module)) : module;
-          const url = pathToFileURL(pluginFile);
+          const selected = step.targets === undefined
+            ? undefined
+            : (
+                await Promise.all(Object.keys(stagedPacks).map(id => context.inspectPack(id)))
+              ).filter(pack => pack.kind === step.targets || (step.targets === 'both' && pack.kind !== 'other'));
+          const invocations = selected === undefined
+            ? [context]
+            : selected.map(pack => Object.freeze({
+                ...context,
+                get generatedImports() {
+                  return context.generatedImports;
+                },
+                pack,
+                packs: Object.freeze({ [pack.id]: pack.path }),
+                outputPaths: Object.freeze({ [pack.id]: outputPaths[pack.id]! }),
+              }));
 
-          url.searchParams.set('build', path.basename(workspace));
-          const plugin = await import(url.href);
-
-          if (typeof plugin.run !== 'function') {
-            throw new Error(`Plugin must export run(context, settings): ${step.plugin}`);
+          if (!invocations.length) {
+            logger.info?.(`@bedrock-core/builder: ${owner} skipped (No ${step.targets} packs)`);
+            continue;
           }
 
-          await plugin.run(context, step.settings);
+          for (const invocation of invocations) {
+            check(signal);
+
+            if (invocation.pack) {
+              owner = `${step.plugin}:${index}:${invocation.pack.id}`;
+              cache.boundary();
+              attachCache(invocation, cache);
+              logger.info?.(`@bedrock-core/builder: ${owner}`);
+            }
+
+            if (step.script !== undefined) {
+              await runNodeFilter(invocation, step, context);
+              continue;
+            }
+
+            const module = modules.get(step.module)!;
+            const local = step.module.startsWith('.') || path.isAbsolute(step.module);
+            const pluginFile = local ? path.join(staged, path.relative(project, module)) : module;
+            const url = pathToFileURL(pluginFile);
+
+            url.searchParams.set('build', path.basename(workspace));
+            const plugin = await import(url.href);
+
+            if (typeof plugin.run !== 'function') {
+              throw new Error(`Plugin must export run(context, settings): ${step.plugin}`);
+            }
+
+            await plugin.run(invocation, step.settings);
+          }
         } else if (step.stage === 'validate') {
           for (const artifact of artifacts.values()) {
             const current = await realpath(artifact.path);

@@ -22,7 +22,7 @@ async function fixture(t) {
   await writeFile(path.join(root, 'packs/RP/manifest.json'), JSON.stringify(manifestFor('resources')));
   await writeFile(path.join(root, 'packs/BP/scripts/start.ts'), 'export const value = 1;');
   const config = {
-    type: 'minecraftBedrock', name: 'UI', authors: [], targetVersion: '1.26.50', namespace: 'test', worlds: [],
+    name: 'UI', authors: [], targetVersion: '1.26.50', namespace: 'test',
     packs: { logic: './packs/BP', assets: './packs/RP' },
     bedrockCore: { formatVersion: '1.0.0', profiles: { default: { export: { logic: './dist/BP', assets: './dist/RP' } } } },
   };
@@ -154,7 +154,7 @@ test('module records, container hosts and multiple resource packs retain complet
   await writeFile(path.join(project.root, 'screens.tsx'), `import { Screen, Text } from '@bedrock-core/ui'; export default { record: () => <Screen><Text>Record</Text></Screen> };`);
   await writeFile(path.join(project.root, 'packs/BP/scripts/host.screen.tsx'), `import { Container, Text } from '@bedrock-core/ui'; export default function Host() { return <Container host={{ kind: 'entity', type: 'test:host' }}><Text>Host</Text></Container>; }`);
   await mkdir(path.join(project.root, 'packs/BP/entities'));
-  await writeFile(path.join(project.root, 'packs/BP/entities/host.json'), JSON.stringify({ 'minecraft:entity': { description: { identifier: 'test:host' } } }));
+  await writeFile(path.join(project.root, 'packs/BP/entities/host.json'), JSON.stringify({ 'format_version': '1.21.120', 'minecraft:entity': { description: { identifier: 'test:host' } } }));
   await mkdir(path.join(project.root, 'packs/RP2'));
   await writeFile(path.join(project.root, 'packs/RP2/manifest.json'), JSON.stringify(manifestFor('resources')));
   project.config.packs.extra = './packs/RP2';

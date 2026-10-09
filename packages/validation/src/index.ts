@@ -1,4 +1,5 @@
 import { readFile, readdir, realpath } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -117,10 +118,19 @@ export async function validatePackContent(options: ContentValidationOptions): Pr
         delete node.$id;
 
         if (typeof node.$ref === 'string' && !node.$ref.startsWith('#')) {
-          const target = new URL(node.$ref, pathToFileURL(file));
+          let target = new URL(node.$ref, pathToFileURL(file));
 
           if (target.protocol !== 'file:') {
             throw new Error(`Remote schema references are unsupported: ${target.href}`);
+          }
+
+          // The pinned Mojang block schemas use the legacy Molang object's alternate filename.
+          if (!options.schemaRoot && metadata.version === '1.26.50'
+            && fileURLToPath(target) === path.join(root, 'schemas/common/expression.schema.json') && !existsSync(fileURLToPath(target))) {
+            const fragment = target.hash;
+
+            target = pathToFileURL(path.join(root, 'schemas/common/molang_expression.schema.json'));
+            target.hash = fragment;
           }
 
           node.$ref = target.href;

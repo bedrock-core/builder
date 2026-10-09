@@ -1,0 +1,29 @@
+{
+  "$schema": "../../schemas/config.schema.json",
+  "targetVersion": "1.26.50",
+  "namespace": "node_filter_example",
+  "name": "Node filter example",
+  "description": "Resource pack generated with a standalone Regolith Node filter",
+  "authors": ["Example"],
+  "packs": {
+    "visuals": "./packs/RP"
+  },
+  "bedrockCore": {
+    "formatVersion": "1.0.0",
+    "plugins": {
+      "generate-resource": { "script": "./filters/main.cjs", "targets": "resource" }
+    },
+    "profiles": {
+      "default": {
+        "steps": [
+          {
+            "plugin": "generate-resource",
+            "after": "prepare",
+            "settings": { "name": "Generated resource" }
+          }
+        ],
+        "export": { "visuals": "./build/RP" }
+      }
+    }
+  }
+}

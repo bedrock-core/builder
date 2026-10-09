@@ -23,8 +23,8 @@ export async function projectFor(t, { cleanup = true } = {}) {
   await writeFile(path.join(project, 'packs/gameplay/scripts/tests.ts'), 'export const value: number = 99;');
   await writeFile(path.join(project, 'packs/visuals/asset.json'), '{"value":1}');
   const config = {
-    type: 'minecraftBedrock', name: 'Build flow', authors: [], targetVersion: '1.26.50',
-    namespace: 'flow_test', worlds: [], packs: { gameplay: './packs/gameplay', visuals: './packs/visuals' },
+    name: 'Build flow', authors: [], targetVersion: '1.26.50',
+    namespace: 'flow_test', packs: { gameplay: './packs/gameplay', visuals: './packs/visuals' },
     bedrockCore: { formatVersion: '1.0.0', profiles: {
       default: { stages: { manifest: true, bundler: { debug: true } }, export: { gameplay: './dist/gameplay', visuals: './dist/visuals' } },
       tests: {

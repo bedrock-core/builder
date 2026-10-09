@@ -35,6 +35,10 @@ The package exports `@bedrock-core/builder/schemas/config.schema.json` for insta
 The plan CLI validates the complete project configuration with this schema before planning.
 Library callers can use `validateConfig` from `@bedrock-core/builder/config`.
 
+Projects are implicitly Minecraft Bedrock, so no `type` field is needed. Prefer metadata in
+this order: `$schema`, `targetVersion`, `namespace`, `name`, `description`, `authors`, then
+the remaining fields. Validation accepts any key order.
+
 The schema requires `authors` and preserves unused top-level metadata and other tool
 namespaces, and rejects unknown builder fields, stage names and malformed hook placement.
 Every built-in stage has an options schema under `schemas/`; plugin settings remain extensible.
@@ -60,11 +64,29 @@ validation failures and cancellation retain the previous export. A destination l
 simultaneous exports. Cancellation is cooperative at step boundaries and through `context.signal`.
 Project symlinks are currently unsupported. Plugins are trusted Node code, not sandboxed processes.
 
-Plugins export `run(context, settings)`. The typed context supplies the project namespace, staged project/pack paths,
+Plugins defined with `module` export `run(context, settings)`. The typed context supplies the project namespace, staged project/pack paths,
 a generated directory, logger, cancellation signal and artifact/dependency registration. Artifact
 IDs have one owner and must identify existing staged files. `context.outputPaths` provides the
 resolved pack-to-destination map. Missing or duplicate IDs fail the build.
 Result records expose IDs and owners; temporary workspace paths do not survive cleanup.
+
+Define standalone Node filters directly by name: `"generate": { "script": "./filters/main.cjs" }`
+under `bedrockCore.plugins`, then invoke `"plugin": "generate"` in profile `steps`.
+Builder supplies conventional `BP`, `RP` and `data` folders, JSON arguments and Regolith
+environment variables. Step `settings` go directly to the script. See [running Node filters](docs/regolith-node-filters.md) for profile
+configuration, dependencies, pack mapping and a runnable local example.
+
+Set `targets: "resource"`, `"behavior"`, or `"both"` on a script or module definition
+to run it once per matching pack. Builder classifies current manifest modules;
+pack IDs and folder names have no significance. Every invocation receives one
+pack, and a failure prevents publication of the entire build. Without `targets`,
+the plugin runs once for the project.
+
+Targeted module plugins receive `context.pack` with the current ID, path and type.
+Their `context.packs` and `context.outputPaths` maps contain only that pack. Include
+the pack ID in generated filenames and artifact IDs shared between invocations.
+Targeted scripts receive the current pack as `BP` or `RP`, with the other folder
+empty, plus `PACK_ID` and `PACK_TYPE` environment variables.
 
 Producers can publish a generated module's import name once:
 
@@ -220,7 +242,8 @@ See [the UI adapter package](packages/ui-compiler/README.md) for standalone APIs
 
 ## Extension vocabulary
 
-A plugin supplies a module; a step invokes it with JSON settings at one boundary. Built-in stages
+A plugin names a `module` exporting `run(context, settings)` or a standalone Node `script`;
+a step invokes that name with JSON settings at one boundary. Built-in stages
 run in stable order. Hooks targeting disabled stages fail. Modifying hooks run before
 final validation and export. Plugins execute as trusted Node code.
 
@@ -261,14 +284,17 @@ yarn build examples/script-only/config.json tests
 
 `export` maps each pack ID to its exact destination folder. Paths resolve relative to config.json;
 absolute paths are supported. Every configured pack needs a destination, and unknown pack IDs
-fail before plugin execution. Missing parent folders are created. Path strings are literal,
-without environment-variable expansion or appended pack names and UUIDs.
+fail before plugin execution. Missing parent folders are created. Paths support `%VAR%`,
+`$VAR` and `${VAR}` using the current process environment. Undefined or empty variables
+fail before plugin execution. Variable names follow the platform's casing rules. Expansion
+is a single substitution pass; variable values are not expanded again. Pack names and UUIDs
+are not appended to destinations.
 
 ```json
 {
   "export": {
     "gameplay": "./dist/BP",
-    "visuals": "C:/Minecraft/development_resource_packs/my-addon"
+    "visuals": "%APPDATA%/Minecraft Bedrock/Users/Shared/games/com.mojang/development_resource_packs/my-addon"
   }
 }
 ```
@@ -290,6 +316,8 @@ builds. Replacements happen sequentially. `BuildResult.outputPaths` reports reso
 `BuildResult.packs` contains final manifest classification and published paths.
 The standalone `exportPacks({ packs, paths, signal })` API from `@bedrock-core/builder/export`
 uses the same validation and publication transaction without the runner.
+`resolveExportPaths` accepts an optional environment map as its fourth argument;
+`exportPacks` accepts the same override as `environment`.
 
 ## Regolith configuration migration
 

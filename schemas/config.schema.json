@@ -1,31 +1,35 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "@bedrock-core project configuration",
-  "description": "Project Config Standard metadata and @bedrock-core profiles.",
+  "description": "Minecraft Bedrock project metadata and @bedrock-core profiles.",
   "type": "object",
   "required": [
-    "type",
-    "name",
     "targetVersion",
     "namespace",
+    "name",
+    "authors",
     "packs",
-    "worlds",
     "bedrockCore"
-  ],
-  "allOf": [
-    {
-      "required": [
-        "authors"
-      ]
-    }
   ],
   "additionalProperties": true,
   "properties": {
     "$schema": {
       "type": "string"
     },
-    "type": {
-      "const": "minecraftBedrock"
+    "targetVersion": {
+      "$ref": "#/definitions/nonempty"
+    },
+    "namespace": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/nonempty"
+        },
+        {
+          "not": {
+            "const": "minecraft"
+          }
+        }
+      ]
     },
     "name": {
       "$ref": "#/definitions/nonempty"
@@ -57,21 +61,6 @@
         ]
       }
     },
-    "targetVersion": {
-      "$ref": "#/definitions/nonempty"
-    },
-    "namespace": {
-      "allOf": [
-        {
-          "$ref": "#/definitions/nonempty"
-        },
-        {
-          "not": {
-            "const": "minecraft"
-          }
-        }
-      ]
-    },
     "experimentalGameplay": {
       "type": "object",
       "additionalProperties": {
@@ -87,13 +76,6 @@
       },
       "additionalProperties": {
         "$ref": "#/definitions/nonempty"
-      }
-    },
-    "worlds": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "description": "World path/glob. Consumers warn and ignore patterns ending in **."
       }
     },
     "packDefinitions": {
@@ -130,17 +112,7 @@
             "$ref": "#/definitions/nonempty"
           },
           "additionalProperties": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "module"
-            ],
-            "properties": {
-              "module": {
-                "$ref": "#/definitions/nonempty",
-                "description": "Local TS/JS module or npm package specifier."
-              }
-            }
+            "$ref": "#/definitions/plugin"
           }
         },
         "profiles": {
@@ -160,6 +132,66 @@
     "nonempty": {
       "type": "string",
       "pattern": "\\S"
+    },
+    "plugin": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["module"],
+          "properties": {
+            "module": {
+              "$ref": "#/definitions/nonempty",
+              "description": "Local TS/JS module or npm package exporting run(context, settings)."
+            },
+            "targets": {
+              "$ref": "#/definitions/pluginTargets"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["script"],
+          "not": { "required": ["targets", "packs"] },
+          "properties": {
+            "script": {
+              "$ref": "#/definitions/nonempty",
+              "description": "Standalone Node entry point, relative to filterDir, using the Regolith BP/RP/data contract."
+            },
+            "targets": {
+              "$ref": "#/definitions/pluginTargets"
+            },
+            "filterDir": {
+              "$ref": "#/definitions/nonempty",
+              "description": "Script definition directory, relative to config.json. Defaults to the project root and sets FILTER_DIR."
+            },
+            "dataPath": {
+              "$ref": "#/definitions/nonempty",
+              "description": "Project directory copied into shared staged data. Defaults to ./data when present."
+            },
+            "packs": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": false,
+              "properties": {
+                "BP": { "$ref": "#/definitions/nonempty" },
+                "RP": { "$ref": "#/definitions/nonempty" }
+              },
+              "description": "Conventional folders mapped to configured pack IDs. Omission infers one behavior and one resource pack."
+            },
+            "nodeArguments": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Node flags before the script, such as loader flags."
+            }
+          }
+        }
+      ]
+    },
+    "pluginTargets": {
+      "enum": ["resource", "behavior", "both"],
+      "description": "Run once per configured pack matching its manifest type. Both selects each behavior and resource pack independently. Omission runs once for the project."
     },
     "packDefinition": {
       "type": "object",
@@ -212,7 +244,7 @@
           "additionalProperties": {
             "$ref": "#/definitions/nonempty"
           },
-          "description": "Map each configured pack ID to its exact destination folder. Paths resolve relative to config.json; absolute paths are supported."
+          "description": "Map each configured pack ID to its exact destination folder. Paths resolve relative to config.json; absolute paths and environment variables (%VAR%, $VAR, ${VAR}) are supported. Unset or empty variables fail before plugins execute."
         },
         "stages": {
           "type": "object",
@@ -366,6 +398,11 @@
         },
         "settings": {
           "type": "object"
+        },
+        "arguments": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Script arguments following nonempty JSON settings. With empty settings, they start at argv[2]."
         }
       }
     }

@@ -15,8 +15,8 @@ async function fixture(t) {
   await writeFile(path.join(root, 'packs/BP/manifest.json'), JSON.stringify(manifestFor('data')));
   const source = path.join(root, 'packs/BP/loot_tables/example.json');
   const config = {
-    type: 'minecraftBedrock', name: 'Validation', authors: [], namespace: 'validation',
-    targetVersion: '1.26.50', worlds: [], packs: { gameplay: './packs/BP' },
+    name: 'Validation', authors: [], namespace: 'validation',
+    targetVersion: '1.26.50', packs: { gameplay: './packs/BP' },
     bedrockCore: { formatVersion: '1.0.0', profiles: { default: { export: { gameplay: './dist/BP' } } } },
   };
   const configPath = path.join(root, 'config.json');
@@ -41,6 +41,53 @@ test('content validation follows nested official schema references and supports 
 
     return true;
   });
+});
+
+test('official block validation resolves the pinned legacy Molang reference and still rejects invalid components', async (t) => {
+  const project = await fixture(t);
+  const blocks = path.join(project.packs[0].path, 'blocks');
+  const file = path.join(blocks, 'container.json');
+
+  await mkdir(blocks);
+  await writeFile(file, JSON.stringify({ 'format_version': '1.21.120', 'minecraft:block': {
+    description: { identifier: 'validation:owned_container' }, components: { 'minecraft:friction': 0.6 },
+  } }));
+  const dependencies = new Set();
+  const result = await validatePackContent({ ...project, reuse: async (_file, inputs, _revision, validate) => {
+    inputs.forEach(input => dependencies.add(input));
+
+    return validate();
+  } });
+  const block = result.files.find(entry => entry.file === 'blocks/container.json');
+
+  assert.match(block.schema, /bp\/blocks/);
+  assert.equal(block.schemaIssue, undefined);
+  assert.ok([...dependencies].some(input => input.endsWith('molang_expression.schema.json')));
+  await writeFile(file, JSON.stringify({ 'format_version': '1.21.120', 'minecraft:block': {
+    description: { identifier: 'validation:owned_container' }, components: { 'minecraft:friction': 'invalid' },
+  } }));
+  await assert.rejects(validatePackContent(project), ContentValidationError);
+});
+
+test('custom schema roots retain their own unresolved references without applying package aliases', async (t) => {
+  const project = await fixture(t);
+  const schemaRoot = path.join(project.root, 'custom-schema');
+
+  await mkdir(path.join(schemaRoot, 'schemas/common'), { recursive: true });
+  await mkdir(path.join(schemaRoot, 'schemas/bp'));
+  await writeFile(path.join(schemaRoot, 'package.json'), JSON.stringify({ version: '1.26.50' }));
+  await writeFile(path.join(schemaRoot, 'catalog.json'), JSON.stringify({ schemas: [
+    { url: './schemas/bp/example.json', fileMatch: ['loot_tables/**/*.json'] },
+  ] }));
+  await writeFile(path.join(schemaRoot, 'schemas/bp/example.json'), JSON.stringify({ $ref: '../common/expression.schema.json' }));
+  await writeFile(path.join(schemaRoot, 'schemas/common/molang_expression.schema.json'), JSON.stringify({ type: 'object' }));
+  await writeFile(project.source, '{}');
+  const result = await validatePackContent({ ...project, schemaRoot });
+
+  const content = result.files.find(entry => entry.file === 'loot_tables/example.json');
+
+  assert.equal(content.schema, undefined);
+  assert.match(content.schemaIssue, /expression\.schema\.json/);
 });
 
 test('unknown JSON receives syntax validation and reports schema coverage accurately', async (t) => {

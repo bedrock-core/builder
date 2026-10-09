@@ -14,6 +14,7 @@ export type { ProjectMigration } from './migration/project.ts';
 export function migrateRegolithConfig(input: unknown, options: MigrationOptions = {}): MigrationResult {
   const config = isRecord(input) ? structuredClone(input) : {};
   const diagnostics: MigrationResult['diagnostics'] = [];
+  const metadata = ['$schema', 'targetVersion', 'namespace', 'name', 'description', 'authors'];
 
   const report: ReportDiagnostic = (code, location, message, severity = 'error') => {
     if (!diagnostics.some(item => item.code === code && item.path === location && item.message === message)) {
@@ -22,7 +23,10 @@ export function migrateRegolithConfig(input: unknown, options: MigrationOptions 
   };
 
   const result = (): MigrationResult => ({
-    config,
+    config: Object.fromEntries([
+      ...metadata.filter(key => Object.hasOwn(config, key)).map(key => [key, config[key]]),
+      ...Object.entries(config).filter(([key]) => !metadata.includes(key)),
+    ]),
     diagnostics,
     ready: !diagnostics.some(item => item.severity === 'error'),
   });
@@ -116,7 +120,7 @@ export function migrateRegolithConfig(input: unknown, options: MigrationOptions 
     migrated.push([name, profile]);
   }
 
-  config.type ??= 'minecraftBedrock';
+  delete config.type;
   config.authors ??= typeof config.author === 'string' || isRecord(config.author) ? [config.author] : [];
 
   if (Object.hasOwn(config, 'author')) {
@@ -127,7 +131,7 @@ export function migrateRegolithConfig(input: unknown, options: MigrationOptions 
     delete config.author;
   }
 
-  config.worlds ??= [];
+  delete config.worlds;
   config.targetVersion = options.targetVersion ?? config.targetVersion;
   config.namespace = options.namespace ?? config.namespace ?? (namespaces.size === 1 ? [...namespaces][0] : undefined);
 

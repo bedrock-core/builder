@@ -1,14 +1,12 @@
 {
   "$schema": "../../schemas/config.schema.json",
-  "type": "minecraftBedrock",
-  "name": "@bedrock-core generator example",
-  "authors": [],
   "targetVersion": "1.26.50",
   "namespace": "builder_generator",
+  "name": "@bedrock-core generator example",
+  "authors": [],
   "packs": {
     "gameplay": "./packs/gameplay"
   },
-  "worlds": [],
   "bedrockCore": {
     "formatVersion": "1.0.0",
     "profiles": {

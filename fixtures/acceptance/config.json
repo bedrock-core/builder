@@ -1,11 +1,9 @@
 {
   "$schema": "../../schemas/config.schema.json",
-  "type": "minecraftBedrock",
-  "name": "@bedrock-core builder acceptance",
-  "authors": [],
   "targetVersion": "1.26.50",
   "namespace": "builder_acceptance",
-  "worlds": [],
+  "name": "@bedrock-core builder acceptance",
+  "authors": [],
   "packs": { "logic": "./packs/BP", "assets": "./packs/RP", "theme": "./packs/theme" },
   "bedrockCore": {
     "formatVersion": "1.0.0",

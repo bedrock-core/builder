@@ -1,11 +1,9 @@
 {
   "$schema": "../../schemas/config.schema.json",
-  "type": "minecraftBedrock",
-  "name": "@bedrock-core guides example",
-  "authors": [],
   "targetVersion": "1.26.50",
   "namespace": "example_guides",
-  "worlds": [],
+  "name": "@bedrock-core guides example",
+  "authors": [],
   "packs": {
     "logic": "./packs/BP",
     "assets": "./packs/RP"

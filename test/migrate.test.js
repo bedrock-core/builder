@@ -59,7 +59,8 @@ test('migration preserves unrelated tools and Regolith config without mutating i
   assert.deepEqual(result.config.bridge, input.bridge);
   assert.deepEqual(result.config.authors, ['Author']);
   assert.equal(Object.hasOwn(result.config, 'author'), false);
-  assert.deepEqual(result.config.worlds, []);
+  assert.equal(Object.hasOwn(result.config, 'type'), false);
+  assert.equal(Object.hasOwn(result.config, 'worlds'), false);
   const profile = result.config.bedrockCore.profiles.default;
 
   assert.deepEqual(profile.export, { behaviorPack: 'build/example_bp', resourcePack: 'build/example_rp' });
@@ -68,6 +69,22 @@ test('migration preserves unrelated tools and Regolith config without mutating i
   assert.equal(profile.stages.generator, false);
   assert.equal(profile.stages.i18n, false);
   assert.equal(profile.stages['ui-compiler'], false);
+});
+
+test('migration emits preferred metadata without redundant project fields', () => {
+  const input = legacy();
+
+  input.type = 'minecraftBedrock';
+  input.worlds = ['./worlds/example'];
+  input.description = 'Shared project content';
+  const result = migrateRegolithConfig(input);
+
+  assert.equal(result.ready, true);
+  assert.deepEqual(Object.keys(result.config).slice(0, 6), ['$schema', 'targetVersion', 'namespace', 'name', 'description', 'authors']);
+  assert.equal(Object.hasOwn(result.config, 'type'), false);
+  assert.equal(Object.hasOwn(result.config, 'worlds'), false);
+  assert.equal(input.type, 'minecraftBedrock');
+  assert.deepEqual(input.worlds, ['./worlds/example']);
 });
 
 test('core settings preserve generator opt-in and infer namespace without enabling absent stages', () => {

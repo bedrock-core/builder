@@ -59,8 +59,8 @@ try {
   const configPath = path.join(root, 'config.json');
 
   await writeFile(configPath, JSON.stringify({
-    type: 'minecraftBedrock', name: '@bedrock-core UI benchmark', authors: [], targetVersion: '1.26.50',
-    namespace: 'drav0011_ui_tests', worlds: [], packs: { logic: './packs/BP', assets: './packs/RP' },
+    name: '@bedrock-core UI benchmark', authors: [], targetVersion: '1.26.50',
+    namespace: 'drav0011_ui_tests', packs: { logic: './packs/BP', assets: './packs/RP' },
     bedrockCore: {
       formatVersion: '1.0.0', profiles: {
         default: {

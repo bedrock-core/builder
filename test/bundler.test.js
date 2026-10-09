@@ -16,12 +16,10 @@ async function fixture(t) {
   await writeFile(path.join(root, 'packs/BP/manifest.json'), JSON.stringify(manifestFor('script')));
   await writeFile(path.join(root, 'packs/BP/scripts/custom.js'), 'export const custom = true;');
   const config = {
-    type: 'minecraftBedrock',
     name: 'Bundle',
     authors: [],
     targetVersion: '1.26.50',
     namespace: 'bundle_test',
-    worlds: [],
     packs: { behaviorPack: './packs/BP' },
     bedrockCore: {
       formatVersion: '1.0.0',

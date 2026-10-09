@@ -18,12 +18,10 @@ async function fixture(t, plugin, steps = [{ plugin: 'custom', after: 'prepare' 
   await writeFile(path.join(root, 'dist/manifest.json'), await readFile(path.join(root, 'packs/BP/manifest.json')));
   await writeFile(path.join(root, 'plugin.ts'), plugin);
   const config = {
-    type: 'minecraftBedrock',
     name: 'Test',
     authors: [],
     namespace: 'test',
     targetVersion: '1.26.50',
-    worlds: [],
     packs: { behaviorPack: './packs/BP' },
     bedrockCore: {
       formatVersion: '1.0.0',
@@ -83,6 +81,48 @@ test('TS producer and consumer share generated JSON without touching source', as
   assert.equal(result.artifacts[0].id, 'items');
   assert.equal(result.dependencies.includes(path.join(project.root, 'plugin.ts')), true);
   await assert.rejects(readFile(path.join(result.outputPaths.behaviorPack, 'previous.txt')), { code: 'ENOENT' });
+});
+
+test('targeted modules receive one current pack and record distinct artifact owners', async (t) => {
+  const project = await fixture(t, `
+    import { writeFile } from 'node:fs/promises';
+    import path from 'node:path';
+    const seen = [];
+    export async function run(ctx, settings) {
+      seen.push(ctx.pack.id);
+      const file = path.join(ctx.packs[ctx.pack.id], 'generated.json');
+      await writeFile(file, '{}');
+      await ctx.registerArtifact('generated:' + ctx.pack.id, file, { importAs: '@generated/' + ctx.pack.id });
+      await writeFile(file, JSON.stringify({ id: ctx.pack.id, kind: ctx.pack.kind, packs: Object.keys(ctx.packs), outputs: Object.keys(ctx.outputPaths), seen: [...seen], imports: Object.keys(ctx.generatedImports), settings }));
+    }
+  `);
+
+  for (const id of ['assets', 'gallery']) {
+    const directory = path.join(project.root, 'packs', id);
+
+    await mkdir(directory);
+    await writeFile(path.join(directory, 'manifest.json'), JSON.stringify(manifestFor('resources')));
+    project.config.packs[id] = './packs/' + id;
+    project.config.bedrockCore.profiles.default.export[id] = './built/' + id;
+  }
+
+  project.config.bedrockCore.plugins.custom.targets = 'resource';
+  project.config.bedrockCore.profiles.default.steps[0].settings = { amount: 4 };
+  await writeFile(project.configPath, JSON.stringify(project.config));
+  const result = await runBuild(project.options);
+
+  for (const [index, id] of ['assets', 'gallery'].entries()) {
+    assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPaths[id], 'generated.json'), 'utf8')), {
+      id, kind: 'resource', packs: [id], outputs: [id], seen: ['assets', 'gallery'].slice(0, index + 1), imports: ['@generated/assets', '@generated/gallery'].slice(0, index + 1), settings: { amount: 4 },
+    });
+    await assert.rejects(readFile(path.join(project.root, 'packs', id, 'generated.json')), { code: 'ENOENT' });
+  }
+
+  await assert.rejects(readFile(path.join(result.outputPaths.behaviorPack, 'generated.json')), { code: 'ENOENT' });
+  assert.deepEqual(result.artifacts.filter(artifact => artifact.id.startsWith('generated:')).map(artifact => ({ id: artifact.id, owner: artifact.owner })), [
+    { id: 'generated:assets', owner: 'custom:1:assets' },
+    { id: 'generated:gallery', owner: 'custom:1:gallery' },
+  ]);
 });
 test('plugin failure keeps sources and previous export intact and permits retry', async (t) => {
   const project = await fixture(

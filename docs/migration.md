@@ -32,13 +32,17 @@ repository URL, not just their ID. Local wrappers are recognized only when their
 paths match this workspace's sibling `regolith-filters` repository. Other local modules and
 forks require an explicit verified mapping with `--filter id=stage` or `id=core`.
 That mapping names a built-in equivalent; it does not adapt or execute custom filter code.
+Define standalone Node scripts directly under `bedrockCore.plugins` and invoke their
+names in profile steps. See [running Node filters](regolith-node-filters.md).
 Pinned filter versions produce a parity warning because built-in stages use the installed builder.
 
 Pack modules determine behavior/resource classification, including arbitrary pack IDs.
 Manifests must already use v3 and unique identities. If project `targetVersion` is missing,
 the command can infer it when all available `min_engine_version` strings agree. Otherwise
 use `--target-version`. Namespace can be inferred from agreeing stage settings; otherwise
-use `--namespace`. Missing `type` and `worlds` become `minecraftBedrock` and an empty list.
+use `--namespace`. Projects are implicitly Minecraft Bedrock, so migration omits `type`.
+Metadata is written in the preferred order:
+`$schema`, `targetVersion`, `namespace`, `name`, `description`, `authors`, then remaining fields.
 Existing builder configuration is never replaced.
 
 ## Saving the result

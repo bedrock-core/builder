@@ -8,8 +8,8 @@ import { validateConfig } from '../src/config.ts';
 import { runBuild } from '../src/run.ts';
 
 const configFor = packs => ({
-  type: 'minecraftBedrock', name: 'Pack selection', authors: [], targetVersion: '1.26.50',
-  namespace: 'pack_test', worlds: [], packs,
+  name: 'Pack selection', authors: [], targetVersion: '1.26.50',
+  namespace: 'pack_test', packs,
   bedrockCore: { formatVersion: '1.0.0', profiles: { default: {
     export: Object.fromEntries(Object.keys(packs).map(id => [id, `./dist/${id}`])),
   } } },

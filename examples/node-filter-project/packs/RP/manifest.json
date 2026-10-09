@@ -1,0 +1,18 @@
+{
+  "format_version": 3,
+  "header": {
+    "name": "Node filter example",
+    "description": "Resource pack generated with a Regolith Node filter",
+    "uuid": "195079bf-dd85-4c9f-a07a-be82980516b9",
+    "version": "1.0.0",
+    "min_engine_version": "1.26.50"
+  },
+  "modules": [
+    {
+      "type": "resources",
+      "uuid": "81a203ec-f480-49e5-99a9-1c70a435ab86",
+      "version": "1.0.0"
+    }
+  ],
+  "metadata": { "authors": ["Example"] }
+}

@@ -16,6 +16,7 @@ export interface BuildContext {
   readonly generatedImports: Readonly<Record<string, string>>;
   readonly cache: boolean;
   readonly packs: Readonly<Record<string, string>>;
+  readonly pack?: PackInfo;
   readonly outputPaths: Readonly<Record<string, string>>;
   readonly profile: string;
   readonly logger: Pick<Console, 'info' | 'warn' | 'error'>;

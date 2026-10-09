@@ -63,3 +63,40 @@ test('unknown stages, missing definitions and unsupported versions fail', () => 
   );
   assert.throws(() => planBuild({ bedrockCore: { formatVersion: '2.0.0' } }), /formatVersion/);
 });
+
+test('Node steps resolve named script definitions and pass invocation settings directly', () => {
+  const project = config({ steps: [
+    { plugin: 'generate', after: 'prepare', settings: { count: 2 }, arguments: ['first'] },
+    { plugin: 'generate', after: 'prepare', settings: { count: 7 } },
+    { plugin: 'custom', before: 'export', settings: { finish: true } },
+  ] });
+  const definition = { script: './filters/main.cjs', filterDir: '.', nodeArguments: ['--no-warnings'], targets: 'resource' };
+
+  project.bedrockCore.plugins.generate = definition;
+  const snapshot = structuredClone(project);
+  const planned = planBuild(project).filter(step => step.kind === 'plugin');
+
+  assert.deepEqual(planned[0], {
+    kind: 'plugin', plugin: 'generate', ...definition, settings: { count: 2 }, arguments: ['first'], position: 'after', boundary: 'prepare',
+  });
+  assert.deepEqual(planned[1].settings, { count: 7 });
+  assert.deepEqual(planned[1].arguments, []);
+  assert.equal(planned[2].module, './custom.ts');
+  assert.deepEqual(project, snapshot);
+});
+
+test('the planner rejects invalid entries and script arguments on native modules', () => {
+  const project = config({ steps: [{ plugin: 'custom', after: 'prepare' }] });
+
+  for (const definition of [{}, { script: 7 }, { script: './main.js', module: './main.js' }, { script: './main.js', packs: { BP: 7 } }]) {
+    project.bedrockCore.plugins.custom = definition;
+    assert.throws(() => planBuild(project), /Invalid plugin definition/);
+  }
+
+  project.bedrockCore.plugins.custom = { module: './custom.ts' };
+  project.bedrockCore.profiles.default.steps[0].arguments = ['extra'];
+  assert.throws(() => planBuild(project), /Script arguments require a script plugin/);
+  project.bedrockCore.plugins.custom = { script: './main.js' };
+  project.bedrockCore.profiles.default.steps[0].arguments = [7];
+  assert.throws(() => planBuild(project), /Invalid plugin arguments/);
+});

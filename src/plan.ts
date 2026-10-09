@@ -1,5 +1,5 @@
 /** Stable stage boundaries; omitted stages detect their inputs during execution. */
-import type { ProjectConfig, StageName, Settings } from './config.ts';
+import { validatePluginDefinition, type NodePluginDefinition, type PluginTargets, type ProjectConfig, type StageName, type Settings } from './config.ts';
 export const stages: readonly StageName[] = Object.freeze([
   'manifest',
   'generator',
@@ -11,11 +11,11 @@ export const stages: readonly StageName[] = Object.freeze([
 export type PlannedPlugin = {
   kind: 'plugin';
   plugin: string;
-  module: string;
   settings: Settings;
+  targets?: PluginTargets;
   position: 'before' | 'after';
   boundary: string;
-};
+} & ({ module: string; script?: never } | (NodePluginDefinition & { module?: never; arguments: string[] }));
 export type PlannedStage = {
   kind: 'stage';
   stage: StageName | 'prepare' | 'validate' | 'export';
@@ -82,7 +82,7 @@ export function planBuild(config: ProjectConfig, profileName = 'default'): Plann
       throw new Error(`Step ${index} needs exactly one before or after boundary`);
     }
 
-    const position = before ? 'before' : 'after';
+    const position: PlannedPlugin['position'] = before ? 'before' : 'after';
     const boundary = step[position];
 
     if (typeof boundary !== 'string') {
@@ -97,24 +97,37 @@ export function planBuild(config: ProjectConfig, profileName = 'default'): Plann
       throw new Error(`Unavailable boundary: ${position} ${boundary}`);
     }
 
-    const definition = definitions[step.plugin];
+    const entry = definitions[step.plugin];
 
-    if (!record(definition) || typeof definition.module !== 'string' || !definition.module.trim()) {
-      throw new Error(`Missing plugin module: ${step.plugin}`);
+    if (entry === undefined) {
+      throw new Error(`Missing plugin definition: ${step.plugin}`);
     }
+
+    const definition = validatePluginDefinition(entry, step.plugin);
 
     if (step.settings !== undefined && !record(step.settings)) {
       throw new Error(`Invalid plugin settings: ${step.plugin}`);
     }
 
-    return {
-      kind: 'plugin',
+    if (step.arguments !== undefined && (!Array.isArray(step.arguments) || !step.arguments.every(argument => typeof argument === 'string'))) {
+      throw new Error(`Invalid plugin arguments: ${step.plugin}`);
+    }
+
+    if ('module' in definition && step.arguments !== undefined) {
+      throw new Error(`Script arguments require a script plugin: ${step.plugin}`);
+    }
+
+    const invocation = {
+      kind: 'plugin' as const,
       plugin: step.plugin,
-      module: definition.module,
       settings: step.settings ?? {},
       position,
       boundary: boundary!,
     };
+
+    return 'module' in definition
+      ? { ...invocation, ...definition }
+      : { ...invocation, ...definition, arguments: step.arguments ?? [] };
   });
   const at = (position: 'before' | 'after', boundary: string) =>
     hooks.filter(step => step.position === position && step.boundary === boundary);

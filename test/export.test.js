@@ -9,6 +9,104 @@ import { runBuild } from '../src/run.ts';
 import { exportPacks, resolveExportPaths } from '../src/export.ts';
 import { validateConfig } from '../src/config.ts';
 
+test('export variables resolve absolute and relative paths without recursively expanding values', () => {
+  const project = path.resolve('test-project');
+  const packs = { resources: './packs/RP' };
+  const output = path.resolve(project, '../pack output');
+  const environment = {
+    'PACK_OUTPUT': output, 'PACK_NAME': 'My Addon', 'RELATIVE_OUTPUT': './build',
+    'ProgramFiles(x86)': output, 'LITERAL_OUTPUT': './build/$UNCHANGED/%UNCHANGED%',
+  };
+
+  for (const directory of ['%PACK_OUTPUT%/%PACK_NAME%', '${PACK_OUTPUT}/${PACK_NAME}', '$PACK_OUTPUT/$PACK_NAME']) {
+    assert.deepEqual(resolveExportPaths(project, packs, { resources: directory }, environment), {
+      resources: path.join(output, 'My Addon'),
+    });
+  }
+
+  assert.equal(resolveExportPaths(project, packs, { resources: '$RELATIVE_OUTPUT/RP' }, environment).resources, path.join(project, 'build/RP'));
+  assert.equal(resolveExportPaths(project, packs, { resources: '%ProgramFiles(x86)%/RP' }, environment).resources, path.join(output, 'RP'));
+  assert.equal(resolveExportPaths(project, packs, { resources: '${LITERAL_OUTPUT}/RP' }, environment).resources, path.join(project, 'build/$UNCHANGED/%UNCHANGED%/RP'));
+  const differentlyCased = () => resolveExportPaths(project, packs, { resources: '%pack_output%/RP' }, environment);
+
+  if (process.platform === 'win32') {
+    assert.equal(differentlyCased().resources, path.join(output, 'RP'));
+  } else {
+    assert.throws(differentlyCased, /unset or empty: pack_output/);
+  }
+});
+
+test('unset or empty export variables and shell expressions fail during path resolution', () => {
+  const project = path.resolve('test-project');
+  const packs = { resources: './packs/RP' };
+
+  for (const environment of [{}, { OUTPUT: undefined }, { OUTPUT: '' }, { OUTPUT: '   ' }]) {
+    for (const directory of ['%OUTPUT%/RP', '${OUTPUT}/RP', '$OUTPUT/RP']) {
+      assert.throws(() => resolveExportPaths(project, packs, { resources: directory }, environment), /unset or empty: OUTPUT/);
+    }
+  }
+
+  assert.throws(() => resolveExportPaths(project, packs, { resources: '${OUTPUT:-dist}/RP' }, {}), /Unsupported export environment variable expression/);
+});
+
+test('expanded destinations still enforce source, project and destination separation', async (t) => {
+  const project = await projectFor(t);
+
+  for (const output of [project.project, './packs/gameplay', './.bedrock-core/output', './output', './reserved.builder-lock']) {
+    assert.throws(() => resolveExportPaths(project.project, project.config.packs, {
+      gameplay: '%OUTPUT%', visuals: './output/RP',
+    }, { OUTPUT: output }), /dedicated pack directory|separate directories|reserved .builder- names/);
+  }
+
+  assert.throws(() => resolveExportPaths(project.project, project.config.packs, {
+    gameplay: '%OUTPUT%/same', visuals: '${OUTPUT}/same',
+  }, { OUTPUT: './dist' }), /separate directories/);
+});
+
+test('runner exports to environment paths and rejects unset variables before plugin execution', async (t) => {
+  const project = await projectFor(t);
+  const variable = 'BEDROCK_CORE_TEST_EXPORT_ROOT';
+  const previous = process.env[variable];
+
+  process.env[variable] = path.join(project.root, 'development packs');
+  t.after(() => {
+    if (previous === undefined) {
+      delete process.env[variable];
+    } else {
+      process.env[variable] = previous;
+    }
+  });
+  project.config.bedrockCore.profiles.default.export = {
+    gameplay: `%${variable}%/BP`, visuals: '${' + variable + '}/RP',
+  };
+  await writeFile(project.configPath, JSON.stringify(project.config));
+  const result = await runBuild({ configPath: project.configPath, logger: {} });
+
+  assert.equal(result.outputPaths.gameplay, path.join(process.env[variable], 'BP'));
+  assert.equal(result.outputPaths.visuals, path.join(process.env[variable], 'RP'));
+  assert.match(await readFile(path.join(result.outputPaths.gameplay, 'scripts/main.js'), 'utf8'), /value = 1/);
+  assert.equal(await readFile(path.join(result.outputPaths.visuals, 'asset.json'), 'utf8'), '{"value":1}');
+  await writeFile(path.join(project.project, 'plugin.ts'), 'throw new Error("plugin loaded");');
+  project.config.bedrockCore.plugins = { unsafe: { module: './plugin.ts' } };
+  project.config.bedrockCore.profiles.default.steps = [{ plugin: 'unsafe', after: 'prepare' }];
+  await writeFile(project.configPath, JSON.stringify(project.config));
+  delete process.env[variable];
+  await assert.rejects(runBuild({ configPath: project.configPath, logger: {} }), new RegExp(`unset or empty: ${variable}`));
+});
+
+test('standalone exports expand caller-supplied environment paths before publishing', async (t) => {
+  const project = await projectFor(t);
+  const source = path.join(project.project, 'packs/visuals');
+  const output = path.join(project.root, 'standalone output');
+  const result = await exportPacks({
+    packs: { visuals: source }, paths: { visuals: '%OUTPUT%/${PACK_NAME}' },
+    environment: { OUTPUT: output, PACK_NAME: 'RP' },
+  });
+
+  assert.deepEqual(result, [{ id: 'visuals', path: path.join(output, 'RP') }]);
+  assert.equal(await readFile(path.join(output, 'RP/asset.json'), 'utf8'), '{"value":1}');
+});
+
 test('each pack exports directly to its own relative or absolute path and leaves siblings intact', async (t) => {
   const project = await projectFor(t);
   const minecraft = path.join(project.root, 'minecraft');

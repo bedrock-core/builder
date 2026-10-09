@@ -17,6 +17,17 @@ test('example validates without mutation and preserves other tools', () => {
   assert.equal(validateConfig(config), config);
   assert.deepEqual(config, snapshot);
 });
+
+test('Bedrock configs need no type discriminator and key order does not affect validation', () => {
+  const config = Object.fromEntries(Object.entries(example()).reverse());
+  const snapshot = structuredClone(config);
+
+  assert.equal(Object.hasOwn(config, 'type'), false);
+  assert.equal(Object.hasOwn(config, 'worlds'), false);
+  assert.equal(validateConfig(config), config);
+  assert.deepEqual(config, snapshot);
+  assert.deepEqual(Object.keys(config), Object.keys(snapshot));
+});
 test('authors is required and unrelated top-level metadata is preserved', () => {
   const config = example();
 
@@ -54,7 +65,7 @@ test('unknown builder fields, malformed metadata and unsupported versions fail',
       c.authors = 'Author';
     },
     (c) => {
-      c.type = 'minecraftJava';
+      c.targetVersion = 12;
     },
   ]) {
     const config = example();
@@ -112,4 +123,45 @@ test('valid extensions reach planner checks for missing plugin and disabled stag
   config.bedrockCore.profiles.default.stages.bundler = true;
   delete config.bedrockCore.plugins.custom;
   assert.throws(() => planBuild(validateConfig(config)), /Missing plugin/);
+});
+
+test('named Node scripts and native modules validate without changing settings', () => {
+  const config = example();
+
+  config.bedrockCore.plugins = {
+    generate: { script: './filters/main.cjs', filterDir: '.', dataPath: './data', packs: { RP: 'visuals' }, nodeArguments: ['--no-warnings'] },
+    finish: { module: './finish.ts', targets: 'resource' },
+  };
+  config.bedrockCore.profiles.default.steps = [
+    { plugin: 'generate', after: 'prepare', settings: { name: 'Example' }, arguments: ['extra'] },
+    { plugin: 'finish', before: 'export' },
+  ];
+  const snapshot = structuredClone(config);
+
+  planBuild(validateConfig(config));
+  assert.deepEqual(config, snapshot);
+
+  for (const definition of [
+    {}, { script: '' }, { script: './main.js', module: './main.js' },
+    { script: './main.js', settings: {} }, { script: './main.js', arguments: ['extra'] },
+    { script: './main.js', filterDir: 7 }, { script: './main.js', nodeArguments: [true] },
+    { script: './main.js', packs: {} }, { script: './main.js', packs: { RP: 7 } },
+    { script: './main.js', targets: 'textures' }, { script: './main.js', targets: ['resource'] },
+    { script: './main.js', targets: 'resource', packs: { RP: 'visuals' } },
+  ]) {
+    config.bedrockCore.plugins.generate = definition;
+    assert.throws(() => validateConfig(config), /Invalid project configuration/);
+  }
+});
+
+test('pack targets validate for scripts and modules', () => {
+  for (const targets of ['resource', 'behavior', 'both']) {
+    for (const entry of [{ script: './filter.cjs' }, { module: './plugin.ts' }]) {
+      const config = example();
+
+      config.bedrockCore.plugins = { generate: { ...entry, targets } };
+      config.bedrockCore.profiles.default.steps = [{ plugin: 'generate', after: 'prepare' }];
+      assert.equal(planBuild(validateConfig(config)).find(step => step.plugin === 'generate').targets, targets);
+    }
+  }
 });

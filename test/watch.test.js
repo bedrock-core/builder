@@ -113,7 +113,10 @@ test('watch recovers from invalid export paths and ignores current and former de
   const cancellation = new AbortController();
   const results = [];
   const errors = [];
+  const variable = 'BEDROCK_CORE_WATCH_EXPORT_ROOT';
+  const previousEnvironment = process.env[variable];
 
+  process.env[variable] = path.join(project.project, 'environment output');
   project.config.bedrockCore.profiles.default.watch = { debounceMs: 30 };
   await writeFile(project.configPath, JSON.stringify(project.config));
   const watching = watchBuild({
@@ -128,6 +131,12 @@ test('watch recovers from invalid export paths and ignores current and former de
     try {
       await watching;
     } finally {
+      if (previousEnvironment === undefined) {
+        delete process.env[variable];
+      } else {
+        process.env[variable] = previousEnvironment;
+      }
+
       await project.dispose();
     }
   });
@@ -137,13 +146,15 @@ test('watch recovers from invalid export paths and ignores current and former de
   project.config.bedrockCore.profiles.default.export.gameplay = '.';
   await writeFile(project.configPath, JSON.stringify(project.config));
   await waitFor(() => errors.length > 0);
-  project.config.bedrockCore.profiles.default.export.gameplay = '../external/BP';
+  project.config.bedrockCore.profiles.default.export.gameplay = `%${variable}%/BP`;
+  project.config.bedrockCore.profiles.default.export.visuals = '${' + variable + '}/RP';
   await writeFile(project.configPath, JSON.stringify(project.config));
   await waitFor(() => results.length >= 2);
   await delay(200);
   const count = results.length;
 
-  assert.equal(results.at(-1).outputPaths.gameplay, path.join(project.root, 'external/BP'));
+  assert.equal(results.at(-1).outputPaths.gameplay, path.join(process.env[variable], 'BP'));
+  assert.equal(results.at(-1).outputPaths.visuals, path.join(process.env[variable], 'RP'));
   await writeFile(path.join(previous, 'ignored.json'), '{}');
   await writeFile(path.join(results.at(-1).outputPaths.visuals, 'ignored.json'), '{}');
   await delay(200);

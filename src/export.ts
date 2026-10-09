@@ -7,6 +7,7 @@ export interface ExportOptions {
   packs: Record<string, string>;
   paths: Record<string, string>;
   signal?: AbortSignal;
+  environment?: NodeJS.ProcessEnv;
 }
 
 export interface ExportedPack {
@@ -106,10 +107,31 @@ function checkSources(packs: Record<string, string>, paths: Record<string, strin
   }
 }
 
-/** Resolve each configured pack's exact destination relative to config.json. */
-export function resolveExportPaths(project: string, packs: Record<string, string>, selection: Record<string, string>): Record<string, string> {
+function expandExportPath(directory: string, environment: NodeJS.ProcessEnv): string {
+  return directory.replace(/%([^%]+)%|\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (_placeholder, windows: string | undefined, braced: string | undefined, bare: string | undefined) => {
+    const name = windows ?? braced ?? bare!;
+
+    if (windows === undefined && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      throw new Error(`Unsupported export environment variable expression: ${name}`);
+    }
+
+    const key = process.platform === 'win32'
+      ? Object.keys(environment).find(candidate => candidate.toLowerCase() === name.toLowerCase())
+      : name;
+    const value = key !== undefined && Object.hasOwn(environment, key) ? environment[key] : undefined;
+
+    if (value === undefined || !value.trim()) {
+      throw new Error(`Export environment variable is unset or empty: ${name}`);
+    }
+
+    return value;
+  });
+}
+
+/** Expand environment variables and resolve each pack destination relative to config.json. */
+export function resolveExportPaths(project: string, packs: Record<string, string>, selection: Record<string, string>, environment: NodeJS.ProcessEnv = process.env): Record<string, string> {
   checkPackIds(packs, selection);
-  const paths = Object.fromEntries(Object.entries(selection).map(([id, directory]) => [id, path.resolve(project, directory)]));
+  const paths = Object.fromEntries(Object.entries(selection).map(([id, directory]) => [id, path.resolve(project, expandExportPath(directory, environment))]));
 
   checkDestinations(paths);
 
@@ -258,10 +280,10 @@ export async function withExportPaths<T>(paths: Record<string, string>, build: (
 }
 
 /** Publish validated pack folders to caller-supplied paths without the build runner. */
-export async function exportPacks({ packs, paths, signal }: ExportOptions): Promise<ExportedPack[]> {
+export async function exportPacks({ packs, paths, signal, environment = process.env }: ExportOptions): Promise<ExportedPack[]> {
   signal?.throwIfAborted();
   checkPackIds(packs, paths);
-  paths = Object.fromEntries(Object.entries(paths).map(([id, directory]) => [id, path.resolve(directory)]));
+  paths = Object.fromEntries(Object.entries(paths).map(([id, directory]) => [id, path.resolve(expandExportPath(directory, environment))]));
   checkSources(packs, paths);
 
   return withExportPaths(paths, publish => publish(packs, signal));

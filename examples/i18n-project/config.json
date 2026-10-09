@@ -1,15 +1,13 @@
 {
   "$schema": "../../schemas/config.schema.json",
-  "type": "minecraftBedrock",
-  "name": "@bedrock-core i18n example",
-  "authors": [],
   "targetVersion": "1.26.50",
   "namespace": "builder_i18n",
+  "name": "@bedrock-core i18n example",
+  "authors": [],
   "packs": {
     "gameplay": "./packs/gameplay",
     "visuals": "./packs/visuals"
   },
-  "worlds": [],
   "bedrockCore": {
     "formatVersion": "1.0.0",
     "profiles": {

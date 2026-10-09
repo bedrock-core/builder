@@ -57,8 +57,8 @@ test('manifest UUIDs are unique across packs regardless of letter case', async (
 
 test('bundler schema accepts options without another entry declaration', () => {
   const config = {
-    type: 'minecraftBedrock', name: 'Schema fixture', authors: [], targetVersion: '1.26.50',
-    namespace: 'test', worlds: [], packs: { gameplay: './BP' },
+    name: 'Schema fixture', authors: [], targetVersion: '1.26.50',
+    namespace: 'test', packs: { gameplay: './BP' },
     bedrockCore: { formatVersion: '1.0.0', profiles: { default: { stages: {
       bundler: { debug: true },
     } } } },
