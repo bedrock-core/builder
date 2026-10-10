@@ -4,7 +4,12 @@ export type { GuidesSettings, GuideManifest, GuideBlock, GuideTreeNode, GuidePag
 export { compileGuidePage, assembleLocale, buildManifest } from './build.ts';
 export type { GuidePageInput, LocaleBuild, Report } from './build.ts';
 
-/** Compile trusted Markdown/MDX content without the builder or guide runtime installed. */
+/**
+ * Compile trusted Markdown/MDX content without the builder or guide runtime installed.
+ * @param options Project inputs, settings and optional integrations for this operation.
+ * @returns Guide manifest, generated files, declarations, diagnostics and page counts.
+ * @remarks Screen generation needs a behavior pack. compileScreens: false emits guide content without generated screen modules.
+ */
 export async function compileGuides(options: GuidesOptions): Promise<GuidesResult> {
   return compileProject(options);
 }

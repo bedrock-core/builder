@@ -14,27 +14,45 @@ export type { SchemaTypeSettings, SchemaTypeOptions, SchemaTypeResult } from './
 
 const sourceExtension = import.meta.url.endsWith('.ts') ? 'ts' : 'js';
 
+/** Indentation used when pretty JSON output is enabled. */
 export interface JsonFormatting {
+  /** Indentation character; defaults to spaces. */
   indent?: 'tab' | 'space';
+  /** Count of indentation characters; defaults to two spaces or one tab. */
   size?: number;
 }
 
+/** Evaluated template output, its authored source and serialized JSON content. */
 export interface GeneratedDocument {
+  /** Absolute JSON destination beside the template. */
   readonly path: string;
+  /** Absolute authored template path. */
   readonly source: string;
+  /** JSON data after serialization. */
   readonly value: JsonValue;
+  /** Serialized JSON written to the destination. */
   readonly content: string;
+  /** Declared or inferred Minecraft document category. */
   readonly category?: string;
 }
 
+/** Explicit trusted template inputs, output formatting and validation/compiler integrations. */
 export interface GeneratorOptions {
+  /** Real project directory containing all template inputs. */
   root: string;
+  /** Explicit TS/JS templates relative to root, or absolute. */
   files: readonly string[];
+  /** Authored dependency root used when templates are staged. */
   dependencyRoot?: string;
+  /** Generated or custom import specifiers mapped to files. */
   aliases?: Record<string, string>;
+  /** TypeScript module-resolution configuration. */
   tsconfig?: string;
+  /** JSON indentation settings; false or omission emits compact JSON. */
   pretty?: JsonFormatting | false;
+  /** Cooperative evaluation and write cancellation. */
   signal?: AbortSignal;
+  /** Check every generated document before any output is written. */
   validate?: (document: GeneratedDocument) => void | Promise<void>;
   /** Optional per-template reuse supplied by a build runner. */
   reuse?: (source: string, evaluate: () => Promise<TemplateEvaluation>) => Promise<TemplateEvaluation>;
@@ -42,16 +60,25 @@ export interface GeneratorOptions {
   compile?: (options: BundleOptions) => Promise<CompiledModule>;
 }
 
+/** Reusable documents and dependency records from one template evaluation. */
 export interface TemplateEvaluation {
+  /** Documents produced by this template. */
   documents: GeneratedDocument[];
+  /** Consumed source files. */
   inputs: string[];
+  /** Resolution candidates that can invalidate reuse. */
   watchFiles: string[];
+  /** Whether the evaluation can be safely cached. */
   cacheable: boolean;
 }
 
+/** Generated JSON documents and the authored inputs/templates that produced them. */
 export interface GeneratorResult {
+  /** Successfully written JSON outputs. */
   readonly documents: GeneratedDocument[];
+  /** Consumed template and module dependencies. */
   readonly inputs: string[];
+  /** Explicit normalized template inputs. */
   readonly templates: string[];
 }
 
@@ -85,7 +112,12 @@ function outputName(name: unknown, source: string): string {
   return name.endsWith('.json') ? name : `${name}.json`;
 }
 
-/** Evaluate explicit trusted templates and emit JSON after every template passes validation. */
+/**
+ * Evaluate explicit trusted templates and emit JSON after every template passes validation.
+ * @param options Project inputs, settings and optional integrations for this operation.
+ * @returns Written JSON documents and consumed inputs; authored template files remain intact.
+ * @remarks Outputs are written beside explicit templates after all generated documents pass validation. Template evaluation executes trusted Node code.
+ */
 export async function generateTemplates(options: GeneratorOptions): Promise<GeneratorResult> {
   options.signal?.throwIfAborted();
   const root = await realpath(path.resolve(options.root));

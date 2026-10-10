@@ -7,9 +7,13 @@ import { runBuild } from './run.ts';
 import { inputLocations } from './file-cache.ts';
 import type { BuildOptions, BuildResult } from './contract.d.ts';
 
+/** Build options with required cancellation and optional result/error callbacks. */
 export interface WatchOptions extends BuildOptions {
+  /** Abort to stop watching and cancel the active build. */
   signal: AbortSignal;
+  /** Called after a successful build; awaited before another build starts. */
   onBuild?: (result: BuildResult) => void | Promise<void>;
+  /** Called for build errors while the watcher remains active. */
   onError?: (error: unknown) => void;
 }
 
@@ -19,7 +23,12 @@ function contains(root: string, file: string): boolean {
   return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
 }
 
-/** Rebuild serially, coalesce changes, and keep watching after build failures. */
+/**
+ * Build immediately, then coalesce filesystem changes into sequential rebuilds.
+ * @param options Project inputs, settings and optional integrations for this operation.
+ * @returns Resolves when watching stops; the signal cancels active work and closes watchers.
+ * @remarks Rebuilds are sequential. Build failures are reported through onError and do not stop watching. Export paths and cache directories are excluded.
+ */
 export async function watchBuild(options: WatchOptions): Promise<void> {
   const { signal, logger = console, profile = 'default' } = options;
 

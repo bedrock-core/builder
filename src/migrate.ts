@@ -10,7 +10,13 @@ export type { FilterKind, MigrationDiagnostic, MigrationOptions, MigrationResult
 export { migrateRegolithProject, writeMigration } from './migration/project.ts';
 export type { ProjectMigration } from './migration/project.ts';
 
-/** Produce a reviewable config and diagnostics without evaluating or executing filters. */
+/**
+ * Produce a reviewable config and diagnostics without evaluating or executing filters.
+ * @param input Source data accepted by this operation.
+ * @param options Project inputs, settings and optional integrations for this operation.
+ * @returns A configuration preview, conversion diagnostics and readiness flag.
+ * @remarks Filters, shell commands and expressions are not executed. This operation converts configuration, not project code or pack manifests.
+ */
 export function migrateRegolithConfig(input: unknown, options: MigrationOptions = {}): MigrationResult {
   const config = isRecord(input) ? structuredClone(input) : {};
   const diagnostics: MigrationResult['diagnostics'] = [];

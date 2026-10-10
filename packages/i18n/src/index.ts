@@ -47,7 +47,12 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Compile trusted TS/JS resources independently of the builder and runtime translation library. */
+/**
+ * Compile trusted TS/JS resources independently of the builder and runtime translation library.
+ * @param options Project inputs, settings and optional integrations for this operation.
+ * @returns Generated runtime bundle, language outputs, declarations, dependencies and warnings.
+ * @remarks Without locale inputs the bundle is absent. Runtime use requires the corresponding i18n runtime package.
+ */
 export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
   options.signal?.throwIfAborted();
   const root = path.resolve(options.root);

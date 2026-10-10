@@ -8,36 +8,59 @@ import { Ajv, type ValidateFunction } from 'ajv';
 import { parse, printParseErrorCode, type ParseError } from 'jsonc-parser';
 import picomatch from 'picomatch';
 
+/** Manifest-classified pack directory whose final JSON files are checked. */
 export interface ContentPack {
+  /** Configured pack ID used in diagnostics. */
   id: string;
+  /** Pack directory to inspect. */
   path: string;
+  /** Manifest classification used to select applicable document schemas. */
   kind: 'behavior' | 'resource' | 'other';
 }
 
+/** Validation failure located by pack, file and JSON pointer. */
 export interface ContentDiagnostic {
+  /** Configured pack ID. */
   pack: string;
+  /** JSON file path relative to the pack directory, using forward slashes. */
   file: string;
+  /** JSON pointer identifying the invalid value. */
   pointer: string;
+  /** Syntax or schema validation explanation. */
   message: string;
 }
 
+/** Per-file syntax/schema diagnostics and any unavailable-schema explanation. */
 export interface ContentFileResult {
+  /** Configured pack ID. */
   pack: string;
+  /** Checked JSON path relative to the pack directory, using forward slashes. */
   file: string;
+  /** Applied schema URL when a matching catalog schema is available. */
   schema?: string;
+  /** Reason a matching upstream schema could not be applied. */
   schemaIssue?: string;
+  /** Syntax and schema errors for this file. */
   diagnostics: ContentDiagnostic[];
 }
 
+/** Schema catalog version and validation coverage for all checked files. */
 export interface ContentValidationResult {
+  /** Resolved Mojang schema catalog version. */
   schemaVersion: string;
+  /** Per-file checks and schema coverage. */
   files: ContentFileResult[];
 }
 
+/** Pack selection, schema catalog and optional validation-reuse integration. */
 export interface ContentValidationOptions {
+  /** Final pack directories to validate. */
   packs: readonly ContentPack[];
+  /** Custom installed Mojang schema catalog directory. */
   schemaRoot?: string;
+  /** Cooperative validation cancellation. */
   signal?: AbortSignal;
+  /** Reuse hook keyed by file, schema dependencies and validator revision; call validate on a miss. */
   reuse?: (
     file: string,
     dependencies: readonly string[],
@@ -46,9 +69,12 @@ export interface ContentValidationOptions {
   ) => Promise<ContentFileResult>;
 }
 
+/** Aggregated JSON validation failure with structured diagnostics. */
 export class ContentValidationError extends Error {
+  /** Structured validation failures collected across checked files. */
   readonly diagnostics: readonly ContentDiagnostic[];
 
+  /** Format the supplied structured diagnostics as one validation error. */
   constructor(diagnostics: ContentDiagnostic[]) {
     super(`Invalid pack content:\n${diagnostics.map(issue => `${issue.pack}/${issue.file}${issue.pointer}: ${issue.message}`).join('\n')}`);
     this.name = 'ContentValidationError';
@@ -71,7 +97,11 @@ function within(root: string, file: string): boolean {
   return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }
 
-/** Validate every JSON document; catalog matches additionally receive schema checks. */
+/**
+ * Validate every JSON document; catalog matches additionally receive schema checks.
+ * @param options Project inputs, settings and optional integrations for this operation.
+ * @returns Schema catalog version and per-file coverage; invalid documents throw ContentValidationError.
+ */
 export async function validatePackContent(options: ContentValidationOptions): Promise<ContentValidationResult> {
   const require = createRequire(import.meta.url);
   const root = await realpath(options.schemaRoot ?? path.dirname(require.resolve('@minecraft/bedrock-schemas/catalog.json')));

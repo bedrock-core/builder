@@ -5,9 +5,9 @@ export const SECTION_END = '## <core:generated-i18n:end>';
 export const META_BRANCH = 'meta';
 
 /**
- * Parse a Minecraft .lang file into a key→value map.
- * Lines starting with # are comments; blank lines are skipped.
- * Format: key=value (value may contain '=').
+ * Parse a Minecraft .lang file into a key→value map. Lines starting with # are comments; blank lines are skipped. Format: key=value (value may contain '=').
+ * @param content Language-file source text.
+ * @returns Language keys mapped to parsed string values.
  */
 export function parseLang(content: string): Record<string, string> {
   const map: Record<string, string> = {};

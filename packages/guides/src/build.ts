@@ -6,26 +6,42 @@ import { humanizeFilename, parseGuideFile } from './parse.ts';
 import { buildSidebar } from './sidebar.ts';
 import type { CompiledBlock, CompiledPage, GuideDiagnostic, GuideManifest, GuidePageCompilation, GuidePageData } from './types.ts';
 
+/** Diagnostic sink supplied to guide assembly and manifest construction. */
 export interface Report {
   warn(scope: string, message: string): void;
   error(scope: string, message: string): void;
 }
 
+/** Assembled locale pages, language entries and known page IDs. */
 export interface LocaleBuild {
+  /** Compiled pages indexed by page ID. */
   pages: Map<string, CompiledPage>;
+  /** Generated language keys and text. */
   lang: Map<string, string>;
+  /** Known page identifiers used for link validation. */
   pageIds: Set<string>;
 }
 
+/** MDX source and naming/image constraints for compiling one guide page. */
 export interface GuidePageInput {
+  /** Markdown/MDX content to parse. */
   source: string;
+  /** Normalized guide page identifier. */
   pageId: string;
+  /** Namespace prefix for generated language keys. */
   prefix: string;
+  /** Maximum encoded length for displayed code lines. */
   maxCodeLineBytes: number;
+  /** Optional image-dimension lookup for referenced textures. */
   imageSize?: (src: string) => { w: number; h: number } | undefined;
 }
 
-/** Compile a page independently of the current sidebar, categories and translations. */
+/**
+ * Compile a page independently of the current sidebar, categories and translations.
+ * @param input Source data accepted by this operation.
+ * @returns Parsed page content, generated language entries, link targets and diagnostics.
+ * @remarks Compiles a single page independently; current-set link and navigation checks belong to assembleLocale.
+ */
 export function compileGuidePage(input: GuidePageInput): GuidePageCompilation {
   const parsed = parseGuideFile(input.source);
   const diagnostics: GuideDiagnostic[] = [];
@@ -72,7 +88,15 @@ export function compileGuidePage(input: GuidePageInput): GuidePageCompilation {
   };
 }
 
-/** Assemble fresh locale state from compiled pages; cached page IR is never mutated. */
+/**
+ * Assemble fresh locale state from compiled pages; cached page IR is never mutated.
+ * @param compiled Current locale page compilations indexed by normalized page ID.
+ * @param categories Current category metadata indexed by category ID.
+ * @param prefix Namespace prefix for generated language keys.
+ * @param report Warning/error sink used by locale assembly.
+ * @param targets Known page IDs for link validation; defaults to the compiled page IDs.
+ * @returns Assembled locale pages, language entries and validated page IDs.
+ */
 export function assembleLocale(
   compiled: Map<string, GuidePageCompilation>,
   categories: Map<string, Record<string, unknown>>,
@@ -110,6 +134,11 @@ export function assembleLocale(
   return { pages, lang, pageIds: new Set(compiled.keys()) };
 }
 
+/**
+ * Build a runtime guide manifest from the assembled current locale and categories.
+ * @param input Current locale build, categories, namespace, locale names and diagnostic sink.
+ * @returns Guide runtime manifest with its sidebar, access gates and locale metadata.
+ */
 export function buildManifest({ build, categories, prefix, ns, defaultLocale, locales, report }: {
   build: LocaleBuild;
   categories: Map<string, Record<string, unknown>>;

@@ -11,24 +11,41 @@ import { readPngSize } from './png.ts';
 import { guideScreenModules, guideScreenTables, SCREEN_HEADER } from './screens.ts';
 import type { GuideDiagnostic, GuideManifest, GuidePageCompilation, GuidesSettings } from './types.ts';
 
+/** Project paths, locale packs and diagnostics for compiling MDX guides. */
 export interface GuidesOptions extends GuidesSettings {
+  /** Project working directory. */
   root: string;
+  /** Required guide-key namespace. */
   namespace: string;
+  /** Pack destinations for language files and resource assets. */
   packs?: { path: string; kind: 'resource' | 'behavior' }[];
+  /** Generated output directory; defaults to .bedrock-core/generated/guides. */
   outputDir?: string;
+  /** Editor-declaration directory; defaults to outputDir. */
   typesDir?: string;
+  /** Cooperative compilation cancellation. */
   signal?: AbortSignal;
+  /** Nonfatal diagnostic sink. */
   warn?: (message: string) => void;
 }
 
+/** Guide manifest, written outputs, diagnostics and page reuse counts. */
 export interface GuidesResult {
+  /** Compiled runtime guide data when content exists. */
   manifest?: GuideManifest;
+  /** Written runtime manifest path. */
   manifestPath?: string;
+  /** Written manifest, language, asset and screen outputs. */
   files: string[];
+  /** Observed guide sources and assets. */
   inputs: string[];
+  /** Written editor declarations. */
   declarations: string[];
+  /** Scoped compilation warnings and errors. */
   diagnostics: GuideDiagnostic[];
+  /** Number of compiled locale pages. */
   pages: number;
+  /** Number of locale pages reused by the runner. */
   reused: number;
 }
 

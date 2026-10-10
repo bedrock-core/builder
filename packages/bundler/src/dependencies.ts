@@ -3,15 +3,18 @@ import ts from 'typescript';
 
 /** Record the files and missing candidates that can change esbuild resolution. */
 export class CompilationDependencies {
+  /** Existing inputs and missing candidates that can change module resolution. */
   readonly files = new Set<string>();
   private configs = new Map<string, ts.CompilerOptions>();
   private nearest = new Map<string, string | undefined>();
   private explicitConfig?: string;
 
+  /** Start tracking with an optional TypeScript configuration relative to root. */
   constructor(root: string, config?: string) {
     this.explicitConfig = config ? path.resolve(root, config) : undefined;
   }
 
+  /** Track a resolved path and alternative extensions, index files and package metadata. */
   candidates(file: string): void {
     this.files.add(file);
     const extension = path.extname(file);
@@ -74,6 +77,7 @@ export class CompilationDependencies {
     return this.configs.get(file)!;
   }
 
+  /** Track relative, npm and tsconfig-alias candidates from the importing directory. */
   imports(specifier: string, directory: string): void {
     if (specifier.startsWith('.') || path.isAbsolute(specifier)) {
       this.candidates(path.resolve(directory, specifier));
@@ -140,6 +144,7 @@ export class CompilationDependencies {
     }
   }
 
+  /** Track ancestor package metadata that can affect dependency resolution. */
   parents(directory: string): void {
     this.config(directory);
 

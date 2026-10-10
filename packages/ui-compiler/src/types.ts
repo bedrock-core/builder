@@ -1,21 +1,33 @@
 import type { Document } from './hooks.ts';
 import type { PackLocales } from './lang.ts';
 
+/** Screen discovery, output formatting and optional metadata settings for the UI stage. */
 export interface UiSettings {
+  /** Override the project namespace for generated UI content. */
   namespace?: string;
+  /** Emit optional screen identity metadata. */
   testMetadata?: boolean;
+  /** Emit a build stamp in generated output. */
   stamp?: boolean;
+  /** Explicit screen-source globs. */
   screens?: string[];
+  /** JSON output indentation. */
   pretty?: false | { indent?: 'space' | 'tab'; size?: number };
+  /** TypeScript module-resolution configuration. */
   tsconfig?: string;
 }
 
+/** Authored screen module and export selected for compilation. */
 export interface ScreenEntry {
+  /** Authored or generated screen module path. */
   source: string;
+  /** Screen export name. */
   name: string;
+  /** Member selected from a screen collection, when applicable. */
   member?: string;
 }
 
+/** Compiled screen data consumed by linking and resource/host writers. */
 export interface ScreenData {
   name: string;
   addon: string;
@@ -41,11 +53,13 @@ export interface ScreenData {
   };
 }
 
+/** Relative output filename and linked JSON UI document. */
 export interface UiDocument {
   file: string;
   document: Document;
 }
 
+/** Complete linked screen set with JSON UI, host protocol and language outputs. */
 export interface LinkedUi {
   screens: ScreenData[];
   hooks: UiDocument[];
@@ -57,12 +71,17 @@ export interface LinkedUi {
   items: Record<string, { role: string; document: Document }[]>;
 }
 
+/** Shared bundled toolkit and locale data supplied to screen-evaluation workers. */
 export interface UiEnvironment {
+  /** Absolute shared toolkit bundle path. */
   library: string;
+  /** Compiled translation bundle supplied to the worker. */
   i18n?: unknown;
+  /** Pack language tables supplied to screen compilation. */
   locales?: PackLocales;
 }
 
+/** Sequential worker operation for export discovery, screen compilation or pack linking. */
 export type UiRequest
   = | { kind: 'exports' }
     | { kind: 'list'; module: string }

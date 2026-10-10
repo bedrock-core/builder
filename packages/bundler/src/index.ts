@@ -3,37 +3,65 @@ import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { CompilationDependencies } from './dependencies.ts';
 
+/** esbuild version used by the standalone bundler and compilation cache. */
 export const compilerVersion = version;
 
+/** Explicit script entry, output and module-resolution settings. */
 export interface BundleOptions {
+  /** Working directory for entry, output and compiler paths. */
   root: string;
+  /** Explicit TS/JS entry path relative to root, or absolute. */
   entry: string;
+  /** Output JavaScript path relative to root, or absolute. */
   outfile: string;
+  /** Fallback authored directory for package resolution. */
   dependencyRoot?: string;
+  /** Emit an external source map and retain readable output. */
   debug?: boolean;
+  /** esbuild language target; defaults to es2020. */
   target?: string;
+  /** TypeScript configuration file for module resolution. */
   tsconfig?: string;
+  /** Additional package specifiers retained as runtime imports. */
   external?: string[];
+  /** Import specifiers mapped to explicit files. */
   aliases?: Record<string, string>;
+  /** Cooperative compiler cancellation. */
   signal?: AbortSignal;
+  /** Module platform; defaults to neutral. */
   platform?: 'neutral' | 'node';
+  /** JavaScript prepended to the output. */
   banner?: string;
+  /** Helper modules injected into compilation. */
   inject?: string[];
+  /** Package supplying the automatic JSX runtime. */
   jsxImportSource?: string;
+  /** Transform screen JSX before bundling; screen modules require this integration. */
   transformScreen?: (source: string, file: string) => string;
+  /** Resolve @bedrock-core toolkit imports from the authored dependency root first. */
   projectModules?: boolean;
 }
+/** Written output files, input dependencies and esbuild compilation metadata. */
 export interface BundleResult {
+  /** Absolute paths of written bundles and source maps. */
   files: string[];
+  /** Existing files consumed by esbuild. */
   inputs: string[];
+  /** esbuild input/output metadata. */
   metafile: Metafile;
   /** Resolution candidates include missing files that could shadow an import. */
   watchFiles: string[];
+  /** Whether module-resolution dependencies allow safe reuse. */
   cacheable: boolean;
 }
+/** Compiler output and dependency records accepted by stage integrations. */
 export type CompiledModule = Pick<BundleResult, 'files' | 'inputs' | 'watchFiles' | 'cacheable'>;
 
-/** Bundle one explicit TS/JS entry without requiring the builder or Minecraft runtime libraries. */
+/**
+ * Bundle one explicit TS/JS entry without requiring the builder or Minecraft runtime libraries.
+ * @param options Project inputs, settings and optional integrations for this operation.
+ * @returns Written bundle paths, source inputs, resolution candidates and esbuild metadata.
+ */
 export async function bundleScripts(options: BundleOptions): Promise<BundleResult> {
   const root = path.resolve(options.root);
   const outfile = path.resolve(root, options.outfile);

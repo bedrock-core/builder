@@ -1,5 +1,5 @@
-/** Stable stage boundaries; omitted stages detect their inputs during execution. */
 import { validatePluginDefinition, type NodePluginDefinition, type PluginTargets, type ProjectConfig, type StageName, type Settings } from './config.ts';
+/** Ordered built-in boundaries; automatic input detection happens during execution. */
 export const stages: readonly StageName[] = Object.freeze([
   'manifest',
   'generator',
@@ -8,6 +8,7 @@ export const stages: readonly StageName[] = Object.freeze([
   'ui-compiler',
   'bundler',
 ]);
+/** Resolved plugin definition and invocation settings at one pipeline boundary. */
 export type PlannedPlugin = {
   kind: 'plugin';
   plugin: string;
@@ -16,18 +17,27 @@ export type PlannedPlugin = {
   position: 'before' | 'after';
   boundary: string;
 } & ({ module: string; script?: never } | (NodePluginDefinition & { module?: never; arguments: string[] }));
+/** Built-in or lifecycle operation in a resolved plan. */
 export type PlannedStage = {
   kind: 'stage';
   stage: StageName | 'prepare' | 'validate' | 'export';
   settings?: Settings;
   mode?: 'auto' | 'always';
 };
+/** One operation in the sequential build plan. */
 export type PlannedStep = PlannedPlugin | PlannedStage;
 
 const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
-/** Resolve a deterministic execution plan without loading or executing plugin code. */
+/**
+ * Resolve a deterministic execution plan without loading or executing plugin code.
+ * @param config Project configuration; paths remain relative to its containing project.
+ * @param profileName Named profile; defaults to default.
+ * @returns Prepare, hooks, selected stages, validation and export in deterministic order.
+ * @remarks Automatic stage boundaries are included; input detection happens during execution after before hooks. This operation does not import plugin code.
+ * @throws If the profile, plugin reference or enabled hook boundary is invalid.
+ */
 export function planBuild(config: ProjectConfig, profileName = 'default'): PlannedStep[] {
   const tool = config?.bedrockCore;
 

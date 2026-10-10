@@ -9,7 +9,13 @@ interface Host {
   components?: Record<string, Record<string, unknown>>;
 }
 
-/** Resolve each container host across configured behavior packs and stamp its staged definition. */
+/**
+ * Resolve each container host across configured behavior packs and stamp its staged definition.
+ * @param packs Configured pack IDs mapped to their directories.
+ * @param linked Complete linked screen data for the current build.
+ * @param settings UI output formatting and optional metadata settings.
+ * @returns Paths of generated behavior-pack host/protocol definitions.
+ */
 export async function writeUiHosts(packs: string[], linked: LinkedUi, settings: UiSettings): Promise<string[]> {
   if (!linked.screens.some(screen => screen.host)) {
     return [];

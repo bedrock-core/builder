@@ -27,7 +27,15 @@ async function optionalText(file: string): Promise<string | undefined> {
   }
 }
 
-/** Write one linked screen set to a staged resource pack. */
+/**
+ * Write one linked screen set to a staged resource pack.
+ * @param pack Resource-pack directory receiving generated files.
+ * @param linked Complete linked screen data for the current build.
+ * @param entries Current screen modules and selected exports.
+ * @param namespace Project namespace used for generated content.
+ * @param settings UI output formatting and optional metadata settings.
+ * @returns Paths of generated resource UI, language and metadata outputs.
+ */
 export async function writeUiResource(pack: string, linked: LinkedUi, entries: ScreenEntry[], namespace: string, settings: UiSettings): Promise<string[]> {
   const files: string[] = [];
   const outputDir = `ui/core-ui/screens/${namespace}`;
@@ -152,7 +160,14 @@ export async function writeUiResource(pack: string, linked: LinkedUi, entries: S
   return [...new Set(files)];
 }
 
-/** Runtime registrations retain source imports only for screens with live behavior. */
+/**
+ * Runtime registrations retain source imports only for screens with live behavior.
+ * @param linked Complete linked screen data for the current build.
+ * @param entries Current screen modules and selected exports.
+ * @param directory Directory containing the current pack manifest.
+ * @param namespace Project namespace used for generated content.
+ * @returns Runtime screen-registration module source; no file is written by this function.
+ */
 export function uiRegistration(linked: Pick<LinkedUi, 'screens'>, entries: ScreenEntry[], directory: string, namespace: string): string {
   const imports: string[] = [];
   const calls: string[] = [];

@@ -9,14 +9,22 @@ interface ManifestModule {
   entry?: string;
 }
 
+/** Recursively JSON-serializable data. */
 export type JsonValue = string | number | boolean | null | JsonValue[] | JsonObject;
+/** String-keyed JSON object used for manifest overrides. */
 export interface JsonObject { [key: string]: JsonValue }
 
+/** Explicit patches for the standalone manifest transformation helper. */
 export interface ManifestOverrides {
+  /** Recursively merge header fields. */
   header?: JsonObject;
+  /** Recursively merge metadata fields. */
   metadata?: JsonObject;
+  /** Replace the dependency list. */
   dependencies?: JsonValue[];
+  /** Module patches keyed by existing module UUID; unknown UUIDs fail. */
   modules?: Record<string, JsonObject>;
+  /** Replace the entry of the sole script module; multiple script modules require UUID patches. */
   scriptEntry?: string;
 }
 
@@ -37,7 +45,13 @@ function mergeObjects(original: JsonObject, overrides: JsonObject): JsonObject {
   }));
 }
 
-/** Apply profile overrides while retaining unrelated manifest fields and module identities. */
+/**
+ * Apply explicit patches while retaining unrelated manifest fields and module identities.
+ * @param input Source data accepted by this operation.
+ * @param overrides Header, metadata, dependency and existing module-UUID patches.
+ * @returns A cloned manifest with recursive object patches and replaced arrays.
+ * @remarks Module patches must reference existing UUIDs. scriptEntry requires exactly one script module.
+ */
 export function transformManifest(input: unknown, overrides: ManifestOverrides): JsonObject {
   if (!isRecord(input) || input.format_version !== 3 || !Array.isArray(input.modules)) {
     throw new Error('Manifest stage requires a v3 manifest with modules');
@@ -112,7 +126,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-/** Read and validate manifest v3 fields without requiring compiled script files. */
+/**
+ * Read and validate manifest v3 fields without requiring compiled script files.
+ * @param id Configured pack ID used in diagnostics.
+ * @param directory Directory containing the current pack manifest.
+ * @returns Validated v3 manifest metadata; compiled script files are not required yet.
+ */
 export async function readManifest(id: string, directory: string): Promise<Manifest> {
   const value: unknown = JSON.parse(await readFile(path.join(directory, 'manifest.json'), 'utf8'));
 
@@ -183,7 +202,11 @@ export async function readScriptEntries(id: string, directory: string): Promise<
   return manifest.modules.filter(module => module.type === 'script').map(module => module.entry!);
 }
 
-/** Validate identity and script files after all build steps finish. */
+/**
+ * Validate identity and script files after all build steps finish.
+ * @param packs Configured pack IDs mapped to their directories.
+ * @returns Resolves after all identities, entries and script files pass final manifest checks.
+ */
 export async function validatePackManifests(packs: Record<string, string>): Promise<void> {
   const identities = new Map<string, string>();
 

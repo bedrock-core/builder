@@ -61,7 +61,11 @@ const exists = async (file: string): Promise<boolean> => {
 
 const check = (signal?: AbortSignal) => signal?.throwIfAborted();
 
-/** Run trusted plugins against an isolated staged project and publish only successful packs. */
+/**
+ * Build an isolated staged project and publish all packs after successful validation.
+ * Plugins execute as trusted Node code. Build failures retain the previous export.
+ * @returns Export destinations, validation coverage and execution records without temporary paths.
+ */
 export async function runBuild({
   configPath = 'config.json',
   profile = 'default',

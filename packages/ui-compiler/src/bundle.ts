@@ -5,6 +5,7 @@ import { CompilationDependencies } from '@bedrock-core/builder-bundler/dependenc
 import { gameStubPlugin } from './stubs/game.ts';
 import { desugarJsxConditionals } from './sugar.ts';
 
+/** esbuild version used by UI bundles and their cache records. */
 export const uiCompilerVersion = version;
 export const libraryModules: Record<string, string> = {
   '@bedrock-core/ui': 'ui',
@@ -23,25 +24,42 @@ export const libraryModules: Record<string, string> = {
   '@bedrock-core/guides': 'guides',
 };
 
+/** Project module resolution and shared toolkit settings for UI bundling. */
 export interface UiBundleOptions {
+  /** Staged or standalone project working directory. */
   root: string;
+  /** Authored directory supplying the installed UI toolkit. */
   dependencyRoot: string;
+  /** TypeScript module-resolution configuration. */
   tsconfig?: string;
+  /** Import specifiers mapped to generated or custom files. */
   aliases?: Record<string, string>;
+  /** Entry source used by module/declaration bundling. */
   source?: string;
+  /** Shared toolkit module export names used to link screen modules. */
   exports?: Record<string, string[]>;
+  /** Cooperative bundle cancellation. */
   signal?: AbortSignal;
   /** Share the active guides stage's installed factories with the UI toolkit. */
   guides?: boolean;
 }
 
+/** Bundled ESM source and dependency records; the caller writes or evaluates the code. */
 export interface UiBundle {
+  /** ESM source; no bundle file is written by this API. */
   code: string;
+  /** Source and module-resolution dependencies. */
   inputs: string[];
+  /** Whether the dependency record supports compilation reuse. */
   cacheable: boolean;
 }
 
-/** Bundle the addon's own compiler once, sharing its runtime across screen modules. */
+/**
+ * Bundle the addon's own compiler once, sharing its runtime across screen modules.
+ * @param options Project inputs, settings and optional integrations for this operation.
+ * @returns ESM toolkit source and dependency records; no file is written by this function.
+ * @remarks Resolve the toolkit from the authored dependency root so screen modules share its installed runtime instances.
+ */
 export async function bundleUiLibrary(options: UiBundleOptions): Promise<UiBundle> {
   return bundle(options, `
     import * as ui from '@bedrock-core/ui';
@@ -56,12 +74,22 @@ export async function bundleUiLibrary(options: UiBundleOptions): Promise<UiBundl
   `);
 }
 
-/** Bundle only the screen and its helpers; toolkit imports share library.mjs. */
+/**
+ * Bundle only the screen and its helpers; toolkit imports share library.mjs.
+ * @param options Project inputs, settings and optional integrations for this operation.
+ * @returns ESM screen-module source linked to the shared toolkit exports.
+ * @remarks Bundle the shared toolkit first and supply its exports when compiling screen modules.
+ */
 export async function bundleUiModule(options: UiBundleOptions & { source: string; exports: Record<string, string[]> }): Promise<UiBundle> {
   return bundle(options, `export { default } from ${JSON.stringify(options.source)}; export * from ${JSON.stringify(options.source)};`);
 }
 
-/** Capture tagged app declarations from the actual manifest script entry. */
+/**
+ * Capture tagged app declarations from the actual manifest script entry.
+ * @param options Project inputs, settings and optional integrations for this operation.
+ * @returns ESM entry source that captures app registration data during evaluation.
+ * @remarks Capturing registration evaluates authored code; worker isolation does not sandbox filesystem or network access.
+ */
 export async function bundleUiDeclaration(options: UiBundleOptions & { source: string }): Promise<UiBundle> {
   return bundle(options, `
     import { core } from '@bedrock-core/server-runtime';

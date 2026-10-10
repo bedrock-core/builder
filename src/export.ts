@@ -3,15 +3,23 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { readManifest, validatePackManifests } from './manifest.ts';
 
+/** Validated pack sources and explicit export destinations for standalone publication. */
 export interface ExportOptions {
+  /** Pack IDs mapped to real source directories. */
   packs: Record<string, string>;
+  /** Matching pack IDs mapped to destination directories; relative paths use the process working directory. */
   paths: Record<string, string>;
+  /** Cooperative cancellation before or during publication. */
   signal?: AbortSignal;
+  /** Variable values for %NAME%, $NAME and ${NAME}; defaults to process.env. */
   environment?: NodeJS.ProcessEnv;
 }
 
+/** Pack ID and absolute published destination. */
 export interface ExportedPack {
+  /** Configured pack ID. */
   id: string;
+  /** Absolute published directory. */
   path: string;
 }
 
@@ -128,7 +136,16 @@ function expandExportPath(directory: string, environment: NodeJS.ProcessEnv): st
   });
 }
 
-/** Expand environment variables and resolve each pack destination relative to config.json. */
+/**
+ * Expand `%NAME%`, `$NAME` and `${NAME}`, then resolve destinations relative to the project.
+ * @param project Absolute directory containing config.json.
+ * @param packs Configured pack IDs mapped to their directories.
+ * @param selection Destination for every configured pack ID.
+ * @param environment Variable values; defaults to process.env.
+ * @returns Absolute destinations without creating directories or publishing files.
+ * @remarks Supports %NAME%, $NAME and ${NAME}. Environment names are case-insensitive on Windows. Missing variables, pack destinations and unsafe overlaps fail.
+ * @throws For missing variables/pack IDs, overlapping paths or unsafe source destinations.
+ */
 export function resolveExportPaths(project: string, packs: Record<string, string>, selection: Record<string, string>, environment: NodeJS.ProcessEnv = process.env): Record<string, string> {
   checkPackIds(packs, selection);
   const paths = Object.fromEntries(Object.entries(selection).map(([id, directory]) => [id, path.resolve(project, expandExportPath(directory, environment))]));
@@ -251,7 +268,14 @@ async function publishPacks({ packs, paths, signal }: ExportOptions): Promise<Ex
   }
 }
 
-/** Hold destination locks for the complete build and publish all packs as one transaction. */
+/**
+ * Hold destination locks while the callback prepares and publishes validated packs.
+ * @param paths Dedicated nonoverlapping pack destination directories.
+ * @param build Callback receiving the guarded publication function.
+ * @returns The callback result, with destination locks released on completion.
+ * @remarks This API holds locks and provides publication; the callback owns preparation and any additional validation.
+ * @throws If a destination is unsafe or already locked, or the callback fails.
+ */
 export async function withExportPaths<T>(paths: Record<string, string>, build: (publish: PublishPacks) => Promise<T>): Promise<T> {
   paths = Object.fromEntries(Object.entries(paths).map(([id, directory]) => [id, path.resolve(directory)]));
   checkDestinations(paths);
@@ -279,7 +303,12 @@ export async function withExportPaths<T>(paths: Record<string, string>, build: (
   }
 }
 
-/** Publish validated pack folders to caller-supplied paths without the build runner. */
+/**
+ * Publish pack folders with manifest checks, locks and rollback, without the build runner.
+ * @returns Published pack IDs and absolute destination directories.
+ * @remarks JSON schema validation is separate. Use validatePackContent before publication when content checks are required.
+ * @throws If manifest checks or publication fail; previous exports are retained.
+ */
 export async function exportPacks({ packs, paths, signal, environment = process.env }: ExportOptions): Promise<ExportedPack[]> {
   signal?.throwIfAborted();
   checkPackIds(packs, paths);

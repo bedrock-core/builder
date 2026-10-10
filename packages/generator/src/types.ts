@@ -6,24 +6,39 @@ import { compileCatalog, indexDtsText, globalsDtsText, TYPES_REVISION } from './
 
 export const DEFAULT_TYPES_DIR = '.bedrock-core/generated/mc';
 
+/** Mojang schema selection and generated editor-declaration settings. */
 export interface SchemaTypeSettings {
+  /** Profile switch controlling editor-declaration generation. */
   types?: boolean;
+  /** Mojang schema package version; defaults to latest. */
   schemaVersion?: string;
+  /** Declaration directory relative to root; null or omission selects .bedrock-core/generated/mc. */
   typesDir?: string | null;
+  /** Prefix applied to generated document type names. */
   typePrefix?: string;
+  /** Emit stricter schema-derived types; defaults to false. */
   strict?: boolean;
+  /** Maximum latest-version cache age; defaults to 24 hours. */
   maxAgeHours?: number;
 }
 
+/** Project directory, cancellation and progress sink for editor-declaration generation. */
 export interface SchemaTypeOptions extends SchemaTypeSettings {
+  /** Real authored project directory. */
   root: string;
+  /** Cooperative fetch/generation cancellation. */
   signal?: AbortSignal;
+  /** Schema download and generation progress sink. */
   log?: (message: string) => void;
 }
 
+/** Resolved schema package version, declaration directory and change status. */
 export interface SchemaTypeResult {
+  /** Resolved Mojang schema package version. */
   readonly version: string;
+  /** Absolute declaration directory. */
   readonly outputPath: string;
+  /** Whether declarations were rewritten. */
   readonly changed: boolean;
 }
 
@@ -59,7 +74,12 @@ async function safeDirectory(root: string, directory: string): Promise<void> {
   }
 }
 
-/** Generate global document aliases and Many from the official cached schemas for the IDE. */
+/**
+ * Generate global document aliases and Many from the official cached schemas for the IDE.
+ * @param options Project inputs, settings and optional integrations for this operation.
+ * @returns Resolved schema version, absolute declaration directory and whether output changed.
+ * @remarks The standalone call generates declarations directly; the profile types switch controls whether the runner invokes it.
+ */
 export async function generateSchemaTypes(options: SchemaTypeOptions): Promise<SchemaTypeResult> {
   options.signal?.throwIfAborted();
   const root = await realpath(path.resolve(options.root));

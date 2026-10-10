@@ -1,17 +1,25 @@
 import { Worker } from 'node:worker_threads';
 
+/** Captured tagged app declaration and its compiled module entry. */
 export interface DeclaredApp {
   name: string;
   compiled: string;
   declared: Record<string, unknown>;
 }
 
+/** Captured registration data or an evaluation failure message. */
 export interface DeclarationResult {
   declaration?: Record<string, unknown>;
   failure?: string;
 }
 
-/** Evaluate fresh in isolation; a registration may contain runtime side effects. */
+/**
+ * Evaluate fresh in isolation; a registration may contain runtime side effects.
+ * @param module Absolute bundled declaration module path.
+ * @param signal Cooperative cancellation signal.
+ * @returns Captured declaration data or an entry-evaluation failure description.
+ * @remarks Evaluation uses a fresh worker that is terminated after the operation. Authored entry code is trusted.
+ */
 export async function readUiDeclaration(module: string, signal?: AbortSignal): Promise<DeclarationResult> {
   signal?.throwIfAborted();
   const worker = new Worker(new URL(import.meta.url.endsWith('.ts') ? './declaration-worker.ts' : './declaration-worker.js', import.meta.url), {
@@ -52,6 +60,11 @@ export async function readUiDeclaration(module: string, signal?: AbortSignal): P
   }
 }
 
+/**
+ * Extract tagged app declarations; duplicate app names retain the last declaration.
+ * @param declaration Captured addon registration fields.
+ * @returns Tagged app declarations, with the last declaration retained for a repeated app name.
+ */
 export function declaredApps(declaration: Record<string, unknown>): DeclaredApp[] {
   const apps = new Map<string, DeclaredApp>();
 
@@ -65,7 +78,12 @@ export function declaredApps(declaration: Record<string, unknown>): DeclaredApp[
   return [...apps.values()];
 }
 
-/** App modules own their shape function and receive only declared data. */
+/**
+ * App modules own their shape function and receive only declared data.
+ * @param apps Tagged app declarations extracted from registration.
+ * @param declaration Captured addon registration fields.
+ * @returns ESM source that invokes each declared app module shape function.
+ */
 export function declaredScreens(apps: DeclaredApp[], declaration: Record<string, unknown>): string {
   const fields = { ...declaration, ...(declaration.manifest as object | undefined) };
   const manifest = Object.fromEntries(['creator', 'pack', 'packName', 'version', 'creatorName', 'description', 'icon', 'thumbnail']

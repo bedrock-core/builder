@@ -1,10 +1,15 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
+/** Pack ID, current directory and classification derived from manifest module types. */
 export interface PackInfo {
+  /** Configured pack ID; its name carries no type meaning. */
   readonly id: string;
+  /** Current pack directory, staged during a build and published in the final result. */
   readonly path: string;
+  /** data/script means behavior, resources means resource, otherwise other. */
   readonly kind: 'behavior' | 'resource' | 'other';
+  /** Declared module type strings from the current manifest. */
   readonly moduleTypes: readonly string[];
 }
 

@@ -11,12 +11,20 @@ import { validateConfig } from '../config.ts';
 import type { FilterKind, MigrationOptions, MigrationResult } from './types.ts';
 import { isRecord, pointer } from './types.ts';
 
+/** Configuration preview tied to an authored config path and its original text. */
 export interface ProjectMigration extends MigrationResult {
+  /** Absolute authored configuration path. */
   configPath: string;
+  /** Original bytes decoded as text; guarded writes reject any intervening source edit. */
   sourceText: string;
 }
 
-/** Inspect pack metadata and known local wrappers without importing any project code. */
+/**
+ * Inspect pack metadata and known local wrappers without importing any project code.
+ * @param options Project inputs, settings and optional integrations for this operation.
+ * @returns A preview with inspected metadata and the original config text for guarded writes.
+ * @remarks Inspects source manifests and known local wrapper identities without importing authored filter code.
+ */
 export async function migrateRegolithProject(configPath = 'config.json', options: MigrationOptions = {}): Promise<ProjectMigration> {
   const file = await realpath(configPath);
   const project = path.dirname(file);
@@ -119,7 +127,12 @@ export async function migrateRegolithProject(configPath = 'config.json', options
   return { ...result, configPath: file, sourceText };
 }
 
-/** Write only complete migrations, retaining an exclusive backup for an in-place edit. */
+/**
+ * Write only complete migrations, retaining an exclusive backup for an in-place edit.
+ * @param outputPath Destination config path; defaults to the previewed source config.
+ * @returns The written configuration path and an optional in-place backup path.
+ * @remarks Requires a ready preview. In-place writes retain a backup and reject changes to the original config after inspection.
+ */
 export async function writeMigration(result: ProjectMigration, outputPath = result.configPath): Promise<{ path: string; backup?: string }> {
   if (!result.ready || result.diagnostics.some(item => item.severity === 'error')) {
     throw new Error('Migration has unresolved errors; configuration was not written');

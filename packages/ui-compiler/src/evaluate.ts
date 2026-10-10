@@ -9,11 +9,18 @@ export class UiEvaluator {
   private readonly environment: UiEnvironment;
   private readonly signal?: AbortSignal;
 
+  /** Configure the shared toolkit bundle and cooperative cancellation for worker requests. */
   constructor(environment: UiEnvironment, signal?: AbortSignal) {
     this.environment = environment;
     this.signal = signal;
   }
 
+  /**
+   * Evaluate one operation and deserialize its result. Calls must be sequential.
+   * @param message Export discovery, screen compilation or complete-set linking request.
+   * @returns The worker's JSON result, typed by the caller.
+   * @throws If another request is pending, evaluation fails or cancellation occurs.
+   */
   async request<T>(message: UiRequest): Promise<T> {
     this.signal?.throwIfAborted();
 
@@ -78,6 +85,7 @@ export class UiEvaluator {
     }
   }
 
+  /** Terminate the active worker and reset its module lifetime; call in a finally block. */
   async close(): Promise<void> {
     const worker = this.worker;
 
