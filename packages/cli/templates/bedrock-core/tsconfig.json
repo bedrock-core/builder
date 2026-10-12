@@ -1,0 +1,40 @@
+{
+	"compilerOptions": {
+		"target": "esnext",
+		"module": "esnext",
+		"declaration": false,
+		"declarationMap": false,
+		"sourceMap": true,
+		"stripInternal": true,
+		"strict": true,
+		"moduleResolution": "bundler",
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"skipLibCheck": true,
+		"allowSyntheticDefaultImports": true,
+		"noImplicitAny": true,
+		"removeComments": true,
+		"preserveConstEnums": true,
+		"noImplicitReturns": true,
+		"allowJs": true,
+		"resolveJsonModule": true,
+		"rootDir": ".",
+		"jsx": "react-jsx",
+		"jsxImportSource": "@bedrock-core/ui"
+	},
+	"files": [
+		"packs/BP/scripts/main.ts"
+	],
+	"include": [
+		"packs/BP/scripts/**/*",
+		"packs/BP/blocks/**/*",
+		"packs/BP/entities/**/*",
+		"packs/BP/i18n/**/*",
+		".bedrock-core/generated/**/*.d.ts"
+	],
+	"exclude": [
+		"node_modules",
+		"**/__tests__/*",
+		"eslint.config.mjs"
+	]
+}

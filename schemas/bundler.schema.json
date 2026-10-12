@@ -4,6 +4,29 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "pretty": {
+      "anyOf": [
+        {
+          "const": false
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "indent": {
+              "enum": [
+                "tab",
+                "space"
+              ]
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      ]
+    },
     "debug": {
       "type": "boolean"
     },

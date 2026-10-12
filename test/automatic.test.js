@@ -71,7 +71,7 @@ test('templates and locale modules automatically enable their producers and gene
   assert.equal(status(result, 'i18n'), 'executed');
   assert.equal(await exportedValue(project), 'flow_test');
   assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPaths.gameplay, 'data/value.json'), 'utf8')), { value: 7 });
-  assert.equal(result.artifacts.find(artifact => artifact.id === 'i18n:bundle').importAs, '@bedrock-core/generated/i18n');
+  assert.equal(result.artifacts.find(artifact => artifact.id === 'i18n:gameplay:bundle').importAs, '@bedrock-core/generated/i18n');
 });
 
 test('automatic detection sees inputs created by before hooks and still runs after hooks', async (t) => {

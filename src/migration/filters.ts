@@ -98,32 +98,15 @@ function settingsFor(
       continue;
     }
 
-    if (key === 'pretty' && stage === 'bundler') {
-      continue;
-    }
-
-    if (!keys[stage].includes(key)) {
+    if (!keys[stage].includes(key) && key !== 'pretty' && key !== 'debug') {
       report('filter-setting', `${location}/settings/${pointer(key)}`, `Setting ${key} has no verified ${stage} migration. Convert it manually.`);
       continue;
     }
 
-    if (stage === 'manifest') {
-      if (key === 'manifestPath') {
-        const paths = Array.isArray(value) ? value : [value];
+    if (stage === 'manifest' && key === 'manifestPath') {
+      const map = (file: unknown) => typeof file === 'string' ? projectPath(file, packs, dataPath, report, location) : file;
 
-        for (const file of paths) {
-          const mapped = typeof file === 'string' ? projectPath(file, packs, dataPath, report, location) : undefined;
-          const canonical = mapped?.replace(/^\.\//, '');
-          const matches = Object.values(packs).some(directory => `${directory.replaceAll('\\', '/').replace(/^\.\//, '').replace(/\/$/, '')}/manifest.json` === canonical);
-
-          if (!matches) {
-            report('manifest-variant', `${location}/settings/manifestPath`, 'Manifest variants and extends chains need per-pack manifest overrides or a builder plugin. They are not rewritten automatically.');
-          }
-        }
-      } else {
-        report('manifest-formatting', `${location}/settings/pretty`, 'The builder preserves canonical manifest formatting unless overrides are applied.', 'warning');
-      }
-
+      converted.manifestPath = Array.isArray(value) ? value.map(map) : map(value);
       continue;
     }
 
@@ -153,8 +136,22 @@ function settingsFor(
   }
 
   if (stage === 'i18n') {
-    converted.sourceDir ??= projectPath('data/i18n', packs, dataPath, report, location);
-    report('i18n-declarations', location, 'Include .bedrock-core/generated/i18n in tsconfig for generated translation types. Runtime imports use @bedrock-core/generated/i18n.', 'warning');
+    const source = typeof converted.sourceDir === 'string' ? converted.sourceDir : projectPath('data/i18n', packs, dataPath, report, location);
+    const owner = Object.entries(packs).find(([, directory]) => {
+      const root = directory.replaceAll('\\', '/').replace(/^\.\//, '').replace(/\/$/, '');
+
+      return source.replaceAll('\\', '/').replace(/^\.\//, '').startsWith(`${root}/`);
+    });
+
+    if (owner) {
+      converted.owner = owner[0];
+      converted.sourceDir = path.posix.relative(owner[1].replaceAll('\\', '/'), source.replaceAll('\\', '/'));
+    } else {
+      converted.sourceDir = 'i18n';
+      report('i18n-pack-sources', location, `Place locale sources from ${source} inside the intended owner pack's i18n directory before building. Migration does not move files or rewrite their imports.`, 'warning');
+    }
+
+    report('i18n-declarations', location, 'Include .bedrock-core/generated/i18n/<packId> in tsconfig. Typed runtime imports use @bedrock-core/generated/i18n/<packId>. sourceDir is pack-relative.', 'warning');
   }
 
   if (stage === 'generator' && settings.types !== false) {

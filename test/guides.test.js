@@ -275,12 +275,15 @@ test('guides support a resource-only content build, multiple resources and disab
   await put(project.project, 'packs/other/manifest.json', JSON.stringify(manifestFor('resources')));
   delete project.config.packs.gameplay;
   delete project.config.bedrockCore.profiles.default.export.gameplay;
+  project.config.bedrockCore.profiles.default.stages.guides = { owner: 'visuals', compileScreens: false };
+  project.config.bedrockCore.profiles.default.stages.i18n = { owner: 'visuals' };
   await writeFile(project.configPath, JSON.stringify(project.config));
   await runBuild(optionsFor(project));
   const result = await runBuild(optionsFor(project));
 
   assert.equal(stage(result, 'guides'), 'executed');
-  assert.equal(await readFile(path.join(result.outputPaths.visuals, 'texts/en_US.lang'), 'utf8'), await readFile(path.join(result.outputPaths.other, 'texts/en_US.lang'), 'utf8'));
+  assert.match(await readFile(path.join(result.outputPaths.visuals, 'texts/en_US.lang'), 'utf8'), /flow_test/);
+  await assert.rejects(readFile(path.join(result.outputPaths.other, 'texts/en_US.lang')), { code: 'ENOENT' });
 });
 
 test('configuration validates guides settings through the nested schema', async (t) => {

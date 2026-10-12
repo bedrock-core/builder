@@ -11,31 +11,22 @@
     "formatVersion": "1.0.0",
     "profiles": {
       "default": {
-        "stages": {
-          "bundler": {
-            "debug": true
-          }
-        },
+        "stages": {},
         "export": {
           "behaviorPack": "./dist/behaviorPack"
-        }
+        },
+        "debug": true
       },
       "tests": {
         "stages": {
           "manifest": {
-            "packs": {
-              "behaviorPack": {
-                "scriptEntry": "scripts/tests.js"
-              }
-            }
-          },
-          "bundler": {
-            "debug": true
+            "manifestPath": "./packs/BP/manifest.test.json"
           }
         },
         "export": {
           "behaviorPack": "./dist/tests/behaviorPack"
-        }
+        },
+        "debug": true
       }
     }
   }

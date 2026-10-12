@@ -24,7 +24,9 @@ expressions, runs shell commands or downloads filters.
 | `core` | Shared settings merged into stages; generator opt-in preserved |
 | `watchPaths` | Copied to each selected profile's `watch.paths` |
 | Bundler `tsConfigPath` | Bundler `tsconfig`; script entries remain owned by pack manifests |
-| Generator pack paths, local UI screen modules, guides and i18n data paths | Converted from Regolith workspace paths to project-relative paths |
+| Manifest `manifestPath` and `pretty` | Project-relative file selection, inheritance and output formatting |
+| Generator pack paths, local UI screen modules and guides | Converted from Regolith workspace paths to project-relative paths |
+| i18n sources | Pack-owned directories; sourceDir is relative to the owning pack. Sources outside packs require manual relocation |
 | Local and exact exports | Exact per-pack paths; local defaults use `build/<project-name>_bp` and `_rp` |
 
 Remote filters are recognized by their `github.com/bedrock-core/regolith-filters`
@@ -93,8 +95,7 @@ conditions remain errors.
 Conditions, shell commands, CLI arguments, parallel groups and custom filters require trusted
 TS/JS plugins or separate profiles. Guides retain locale-relative include/exclude patterns;
 content, manifest, screen and component paths resolve against the authored project.
-Manifest variants and `extends` chains require per-pack manifest overrides
-or a plugin that also handles variant cleanup. Unknown properties and unsupported stage settings
+Manifest selections retain their project-relative files and `extends` chains. Unknown properties and unsupported stage settings
 are reported at their configuration paths.
 
 Review manifest script entries before building: `tsconfig.files` and `include` do not select
@@ -103,7 +104,10 @@ declaration references. Generator declarations default to
 `.bedrock-core/generated/mc/globals.d.ts`; i18n declarations live under
 `.bedrock-core/generated/i18n`; UI screen keys live under `.bedrock-core/generated/ui`.
 Update the project tsconfig to include the required declarations.
-Translation runtime imports use `@bedrock-core/generated/i18n` and resolve from the producer.
+Typed translation imports use `@bedrock-core/generated/i18n/<packId>`. The unqualified
+runtime import resolves to the consuming pack's bundle. Place locale modules inside
+the owner pack, typically `packs/BP/i18n`, before building. Source files and imports are
+not rewritten by configuration migration; review the reported relocation diagnostics.
 
 Run the migrated profile against isolated export folders, compare pack artifacts with the
 Regolith build, and perform the required Minecraft runtime checks before replacing that runner.

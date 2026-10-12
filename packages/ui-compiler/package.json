@@ -5,14 +5,15 @@
   "description": "UI build integration using the addon's @bedrock-core compiler",
   "exports": {
     ".": "./src/index.ts",
-    "./transform": "./src/sugar.ts",
-    "./internal/*": "./src/*.ts"
+    "./plugin": "./src/plugin.ts"
   },
   "engines": {
     "node": ">=22.18"
   },
   "dependencies": {
     "@bedrock-core/builder-bundler": "workspace:*",
+    "@bedrock-core/builder-manifest": "workspace:*",
+    "@bedrock-core/builder-plugin": "workspace:*",
     "esbuild": "0.25.12",
     "typescript": "5.9.3"
   },
@@ -24,17 +25,13 @@
   ],
   "publishConfig": {
     "exports": {
-      "./transform": {
-        "types": "./dist/src/sugar.d.ts",
-        "default": "./dist/src/sugar.js"
-      },
       ".": {
         "types": "./dist/src/index.d.ts",
         "default": "./dist/src/index.js"
       },
-      "./internal/*": {
-        "types": "./dist/src/*.d.ts",
-        "default": "./dist/src/*.js"
+      "./plugin": {
+        "types": "./dist/src/plugin.d.ts",
+        "default": "./dist/src/plugin.js"
       }
     },
     "access": "public",

@@ -5,7 +5,7 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default defineConfig([
-  { ignores: ['**/node_modules/**', '**/dist/**', '**/.bedrock-core/**', 'coverage/**'] },
+  { ignores: ['**/node_modules/**', '**/dist/**', '**/.bedrock-core/**', 'coverage/**', 'packages/cli/templates/**'] },
   {
     files: ['**/*.{js,mjs,ts}'],
     extends: [js.configs.recommended],

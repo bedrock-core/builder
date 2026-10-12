@@ -1,13 +1,16 @@
 # @bedrock-core/builder-ui
 
-When the guides stage is active, the shared toolkit bundle also owns the installed
-`@bedrock-core/guides` factories. Generated guide screens use that shared instance, so runtime
-initialization is evaluated once per compiler worker and unchanged rendered screens can be reused.
-Standalone library callers select this integration with `bundleUiLibrary({ ..., guides: true })`.
+UI integration for the builder's `ui-compiler` stage. It compiles the project's screens,
+links the complete screen set and writes resource assets, host definitions and runtime
+registration into staged packs. Its `./plugin` entrypoint exports `run` and `detect`
+through the same contract as external plugins. Configure it through builder profiles
+or as a module step.
 
-Typed Node build integration for the addon's installed UI toolkit. The runner uses these
-functions to compile screens, link their current set and write staged pack assets. Calling
-them directly requires no builder configuration, generator, guides or server framework.
+Builder settings accept `owner` and `resourcePack`. The owner's screens and host
+definitions are processed together; client assets go to the selected direct local
+resource dependency. The sole script pack and sole local resource candidate are
+inferred. Ambiguous destinations require an explicit ID. Unrelated packs receive
+no generated UI or language output. Standalone APIs retain explicit output paths.
 
 ## Dependencies
 
@@ -24,28 +27,23 @@ Toolkit packages resolve from the addon. Shared imports use the addon's package 
 hooks, compilation and translations agree across linked packages. The adapter consumes the
 compiler's JSON UI documents, hooks and runtime contract without reimplementing layout.
 
-## Standalone API
+Internal bundling helpers accept `sourceOverrides`, mapping absolute source paths to
+editor-buffer text. Screen transforms and imported helpers consume those buffers without
+writing authored files. Bundles with overrides disable compilation-cache reuse.
 
-`bundleUiLibrary()` builds the shared toolkit. Write its `code` to `library.mjs` in a temporary
-directory. Create `UiEvaluator({ library })` and request `exports` to obtain its namespace map.
-Pass that map to `bundleUiModule()` for each source, then write the resulting modules alongside
-`library.mjs`. Both bundle functions return their static dependency inputs.
+## Stage options
 
-Request `screen` with a module path, name and namespace to render a default component. For a
-default-exported screen record, request `list` first and provide each selected `member`.
-Request `link` with the complete screen set and namespace. Always close the evaluator in a
-`finally` block. Its workers recycle to bound module memory.
+The package exports `UiSettings` for typed stage configuration:
 
-`writeUiResource()` writes linked screens, shared faces, support documents, routers, hook
-merges, language sections and optional metadata to one resource pack. `writeUiHosts()` resolves
-container hosts across behavior packs and writes their definitions and protocol items.
-`uiRegistration()` produces runtime registration source for the linked set.
+```ts
+import type { UiSettings } from '@bedrock-core/builder-ui';
 
-`bundleUiDeclaration()`, `readUiDeclaration()`, `declaredApps()` and `declaredScreens()` support
-tagged app declarations and app-owned shape functions. Declarations evaluate freshly in a
-worker; the game and generated UI imports are stubbed while the registration is captured.
-The `./transform` export supplies the conditional JSX transform used by both compilation
-and script bundling.
+const settings: UiSettings = { testMetadata: true, pretty: { indent: 'tab' } };
+```
+
+When the guides stage is active, generated guide screens share the installed guide factories
+with the UI toolkit. The UI plugin owns runtime registration and contributes its screen
+JSX transformation to bundling through the shared extension interface.
 
 ## Builder artifacts
 
@@ -61,4 +59,22 @@ cache tasks or dependency graphs. A changed helper invalidates its consuming scr
 script-only changes reuse their rendered output. Linking and writing pack outputs run on
 each build. The runner then validates and publishes complete packs.
 
-These workspace packages are private. Distribution and publication remain separate work.
+## Navigation metadata
+
+Runtime registration includes every compiled screen key and its host kind, including
+native block/entity screens. Action and modal screens can export a `parameters` contract
+from their screen module. Screen collections export contracts keyed by the same member names.
+The addon's installed UI runtime validates those contracts during compilation.
+
+```ts
+import type { ScreenParameters } from '@bedrock-core/ui/navigation';
+
+export const parameters = {
+  itemId: { type: 'string' },
+  section: { type: 'string', optional: true },
+} as const satisfies ScreenParameters;
+```
+
+A nonempty public contract retains the component so its values and handlers can be rebuilt
+from the inputs. Static references accept no parameters. Generated `SCREEN_KEYS` and editor
+declarations include container hosts for discovery; they do not create a native container session.

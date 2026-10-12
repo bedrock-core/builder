@@ -6,13 +6,14 @@
   "exports": {
     ".": "./src/index.ts",
     "./templates": "./src/templates.ts",
-    "./internal/*": "./src/*.ts"
+    "./plugin": "./src/plugin.ts"
   },
   "engines": {
     "node": ">=22.18"
   },
   "dependencies": {
     "@bedrock-core/builder-bundler": "workspace:*",
+    "@bedrock-core/builder-plugin": "workspace:*",
     "json-schema-to-typescript": "15.0.4",
     "typescript": "5.9.3"
   },
@@ -32,9 +33,9 @@
         "types": "./dist/src/index.d.ts",
         "default": "./dist/src/index.js"
       },
-      "./internal/*": {
-        "types": "./dist/src/*.d.ts",
-        "default": "./dist/src/*.js"
+      "./plugin": {
+        "types": "./dist/src/plugin.d.ts",
+        "default": "./dist/src/plugin.js"
       }
     },
     "access": "public",

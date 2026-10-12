@@ -7,12 +7,13 @@
     ".": "./src/index.ts",
     "./screens": "./src/screens.ts",
     "./types": "./src/types.ts",
-    "./internal/*": "./src/*.ts"
+    "./plugin": "./src/plugin.ts"
   },
   "engines": {
     "node": ">=22.18"
   },
   "dependencies": {
+    "@bedrock-core/builder-plugin": "workspace:*",
     "@types/mdast": "^4.0.4",
     "mdast-util-definitions": "^6.0.0",
     "mdast-util-to-string": "^4.0.0",
@@ -48,9 +49,9 @@
         "types": "./dist/src/index.d.ts",
         "default": "./dist/src/index.js"
       },
-      "./internal/*": {
-        "types": "./dist/src/*.d.ts",
-        "default": "./dist/src/*.js"
+      "./plugin": {
+        "types": "./dist/src/plugin.d.ts",
+        "default": "./dist/src/plugin.js"
       }
     },
     "access": "public",

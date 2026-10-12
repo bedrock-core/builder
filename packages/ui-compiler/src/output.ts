@@ -187,24 +187,28 @@ export function uiRegistration(linked: Pick<LinkedUi, 'screens'>, entries: Scree
 
   for (const screen of linked.screens) {
     const key = `${namespace}:${screen.name}`;
+    const parameters = screen.parameters ?? (screen.table ? {} : undefined);
+    const descriptor = { key, kind: screen.host?.kind ?? screen.kind ?? 'action',
+      ...parameters === undefined ? {} : { parameters } };
+
+    keys.push(key);
+    calls.push(`registerScreenDescriptor(${JSON.stringify(descriptor)});`);
 
     if (screen.host) {
       if (screen.looks?.length) {
         calls.push(`registerContainerLooks(${reference(screen.name)}, ${JSON.stringify(screen.looks)});`);
       }
     } else {
-      keys.push(key);
-
       if (screen.table) {
         table.push({ key, title: screen.title, values: screen.table.values, targets: screen.table.targets });
       } else {
-        calls.push(`registerCompiledScreen(${reference(screen.name)}, ${JSON.stringify({ key, title: screen.title, snapshot: screen.snapshot })});`);
+        calls.push(`registerCompiledScreen(${reference(screen.name)}, ${JSON.stringify({ ...descriptor, title: screen.title, snapshot: screen.snapshot })});`);
       }
     }
   }
 
   return [
-    `import { addonReference, registerCompiledScreen, registerContainerLooks, registerStaticScreens } from '@bedrock-core/ui';`,
+    `import { addonReference, registerCompiledScreen, registerContainerLooks, registerScreenDescriptor, registerStaticScreens } from '@bedrock-core/ui';`,
     ...imports,
     `export const UI_NAMESPACE = ${JSON.stringify(namespace)};`,
     `export const UI_REFERENCE = ${JSON.stringify(table)} as const;`,

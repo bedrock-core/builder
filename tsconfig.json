@@ -23,6 +23,7 @@
   "exclude": [
     "**/node_modules/**",
     "**/dist/**",
+    "packages/cli/templates/**",
     "examples/generator-project/**",
     "examples/i18n-project/**",
     "examples/guides-project/**"

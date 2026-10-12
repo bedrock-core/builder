@@ -38,7 +38,7 @@ port.on('message', async (request: UiRequest) => {
         items: Object.fromEntries([...namespaces].map(namespace => [namespace, library.runtime.protocolItemDefinitions?.(namespace) ?? []])),
       };
     } else {
-      const loaded = await import(pathToFileURL(request.module).href) as { default: unknown };
+      const loaded = await import(pathToFileURL(request.module).href) as { default: unknown; parameters?: unknown };
 
       if (request.kind === 'list') {
         value = Object.keys(loaded.default ?? {}).sort();
@@ -50,9 +50,39 @@ port.on('message', async (request: UiRequest) => {
         }
 
         const spec = { name: request.name, namespace: request.namespace, testMetadata: request.testMetadata === true };
-        const chest = library.runtime.hostFor(library.runtime.buildScreenOnce(component)).id === 'chest';
+        const host = library.runtime.hostFor(library.runtime.buildScreenOnce(component)).id;
+        const compiled = host === 'chest' ? library.compiler.compileScreen(component, spec) : library.compiler.compileFormScreen(component, spec);
+        let parameters = loaded.parameters;
 
-        value = chest ? library.compiler.compileScreen(component, spec) : library.compiler.compileFormScreen(component, spec);
+        if (request.member && parameters !== undefined) {
+          if (parameters === null || typeof parameters !== 'object' || Array.isArray(parameters)
+            || Object.keys(parameters).some(name => !Object.hasOwn(loaded.default as object, name))) {
+            throw new Error('A screen collection exports parameter contracts by screen name');
+          }
+
+          parameters = (parameters as Record<string, unknown>)[request.member];
+        }
+
+        if (parameters !== undefined) {
+          const validate = library.ui.isScreenDescriptor;
+
+          if (typeof validate !== 'function' || !validate({ key: `${request.namespace}:${request.name}`, kind: 'custom', parameters })) {
+            throw new Error(`Invalid navigation parameter contract for ${request.name}`);
+          }
+
+          compiled.parameters = parameters;
+
+          // Public parameters require the owning component to rebuild its values and handlers.
+          if (Object.keys(parameters as object).length) {
+            delete compiled.table;
+          }
+        }
+
+        if (!compiled.host) {
+          compiled.kind = host === 'form-modal' ? 'modal' : 'action';
+        }
+
+        value = compiled;
       }
     }
 

@@ -5,7 +5,7 @@ i18n or UI runtime. This private package runs typed TS directly in Node; npm dis
 require JavaScript output because Node does not strip TS inside node_modules.
 
 ```ts
-import { bundleScripts } from './src/index.ts';
+import { bundleScripts } from '@bedrock-core/builder-bundler';
 await bundleScripts({
   root: process.cwd(),
   entry: './src/main.ts',
@@ -20,9 +20,9 @@ finishes before output writes. The standalone API replaces its declared bundle/m
 not stage files or provide transactional export. Other files remain intact.
 
 `dependencyRoot` supplies the original project's npm installation for staged sources. Staged
-resolution runs first, preserving tsconfig aliases. With `projectModules: true`, toolkit imports
-under `@bedrock-core/` resolve from `dependencyRoot` first so linked packages share the addon's
-instances. `aliases` maps exact generated imports to
+resolution runs first, preserving tsconfig aliases. `resolveFromProject` lists import prefixes
+that resolve from `dependencyRoot` first, allowing linked packages to share the addon's instances.
+`aliases` maps exact generated imports to
 files; missing `@bedrock-core/generated/*` imports report a missing producer. The result contains
 output paths, input dependencies, resolution candidates (`watchFiles`), a conservative
 `cacheable` flag and esbuild metadata. Cancellation accepts an AbortSignal.
@@ -47,10 +47,16 @@ tsconfig path mappings, inherited configs and JSONC configs. Compiler option cha
 their compiled output. Profile `cache: false` disables reuse. Final pack validation and publication
 always run. Standalone `bundleScripts` calls compile each time; the runner manages reuse automatically.
 
-`jsxImportSource` selects automatic JSX runtime imports. `transformScreen` transforms
-`.screen.tsx` source before bundling. The builder UI integration provides the shared conditional
-JSX transform automatically; standalone callers can import it from
-`@bedrock-core/builder-ui/transform`. Screen modules require this transform.
+The `./plugin` entrypoint owns manifest-entry discovery, automatic detection and staged output.
+The `./entries` entrypoint exposes manifest-to-source selection; `./compile` supplies
+`compileModule` for invocation-scoped Node compiler reuse and `compilerFingerprint` for cache keys.
+
+`plugins` accepts feature-owned esbuild plugins. `jsxImportSource` selects automatic JSX runtime
+imports. The UI plugin registers its screen transformation and runtime preferences through
+`context.registerBundleExtension`; the bundler consumes the shared extension contract.
+Custom plugins rebuild by default. Compiler reuse requires `cachePlugins: true`, an appropriate
+`pluginKey` and every input in `pluginInputs` or hook `watchFiles`. Directory watches and
+virtual inputs without observable files disable reuse.
 
 JSON5 support and broader Regolith parity remain pending. The default `es2020` compilation
 target does not establish Minecraft runtime compatibility.

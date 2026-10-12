@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, readFile, readlink, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { BuildContext, BuildResult } from './contract.d.ts';
+import type { BuildResult } from './contract.d.ts';
+import type { CacheOptions, CacheResult } from '@bedrock-core/builder-plugin';
+export type { CacheOptions, CacheOutput, CacheResult } from '@bedrock-core/builder-plugin';
 
-const caches = new WeakMap<BuildContext, FileCache>();
 const locations = new WeakMap<BuildResult, ReadonlySet<string>>();
 
 export function trackLocations(result: BuildResult, paths: ReadonlySet<string>): void {
@@ -12,46 +13,6 @@ export function trackLocations(result: BuildResult, paths: ReadonlySet<string>):
 
 export function inputLocations(result: BuildResult): ReadonlySet<string> {
   return locations.get(result) ?? new Set();
-}
-
-export function attachCache(context: BuildContext, cache: FileCache): void {
-  caches.set(context, cache);
-}
-
-export function buildCache(context: BuildContext): FileCache {
-  const cache = caches.get(context);
-
-  if (!cache) {
-    throw new Error('Built-in compilation requires a runner cache');
-  }
-
-  return cache;
-}
-
-export interface CacheOutput<T> {
-  /** Data restored on a cache hit. Must be JSON serializable. */
-  value: T;
-  /** Additional dependencies discovered while running the compilation. */
-  inputs?: readonly string[];
-  /** Emitted files to restore into the current staging roots. */
-  files?: readonly string[];
-  /** False when execution discovers untracked runtime inputs. */
-  cache?: boolean;
-}
-
-export interface CacheOptions<T> {
-  inputs: readonly string[];
-  /** Compiler version, settings and other non-file inputs. */
-  key?: unknown;
-  cache?: boolean;
-  run: () => CacheOutput<T> | Promise<CacheOutput<T>>;
-}
-
-export interface CacheResult<T> {
-  value: T;
-  cached: boolean;
-  inputs: string[];
-  files: string[];
 }
 
 export interface FileCacheOptions {

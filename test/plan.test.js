@@ -36,6 +36,23 @@ test('hooks retain configuration order and validation follows final modification
   assert.equal(result.at(-3).plugin, 'custom');
   assert.equal(result.at(-2).stage, 'validate');
 });
+
+test('profile defaults reach automatic and explicit stages while stage overrides preserve false', () => {
+  const project = config({
+    pretty: { indent: 'tab', size: 1 }, debug: true,
+    stages: { i18n: false, generator: true, manifest: { pretty: false }, bundler: { debug: false } },
+  });
+  const original = structuredClone(project);
+  const steps = planBuild(project);
+
+  assert.deepEqual(steps.find(step => step.stage === 'guides').settings, { pretty: { indent: 'tab', size: 1 }, debug: true });
+  assert.equal(steps.find(step => step.stage === 'guides').mode, 'auto');
+  assert.equal(steps.find(step => step.stage === 'generator').mode, 'always');
+  assert.equal(steps.find(step => step.stage === 'manifest').settings.pretty, false);
+  assert.equal(steps.find(step => step.stage === 'bundler').settings.debug, false);
+  assert.equal(steps.some(step => step.stage === 'i18n'), false);
+  assert.deepEqual(project, original);
+});
 test('disabled stage hooks and ambiguous boundaries are rejected', () => {
   assert.throws(
     () =>

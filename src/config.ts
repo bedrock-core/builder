@@ -1,11 +1,20 @@
 import { readFileSync } from 'node:fs';
 import { Ajv } from 'ajv';
+import type { builtinPlugins } from './builtins.ts';
+export type { JsonFormatting } from '@bedrock-core/builder-plugin';
+import type { JsonFormatting } from '@bedrock-core/builder-plugin';
+import type { PackSelector } from '@bedrock-core/builder-plugin';
+import { resolveNamespace, type AddonIdentity } from '@bedrock-core/builder-plugin';
 
 /** Built-in transformation names, in execution order. */
-export type StageName = 'manifest' | 'generator' | 'guides' | 'i18n' | 'ui-compiler' | 'bundler';
+export type StageName = keyof typeof builtinPlugins;
+/** JSON-compatible options passed unchanged to a stage or module plugin. */
 export type Settings = Record<string, unknown>;
+/** Omitted or `auto` detects inputs; `false` disables; `true` or options forces participation. */
 export type StageSelection = 'auto' | boolean | Settings;
-export type PluginTargets = 'resource' | 'behavior' | 'both';
+/** Legacy pack classification or explicit IDs intersected with any-of manifest module types. */
+export type PluginTargets = 'resource' | 'behavior' | 'both' | PackSelector;
+/** Standalone Node script run in a temporary BP/RP/data workspace. */
 export interface NodePluginDefinition {
   /** Entry file relative to `filterDir`, or an absolute file path. */
   script: string;
@@ -21,13 +30,18 @@ export interface NodePluginDefinition {
   nodeArguments?: string[];
 }
 /** A module exporting `run(context, settings)`, or a standalone Node script definition. */
-export type PluginDefinition = { module: string; targets?: PluginTargets } | NodePluginDefinition;
+export type PluginDefinition = { module: string; targets?: PluginTargets; scope?: 'pack' | 'project' } | NodePluginDefinition;
 /** Named plugin invocation at exactly one boundary; equal-boundary steps retain array order. */
-export type PluginStep = { plugin: string; settings?: Settings; arguments?: string[] } & (
+export type PluginStep = { plugin: string; settings?: Settings; arguments?: string[]; mode?: 'auto' | 'always' } & (
   { before: StageName | 'export'; after?: never } | { after: StageName | 'prepare'; before?: never }
 );
 /** Stage selection, ordered plugin hooks and export destinations for one named build. */
 export interface BuildProfile {
+  /** Generated JSON formatting inherited by stages; an explicit stage value replaces it. */
+  pretty?: JsonFormatting | false;
+  /** Debug output inherited by stages that use it; an explicit stage value replaces it. */
+  debug?: boolean;
+  /** Built-ins detect inputs unless disabled or explicitly enabled. */
   stages?: Partial<Record<StageName, StageSelection>>;
   /** Reuse verified compilation and validation results; defaults to true. */
   cache?: boolean;
@@ -44,8 +58,8 @@ export interface ProjectConfig {
   $schema?: string;
   /** Target Minecraft version used by participating stages. */
   targetVersion: string;
-  /** Project namespace shared by generated runtime and resource content. */
-  namespace: string;
+  /** Shared namespace; optional when bedrockCore.addon derives it. */
+  namespace?: string;
   /** Human-readable project name. */
   name: string;
   /** Optional project description. */
@@ -57,6 +71,8 @@ export interface ProjectConfig {
   /** Builder-specific format, reusable plugin definitions and named profiles. */
   bedrockCore: {
     formatVersion: '1.0.0';
+    /** Stable identity for generated registration metadata and namespace derivation. */
+    addon?: AddonIdentity;
     plugins?: Record<string, PluginDefinition>;
     profiles: Record<string, BuildProfile>;
   };
@@ -112,6 +128,8 @@ export function validateConfig(config: unknown): ProjectConfig {
 
     throw new Error(`Invalid project configuration: ${details}`);
   }
+
+  resolveNamespace(config.namespace, config.bedrockCore.addon);
 
   return config;
 }

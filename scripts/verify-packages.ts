@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractTgz } from '../packages/generator/src/tar.ts';
 import { yarn } from './yarn.ts';
+import { validateConfig } from '../src/config.ts';
 // @ts-expect-error Test fixtures are JavaScript helpers outside the public API.
 import { installUi } from '../test-support/ui.js';
 
@@ -19,11 +20,21 @@ const files = Object.fromEntries(packages.map(pkg => [pkg.name, `file:${path.joi
 try {
   for (const pkg of packages) {
     const contents = extractTgz(await readFile(path.join(directory, pkg.file)));
-    const metadata = JSON.parse(contents.get('package/package.json')!.toString()) as { exports: Record<string, unknown>; dependencies?: Record<string, string> };
+    const metadata = JSON.parse(contents.get('package/package.json')!.toString()) as { exports?: Record<string, unknown>; dependencies?: Record<string, string> };
+    const exports = metadata.exports ?? {};
 
     assert.ok(Object.values(metadata.dependencies ?? {}).every(version => !version.startsWith('workspace:')));
-    assert.ok(!JSON.stringify(metadata.exports).includes('/src/index.ts'));
+    assert.ok(!JSON.stringify(exports).includes('/src/index.ts'));
+    assert.ok(Object.keys(exports).every(entry => !entry.includes('*')), `${pkg.name} must list its export paths explicitly`);
     assert.ok([...contents.keys()].every(file => !file.includes('/node_modules/') && !file.includes('/.bedrock-core/')));
+
+    if (pkg.name === '@bedrock-core/cli') {
+      assert.ok(contents.has('package/dist/index.js'));
+      assert.ok(contents.has('package/templates/bedrock-core/config.json'));
+      assert.ok(contents.has('package/templates/bedrock-core/gitignore'));
+      assert.ok(contents.has('package/templates/bedrock-core/yarnrc.yml'));
+      assert.ok(contents.has('package/templates/bedrock-core/packs/BP/structures/example/the_addon_loads.mcstructure'));
+    }
   }
 
   await writeFile(path.join(root, 'package.json'), JSON.stringify({
@@ -38,27 +49,38 @@ try {
     import { Screen, Text } from '@bedrock-core/ui';
     export default function Page() { return <Screen><Text>Installed UI compiler</Text></Screen>; }
   `);
-  await mkdir(path.join(root, 'addon/ui'));
-  await writeFile(path.join(root, 'addon/ui/empty.mjs'), 'export default {};');
   await writeFile(path.join(root, 'verify.mjs'), `
     import assert from 'node:assert/strict';
+    import { createRequire } from 'node:module';
     import { readFile } from 'node:fs/promises';
-    import path from 'node:path';
     import { runBuild } from '@bedrock-core/builder/runner';
     import { validateConfig } from '@bedrock-core/builder/config';
-    import { readUiDeclaration } from '@bedrock-core/builder-ui';
+    import * as uiOptions from '@bedrock-core/builder-ui';
     import { bundleScripts } from '@bedrock-core/builder-bundler';
     import { compileI18n } from '@bedrock-core/builder-i18n';
     import { compileGuides } from '@bedrock-core/builder-guides';
     import { generateTemplates } from '@bedrock-core/builder-generator';
     import { validatePackContent } from '@bedrock-core/builder-validation';
+    import { fingerprint } from '@bedrock-core/builder-plugin';
+    import { resolveManifest } from '@bedrock-core/builder-manifest';
     assert.equal(typeof bundleScripts, 'function');
     assert.equal(typeof compileI18n, 'function');
     assert.equal(typeof compileGuides, 'function');
     assert.equal(typeof generateTemplates, 'function');
     assert.equal(typeof validatePackContent, 'function');
+    assert.equal(typeof fingerprint, 'function');
+    assert.equal(typeof resolveManifest, 'function');
+    for (const name of ['manifest', 'generator', 'guides', 'i18n', 'ui', 'bundler']) {
+      const plugin = await import('@bedrock-core/builder-' + name + '/plugin');
+      assert.equal(typeof plugin.run, 'function');
+      assert.equal(typeof plugin.detect, 'function');
+    }
+    assert.deepEqual(Object.keys(uiOptions), []);
+    const require = createRequire(import.meta.url);
+    for (const name of ${JSON.stringify(packages.filter(pkg => pkg.name !== '@bedrock-core/cli').map(pkg => pkg.name))}) {
+      assert.throws(() => require.resolve(name + '/internal/index'), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' });
+    }
     validateConfig(JSON.parse(await readFile('addon/config.json', 'utf8')));
-    await readUiDeclaration(path.resolve('addon/ui/empty.mjs'));
     const result = await runBuild({ configPath: 'addon/config.json', logger: {} });
     assert.equal(result.packs.length, 3);
     assert.ok(result.validation.files.some(file => file.schema));
@@ -74,8 +96,20 @@ try {
     import type { BundleOptions } from '@bedrock-core/builder-bundler';
     import type { GuidesOptions } from '@bedrock-core/builder-guides';
     import type { ContentValidationOptions } from '@bedrock-core/builder-validation';
+    import type { UiSettings } from '@bedrock-core/builder-ui';
+    import type { BuildPlugin, BuildContext, BundleExtension } from '@bedrock-core/builder-plugin';
+    import * as generatorPlugin from '@bedrock-core/builder-generator/plugin';
+    const plugin: BuildPlugin = generatorPlugin;
+    const extension: BundleExtension = { id: 'example:types', version: '1', plugins: [{ name: 'typed', setup(build) { build.onLoad({ filter: /example/ }, () => ({ contents: '', loader: 'js' })); } }] };
+    async function useContext(context: BuildContext) {
+      context.registerBundleExtension(extension);
+      const result = await context.reuse('example', { inputs: [], key: '1', run: () => ({ value: { count: 1 } }) });
+      const count: number = result.value.count;
+      return count;
+    }
+    export { plugin, extension, useContext };
     export { runBuild };
-    export type Options = BuildOptions | BundleOptions | GuidesOptions | ContentValidationOptions;
+    export type Options = BuildOptions | BundleOptions | GuidesOptions | ContentValidationOptions | UiSettings;
   `);
   await writeFile(path.join(root, 'tsconfig.json'), JSON.stringify({
     compilerOptions: { strict: true, noEmit: true, module: 'NodeNext', target: 'ES2023', types: ['node'], skipLibCheck: false },
@@ -85,7 +119,8 @@ try {
   const cli = spawnSync(process.execPath, ['node_modules/@bedrock-core/builder/dist/bin/builder.js', '--help'], { cwd: root, encoding: 'utf8' });
 
   assert.equal(cli.status, 0);
-  assert.match(cli.stdout, /bc-build/);
+  assert.match(cli.stdout, /core-builder/);
+  yarn(['exec', 'core-builder', '--help'], root);
 
   for (const pkg of packages.filter(pkg => pkg.name !== '@bedrock-core/builder')) {
     const standalone = await mkdtemp(path.join(tmpdir(), 'builder-standalone-check-'));
@@ -97,7 +132,52 @@ try {
       }));
       await writeFile(path.join(standalone, '.yarnrc.yml'), 'nodeLinker: node-modules\nenableGlobalCache: true\n');
       yarn(['install'], standalone);
-      await writeFile(path.join(standalone, 'verify.mjs'), `await import(${JSON.stringify(pkg.name)});`);
+
+      if (pkg.name === '@bedrock-core/cli') {
+        await writeFile(path.join(standalone, 'offline-network.mjs'), `
+          import https from 'node:https';
+          import { EventEmitter } from 'node:events';
+          https.get = () => {
+            const request = new EventEmitter();
+            request.setTimeout = () => request;
+            queueMicrotask(() => request.emit('error', new Error('Offline package verification')));
+            return request;
+          };
+        `);
+        const cli = path.join(standalone, 'node_modules/@bedrock-core/cli/dist/index.js');
+        const generated = spawnSync(process.execPath, ['--import', './offline-network.mjs', cli, 'packed-addon', '--author', 'Reviewer', '--description', 'Packed builder scaffold', '--package-manager', 'none'], { cwd: standalone, encoding: 'utf8' });
+
+        assert.equal(generated.status, 0, generated.stderr);
+        const config = JSON.parse(await readFile(path.join(standalone, 'packed-addon/config.json'), 'utf8'));
+
+        validateConfig(config);
+        assert.deepEqual(config.bedrockCore.addon, { creator: 'reviewer', pack: 'packed_addon' });
+        assert.ok(config.bedrockCore.profiles['build-test']);
+        const version = spawnSync(process.execPath, [cli, '--version'], { cwd: standalone, encoding: 'utf8' });
+
+        assert.equal(version.status, 0);
+        assert.equal(version.stdout.trim(), pkg.version);
+
+        const addon = path.join(standalone, 'packed-addon');
+        const builder = path.join(root, 'node_modules/@bedrock-core/builder/dist/bin/builder.js');
+
+        for (const profile of ['build', 'default', 'test', 'build-test']) {
+          const planned = spawnSync(process.execPath, [builder, 'plan', 'config.json', profile], { cwd: addon, encoding: 'utf8' });
+
+          assert.equal(planned.status, 0, planned.stdout + planned.stderr);
+          const plan = JSON.parse(planned.stdout) as { stage: string; settings?: { manifestPath?: string } }[];
+
+          assert.ok(plan.some(step => step.stage === 'ui-compiler'));
+          assert.equal(plan.find(step => step.stage === 'manifest')?.settings?.manifestPath,
+            profile === 'test' || profile === 'build-test' ? './packs/BP/manifest.test.json' : undefined);
+        }
+
+        continue;
+      }
+
+      const plugin = !['@bedrock-core/builder-plugin', '@bedrock-core/builder-validation'].includes(pkg.name);
+
+      await writeFile(path.join(standalone, 'verify.mjs'), `await import(${JSON.stringify(pkg.name)});${plugin ? ` await import(${JSON.stringify(`${pkg.name}/plugin`)});` : ''}`);
       const result = spawnSync(process.execPath, ['verify.mjs'], { cwd: standalone, stdio: 'inherit' });
 
       assert.equal(result.status, 0, `${pkg.name} must load with only its declared dependencies`);

@@ -6,6 +6,10 @@ export interface InlineLink {
 
 /** Guide source selection, localization, navigation and optional screen generation. */
 export interface GuidesSettings {
+  /** Builder owner ID; defaults to the sole script pack or sole pack. */
+  owner?: string;
+  /** Builder resource destination ID; inferred from direct local dependencies. */
+  resourcePack?: string;
   /** Override the project namespace for generated guide keys. */
   namespace?: string;
   /** Guide content directory; defaults to guides. */

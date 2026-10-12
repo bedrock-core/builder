@@ -1,0 +1,8 @@
+{
+	"recommendations": [
+		"dbaeumer.vscode-eslint",
+		"mojang-studios.minecraft-debugger",
+		"misodee.vscode-nbt",
+		"jannisx11.snowstorm"
+	]
+}

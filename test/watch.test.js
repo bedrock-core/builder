@@ -171,10 +171,8 @@ test('watch reloads translation imports, adds locales and avoids declaration out
   const errors = [];
 
   await put(project.project, 'shared/title.ts', 'export const title = "First" as const;');
-  await put(project.project, 'i18n/en_US.ts', 'import { title } from "../shared/title.ts"; export default { shop: { title } } as const;');
-  await put(project.project, 'i18n/cs_CZ.ts', 'export default { shop: { title: "Obchod" } } as const;');
-  delete project.config.packs.gameplay;
-  delete project.config.bedrockCore.profiles.default.export.gameplay;
+  await put(project.project, 'packs/gameplay/i18n/en_US.ts', 'import { title } from "../../../shared/title.ts"; export default { shop: { title } } as const;');
+  await put(project.project, 'packs/gameplay/i18n/cs_CZ.ts', 'export default { shop: { title: "Obchod" } } as const;');
   project.config.bedrockCore.profiles.default.stages = { i18n: true };
   project.config.bedrockCore.profiles.default.watch = { debounceMs: 30 };
   await writeFile(project.configPath, JSON.stringify(project.config));
@@ -199,7 +197,7 @@ test('watch reloads translation imports, adds locales and avoids declaration out
   await put(project.project, 'shared/title.ts', 'export const title = "Second" as const;');
   await waitFor(() => results.length >= 2);
   assert.match(await readFile(path.join(results.at(-1).outputPaths.visuals, 'texts/en_US.lang'), 'utf8'), /flow_test.shop.title=Second/);
-  await put(project.project, 'i18n/fr_FR.ts', 'export default { shop: { title: "Boutique" } } as const;');
+  await put(project.project, 'packs/gameplay/i18n/fr_FR.ts', 'export default { shop: { title: "Boutique" } } as const;');
   await waitFor(() => results.length >= 3);
   assert.match(await readFile(path.join(results.at(-1).outputPaths.visuals, 'texts/fr_FR.lang'), 'utf8'), /Boutique/);
   const count = results.length;

@@ -10,6 +10,6 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["packs/**/*.ts", "i18n/**/*.ts", "shared/**/*.ts", ".bedrock-core/generated/i18n/**/*.d.ts"],
+  "include": ["packs/**/*.ts", "shared/**/*.ts", ".bedrock-core/generated/i18n/**/*.d.ts"],
   "exclude": ["dist", "node_modules"]
 }

@@ -159,9 +159,9 @@ test('locales reuse compiled modules, evaluate runtime inputs and invalidate onl
   project.config.bedrockCore.profiles.default.stages.i18n = { types: false };
   await writeFile(project.configPath, JSON.stringify(project.config));
   await put(project.project, 'shared/title.ts', 'export const suffix = "A";');
-  await put(project.project, 'i18n/en_US.ts', `
+  await put(project.project, 'packs/gameplay/i18n/en_US.ts', `
     import process from 'node:process';
-    import { suffix } from '../shared/title.ts';
+    import { suffix } from '../../../shared/title.ts';
     const resource = ${JSON.stringify(english)};
     resource.shop.title += suffix + process.env.BUILDER_LOCALE_TEST;
     export default resource;
@@ -174,14 +174,14 @@ test('locales reuse compiled modules, evaluate runtime inputs and invalidate onl
   process.env.BUILDER_LOCALE_TEST = 'second';
   const runtime = await runBuild(optionsFor(project));
 
-  assert.equal(status(runtime, 'i18n/compiled:i18n/en_US.ts'), 'cached');
-  assert.equal(status(runtime, 'i18n/compiled:i18n/cs_CZ.ts'), 'cached');
+  assert.equal(status(runtime, 'i18n/compiled:packs/gameplay/i18n/en_US.ts'), 'cached');
+  assert.equal(status(runtime, 'i18n/compiled:packs/gameplay/i18n/cs_CZ.ts'), 'cached');
   assert.match(await readFile(path.join(runtime.outputPaths.visuals, 'texts/en_US.lang'), 'utf8'), /flow_test.shop.title=ShopAsecond/);
   await put(project.project, 'shared/title.ts', 'export const suffix = "B";');
   const helper = await runBuild(optionsFor(project));
 
-  assert.equal(status(helper, 'i18n/compiled:i18n/en_US.ts'), 'executed');
-  assert.equal(status(helper, 'i18n/compiled:i18n/cs_CZ.ts'), 'cached');
+  assert.equal(status(helper, 'i18n/compiled:packs/gameplay/i18n/en_US.ts'), 'executed');
+  assert.equal(status(helper, 'i18n/compiled:packs/gameplay/i18n/cs_CZ.ts'), 'cached');
   assert.equal(status(helper, 'bundler/gameplay:scripts/main.js'), 'cached');
   assert.match(await readFile(path.join(helper.outputPaths.visuals, 'texts/en_US.lang'), 'utf8'), /flow_test.shop.title=ShopBsecond/);
 });

@@ -15,5 +15,10 @@
       "uuid": "6b1f4b26-cbb3-4b70-a813-bb5da5af92a5",
       "version": "1.0.0"
     }
+  ],
+  "dependencies": [
+    {
+      "pack": "assets"
+    }
   ]
 }

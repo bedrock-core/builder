@@ -1,0 +1,18 @@
+{
+  "extends": "./manifest.json",
+  "modules": [
+    {
+      "type": "data",
+      "uuid": "c5f3b6e9-cb5f-4baf-bbb0-f47eb363e620",
+      "version": "1.0.0",
+      "entry": "scripts/tests.js"
+    },
+    {
+      "type": "script",
+      "language": "javascript",
+      "entry": "scripts/tests.js",
+      "uuid": "ab316296-60bf-4877-b3f6-1c089e410719",
+      "version": "1.0.0"
+    }
+  ]
+}

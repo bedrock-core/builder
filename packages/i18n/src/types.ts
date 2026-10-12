@@ -8,7 +8,13 @@ export interface JsonFormatting {
 
 /** Locale source discovery, validation, formatting and editor-declaration settings. */
 export interface I18nSettings {
-  /** Locale resource directory; defaults to i18n. */
+  /** Limit the builder to one configured owner; omission discovers inputs per pack. */
+  owner?: string;
+  /** Resource destination ID in the builder; inferred from the owner's local dependencies. */
+  resourcePack?: string;
+  /** Emit client language files unless false; false compiles runtime data only. */
+  client?: boolean;
+  /** Locale directory relative to each owner pack in the builder, or root in the standalone API. */
   sourceDir?: string;
   /** Required fallback locale; defaults to en_US. */
   defaultLocale?: string;
@@ -32,6 +38,10 @@ export interface I18nSettings {
 
 /** Pack destination and manifest type for generated language files. */
 export interface TranslationPack {
+  /** Manifest alias destinations; omission uses pack.name/pack.description, empty object emits neither. */
+  aliases?: { name?: string; description?: string };
+  /** Shared defaults used to distinguish generated display defaults from authored pack-specific text. */
+  metadata?: { name: string; description: string };
   /** Destination directory relative to root, or absolute. */
   path: string;
   /** Manifest type used for generated language-file behavior. */
@@ -40,7 +50,15 @@ export interface TranslationPack {
 
 /** Project paths and integrations for compiling a translation library. */
 export interface I18nOptions extends I18nSettings {
-  /** Project working directory. */
+  /** Generated module declaration name; defaults to @bedrock-core/generated/i18n. */
+  moduleName?: string;
+  /** Per-producer section identity for composing output into a shared resource pack. */
+  section?: string;
+  /** Final declaration directory when emitting declarations to temporary staging. */
+  declarationDir?: string;
+  /** Default meta fields; authored locale values override these defaults. */
+  metadata?: { name: string; description: string; creator: string };
+  /** Path-resolution root; standalone callers normally supply the owning pack directory. */
   root: string;
   /** Required runtime bundle namespace. */
   namespace: string;

@@ -13,11 +13,11 @@ framework are optional.
 import { compileI18n } from '@bedrock-core/builder-i18n';
 
 const result = await compileI18n({
-  root: '/path/to/project',
+  root: '/path/to/project/packs/gameplay',
   namespace: 'creator_shop',
   packs: [
-    { path: './packs/gameplay', kind: 'behavior' },
-    { path: './packs/visuals', kind: 'resource' },
+    { path: '.', kind: 'behavior' },
+    { path: '../visuals', kind: 'resource' },
   ],
 });
 ```
@@ -27,6 +27,30 @@ resource packs is supported; omitting packs still generates the runtime bundle a
 The builder adapter classifies packs from their staged manifests and defaults the namespace
 to project config. Standalone callers supply a namespace using lowercase letters, numbers
 and underscores.
+
+Builder sources live in each pack's `i18n/` directory. `sourceDir` is relative to the
+owner pack and must stay inside it. `owner` restricts discovery to one pack; omission
+compiles every pack with translation inputs. `resourcePack` selects the owner's direct
+local resource dependency when there are multiple candidates. Ambiguous
+destinations fail, and an explicit destination must still be a declared dependency.
+Unrelated resource packs receive no application strings. `client: false` generates
+runtime data without language output. Standalone callers retain explicit pack paths
+and can select per-pack `aliases` or pass `metadata` defaults without a builder.
+
+The builder supplies typed `meta.name`, `meta.description` and `meta.creator` defaults
+from shared project metadata; authored locales can override them. Manifest aliases
+follow each pack's header references and preserve authored pack-specific display text.
+
+Each owner registers `i18n:<packId>:bundle` and typed import
+`@bedrock-core/generated/i18n/<packId>`. The unqualified runtime import resolves to the
+consuming pack's bundle. Editor declarations live under
+`.bedrock-core/generated/i18n/<packId>`, with distinct resource shapes for each pack.
+Inputs stay available to script consumers until final validation and are omitted from
+published packs. Root-level locale sources do not activate the builder stage.
+
+Multiple owners can contribute separate generated sections into one linked resource
+pack. Conflicting values for the same client key fail before publication; one owner
+does not replace another's section. Shared project namespaces remain the default.
 
 `result` contains `bundle`, `bundlePath`, emitted `files`, consumed `inputs`, editor
 `declarations` and `warnings`. With no locale modules it returns a no-op result. Successful
@@ -41,7 +65,7 @@ integration with another runner.
 
 ## Resources
 
-Place one `<xx_YY>.ts` or `.js` module in `i18n/`:
+Place one `<xx_YY>.ts` or `.js` module in the owner pack's `i18n/` directory:
 
 ```ts
 export default {
@@ -75,8 +99,9 @@ translations may reorder words. `$t(path)` is recursively inlined. Runtime table
 overrides. Behavior packs receive only `pack.name` and `pack.description` aliases from
 `meta.name` and `meta.description`; resource packs also receive those aliases. Existing
 `texts/languages.json` locales are retained. Handwritten language values are included in
-the runtime bundle's `extra` tables, merging resource packs first and behavior packs second
-in their configured order.
+the runtime bundle's `extra` tables. Conflicting values across selected packs, or between
+handwritten and generated application keys, fail before outputs change. Manifest name
+and description keys remain pack-local and are excluded from shared runtime passthrough.
 
 Existing pack `.lang` files also select output locales. Without authored resource modules,
 the compiler still collects passthrough text and installed libraries into a runtime bundle
@@ -130,11 +155,11 @@ project's `.bedrock-core` directory and runtime JSON in the temporary generated 
 Include `.bedrock-core/generated/i18n/**/*.d.ts` in your tsconfig after the first build;
 declarations use two spaces and reference authored literal resources and library type exports.
 
-The adapter provides `i18n:bundle` and `i18n:<packId>:texts/<filename>` artifacts. It consumes
+The adapter provides `i18n:<ownerId>:bundle` and `i18n:<ownerId>:<destinationId>:texts/<filename>` artifacts. It consumes
 staged project resources and existing pack language files, so content-producing hooks belong
 before i18n. Default locale modules activate the stage automatically. Its producer registration makes
 `@bedrock-core/generated/i18n` resolve to
-the current build's `i18n:bundle`. Scripts need no alias configuration. Imports whose producing
+the consuming pack's current bundle. Typed imports include `/<packId>`; scripts need no alias configuration. Imports whose producing
 stage is disabled fail with a missing-producer error.
 
 The bundle has the `namespace`, `defaultLocale`, `libs`, `args`, `extra` and `locales` fields

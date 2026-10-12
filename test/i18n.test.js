@@ -64,9 +64,9 @@ test('resources support relative TS/JSON imports, Node modules and asynchronous 
   const helper = await put(project.project, 'shared/name.ts', 'export const name = "First" as const;');
   const data = await put(project.project, 'shared/label.json', '{"label":"Store"}');
 
-  await put(project.project, 'i18n/en_US.ts', `
-    import { name } from '../shared/name.ts';
-    import data from '../shared/label.json';
+  await put(project.project, 'packs/gameplay/i18n/en_US.ts', `
+    import { name } from '../../../shared/name.ts';
+    import data from '../../../shared/label.json';
     import path from 'node:path';
     export default await Promise.resolve({ meta: { name }, shop: { title: path.basename(data.label) } });
   `);
@@ -88,7 +88,7 @@ test('strict parity failures leave all outputs intact; loose parity fills missin
   const oldBundle = await readFile(before.bundlePath, 'utf8');
   const oldLang = await textAt(project.project, 'packs/visuals/texts/cs_CZ.lang');
 
-  await put(project.project, 'i18n/cs_CZ.ts', 'export default { extra: "Discard" };');
+  await put(project.project, 'packs/gameplay/i18n/cs_CZ.ts', 'export default { extra: "Discard" };');
   await assert.rejects(compileI18n(compileOptions(project)), /keys missing[\s\S]*no en_US counterpart/);
   assert.equal(await readFile(before.bundlePath, 'utf8'), oldBundle);
   assert.equal(await textAt(project.project, 'packs/visuals/texts/cs_CZ.lang'), oldLang);
@@ -109,7 +109,7 @@ for (const [name, value, expected] of [
   test(`reject ${name} before creating generated files`, async (t) => {
     const project = await projectFor(t);
 
-    await put(project.project, 'i18n/en_US.ts', `export default ${JSON.stringify(value)};`);
+    await put(project.project, 'packs/gameplay/i18n/en_US.ts', `export default ${JSON.stringify(value)};`);
     await assert.rejects(compileI18n(compileOptions(project)), expected);
     await assert.rejects(access(path.join(project.project, 'packs/visuals/texts')), { code: 'ENOENT' });
     await assert.rejects(access(path.join(project.project, '.bedrock-core/generated/i18n')), { code: 'ENOENT' });
@@ -122,7 +122,7 @@ test('interpolation drift and locale-only plural variable drift fail before posi
 
   changed.shop.bought = 'Bought {{other}}';
   changed.shop.stock_few = '{{amount}}';
-  await put(project.project, 'i18n/cs_CZ.ts', `export default ${JSON.stringify(changed)};`);
+  await put(project.project, 'packs/gameplay/i18n/cs_CZ.ts', `export default ${JSON.stringify(changed)};`);
   await assert.rejects(compileI18n(compileOptions(project)), /shop.bought[\s\S]*shop.stock_few/);
   await assert.rejects(compileI18n({ ...compileOptions(project), strict: false }), /not in the recorded order/);
 });
@@ -133,7 +133,7 @@ test('no resources is a no-op and the default locale remains required with stric
 
   assert.equal(result.bundle, undefined);
   assert.deepEqual(result.files, []);
-  await put(project.project, 'i18n/cs_CZ.js', 'export default { title: "Obchod" };');
+  await put(project.project, 'packs/gameplay/i18n/cs_CZ.js', 'export default { title: "Obchod" };');
   await assert.rejects(compileI18n({ ...compileOptions(project), strict: false }), /en_US has no resource module/);
 });
 
@@ -142,8 +142,8 @@ test('removing metadata clears only generated BP aliases and preserves manual te
 
   await put(project.project, 'packs/gameplay/texts/en_US.lang', 'manual.line=Keep me\n');
   await compileI18n(compileOptions(project));
-  await put(project.project, 'i18n/en_US.ts', 'export default { shop: { title: "Shop" } } as const;');
-  await rm(path.join(project.project, 'i18n/cs_CZ.ts'));
+  await put(project.project, 'packs/gameplay/i18n/en_US.ts', 'export default { shop: { title: "Shop" } } as const;');
+  await rm(path.join(project.project, 'packs/gameplay/i18n/cs_CZ.ts'));
   await compileI18n(compileOptions(project));
   assert.deepEqual(parseLang(await textAt(project.project, 'packs/gameplay/texts/en_US.lang')), { 'manual.line': 'Keep me' });
 });
@@ -164,7 +164,7 @@ test('transitive library discovery merges shared namespaces, applies overrides a
 
   await put(project.project, 'node_modules/ignored/package.json', '{"bedrockCore":{"i18n":{"dir":"i18n","namespace":"ignored"}}}');
   await put(project.project, 'node_modules/ignored/i18n/en_US.ts', 'export default { title: "Ignored" };');
-  await put(project.project, 'i18n/en_US.ts', `export default ${JSON.stringify({ ...english, core: { welcome: 'Hi {{name}}' } })} as const;`);
+  await put(project.project, 'packs/gameplay/i18n/en_US.ts', `export default ${JSON.stringify({ ...english, core: { welcome: 'Hi {{name}}' } })} as const;`);
   const result = await compileI18n(compileOptions(project));
 
   assert.deepEqual(result.bundle.libs, ['core']);
@@ -194,7 +194,7 @@ test('vanilla keys are typed completely, bundled only when referenced, and emitt
       : new Response('', { status: 404 });
   });
   await put(project.project, 'packs/gameplay/scripts/main.ts', 'const key = "vanilla.item.apple.name";');
-  await put(project.project, 'i18n/en_US.ts', `export default ${JSON.stringify({ ...english, vanilla: { item: { apple: { name: 'Snack' } } } })} as const;`);
+  await put(project.project, 'packs/gameplay/i18n/en_US.ts', `export default ${JSON.stringify({ ...english, vanilla: { item: { apple: { name: 'Snack' } } } })} as const;`);
   const options = { ...compileOptions(project), vanilla: true, vanillaLangUrlTemplate: 'https://example.invalid/{locale}.lang' };
   const result = await compileI18n(options);
   const rp = parseLang(await textAt(project.project, 'packs/visuals/texts/en_US.lang'));
@@ -253,16 +253,16 @@ test('pipeline resolves generated imports automatically, honors arbitrary pack c
   await put(project.project, 'config.json', JSON.stringify(project.config));
   const result = await runBuild({ configPath: project.configPath, logger: {} });
 
-  assert.ok(result.artifacts.some(artifact => artifact.id === 'i18n:bundle' && artifact.owner === 'i18n'));
-  assert.equal(result.artifacts.find(artifact => artifact.id === 'i18n:bundle').importAs, '@bedrock-core/generated/i18n');
-  assert.ok(result.artifacts.some(artifact => artifact.id === 'i18n:extraVisuals:texts/en_US.lang'));
-  assert.ok(result.dependencies.includes(path.join(project.project, 'i18n/en_US.ts')));
+  assert.ok(result.artifacts.some(artifact => artifact.id === 'i18n:gameplay:bundle' && artifact.owner === 'i18n'));
+  assert.equal(result.artifacts.find(artifact => artifact.id === 'i18n:gameplay:bundle').importAs, '@bedrock-core/generated/i18n');
+  assert.ok(!result.artifacts.some(artifact => artifact.id === 'i18n:extraVisuals:texts/en_US.lang'));
+  assert.ok(result.dependencies.includes(path.join(project.project, 'packs/gameplay/i18n/en_US.ts')));
   assert.match(await textAt(result.outputPaths.gameplay, 'scripts/main.js'), /flow_test/);
-  assert.equal(await textAt(result.outputPaths.extraVisuals, 'texts/en_US.lang'), await textAt(result.outputPaths.visuals, 'texts/en_US.lang'));
+  await assert.rejects(access(path.join(result.outputPaths.extraVisuals, 'texts/en_US.lang')), { code: 'ENOENT' });
   await assert.rejects(access(path.join(project.project, 'packs/visuals/texts')), { code: 'ENOENT' });
   const output = await textAt(result.outputPaths.visuals, 'texts/en_US.lang');
 
-  await put(project.project, 'i18n/en_US.ts', 'export default { bad: "$t(missing)" };');
+  await put(project.project, 'packs/gameplay/i18n/en_US.ts', 'export default { bad: "$t(missing)" };');
   await assert.rejects(runBuild({ configPath: project.configPath, logger: {} }), /i18n compilation failed/);
   assert.equal(await textAt(result.outputPaths.visuals, 'texts/en_US.lang'), output);
 });
@@ -273,17 +273,28 @@ for (const [id, kind] of [['gameplay', 'behavior'], ['visuals', 'resource']]) {
 
     project.config.packs = { [id]: project.config.packs[id] };
     project.config.bedrockCore.profiles.default.export = { [id]: `./dist/${id}` };
-    project.config.bedrockCore.profiles.default.stages = { i18n: true, bundler: false };
+    project.config.bedrockCore.profiles.default.stages = { i18n: { client: kind !== 'behavior' }, bundler: false };
 
     if (kind === 'behavior') {
       await put(project.project, 'packs/gameplay/scripts/main.js', 'export {};');
+    } else {
+      await put(project.project, 'packs/visuals/i18n/en_US.ts', `export default ${JSON.stringify(english)} as const;`);
+      await put(project.project, 'packs/visuals/i18n/cs_CZ.ts', `export default ${JSON.stringify(czech)} as const;`);
     }
 
     await put(project.project, 'config.json', JSON.stringify(project.config));
     const result = await runBuild({ configPath: project.configPath, logger: {} });
+
+    if (kind === 'behavior') {
+      await assert.rejects(access(path.join(result.outputPaths[id], 'texts/en_US.lang')), { code: 'ENOENT' });
+      assert.ok(result.artifacts.some(artifact => artifact.id === 'i18n:gameplay:bundle'));
+
+      return;
+    }
+
     const lang = parseLang(await textAt(result.outputPaths[id], 'texts/en_US.lang'));
 
-    assert.equal(lang['pack.name'], 'Shop');
+    assert.equal(lang['pack.name'], undefined);
     assert.equal(lang['flow_test.shop.title'], kind === 'resource' ? 'Shop' : undefined);
   });
 }
@@ -298,7 +309,7 @@ test('i18n schema validates settings and rejects source paths outside staging', 
 
   project.config.bedrockCore.profiles.default.stages = { i18n: { sourceDir: '../outside' } };
   await put(project.project, 'config.json', JSON.stringify(project.config));
-  await assert.rejects(runBuild({ configPath: project.configPath, logger: {} }), /inside the project/);
+  await assert.rejects(runBuild({ configPath: project.configPath, logger: {} }), /inside owner pack/);
 });
 
 test('a disabled i18n producer reports the missing import without using an old generated file', async (t) => {
@@ -310,7 +321,7 @@ test('a disabled i18n producer reports the missing import without using an old g
   const first = await runBuild({ configPath: project.configPath, logger: {} });
   const previous = await textAt(first.outputPaths.gameplay, 'scripts/main.js');
 
-  assert.ok(await access(path.join(project.project, '.bedrock-core/generated/i18n/i18n.generated.d.ts')).then(() => true));
+  assert.ok(await access(path.join(project.project, '.bedrock-core/generated/i18n/gameplay/i18n.generated.d.ts')).then(() => true));
   project.config.bedrockCore.profiles.default.stages = { i18n: false, bundler: true };
   await put(project.project, 'config.json', JSON.stringify(project.config));
   await assert.rejects(runBuild({ configPath: project.configPath, logger: {} }), /Missing generated import[\s\S]*enable its producing stage/);

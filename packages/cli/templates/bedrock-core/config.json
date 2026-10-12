@@ -1,0 +1,81 @@
+{
+  "$schema": "./node_modules/@bedrock-core/builder/schemas/config.schema.json",
+  "targetVersion": "1.26.50",
+  "name": "{{DISPLAY_NAME}}",
+  "description": "{{DESCRIPTION}}",
+  "authors": [
+    "{{AUTHOR}}"
+  ],
+  "packs": {
+    "behaviorPack": "./packs/BP",
+    "resourcePack": "./packs/RP"
+  },
+  "bedrockCore": {
+    "formatVersion": "1.0.0",
+    "profiles": {
+      "build": {
+        "debug": false,
+        "pretty": false,
+        "export": {
+          "behaviorPack": "./build/{{PROJECT_NAME}}_bp",
+          "resourcePack": "./build/{{PROJECT_NAME}}_rp"
+        }
+      },
+      "default": {
+        "debug": true,
+        "pretty": {
+          "indent": "tab"
+        },
+        "stages": {
+          "ui-compiler": {
+            "stamp": true
+          }
+        },
+        "export": {
+          "behaviorPack": "%APPDATA%/Minecraft Bedrock/Users/Shared/games/com.mojang/development_behavior_packs/{{PROJECT_NAME}}",
+          "resourcePack": "%APPDATA%/Minecraft Bedrock/Users/Shared/games/com.mojang/development_resource_packs/{{PROJECT_NAME}}"
+        }
+      },
+      "test": {
+        "debug": true,
+        "pretty": {
+          "indent": "tab"
+        },
+        "stages": {
+          "manifest": {
+            "manifestPath": "./packs/BP/manifest.test.json"
+          },
+          "bundler": {
+            "tsconfig": "tsconfig.test.json"
+          }
+        },
+        "export": {
+          "behaviorPack": "%APPDATA%/Minecraft Bedrock/Users/Shared/games/com.mojang/development_behavior_packs/{{PROJECT_NAME}}",
+          "resourcePack": "%APPDATA%/Minecraft Bedrock/Users/Shared/games/com.mojang/development_resource_packs/{{PROJECT_NAME}}"
+        }
+      },
+      "build-test": {
+        "debug": true,
+        "pretty": {
+          "indent": "tab"
+        },
+        "stages": {
+          "manifest": {
+            "manifestPath": "./packs/BP/manifest.test.json"
+          },
+          "bundler": {
+            "tsconfig": "tsconfig.test.json"
+          }
+        },
+        "export": {
+          "behaviorPack": "./build/test/BP",
+          "resourcePack": "./build/test/RP"
+        }
+      }
+    },
+    "addon": {
+      "creator": "{{CREATOR_ID}}",
+      "pack": "{{PACK_ID}}"
+    }
+  }
+}

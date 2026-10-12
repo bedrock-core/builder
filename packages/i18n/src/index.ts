@@ -5,7 +5,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { bundleDtsText } from './dts.ts';
 import { flattenNesting, templateVars, toPositional } from './interp.ts';
-import { manifestAliasEntries, parseLang, stripGeneratedSection, upsertGeneratedSection } from './lang.ts';
+import { manifestAliasEntries, parseLang, stripGeneratedSection, stripAllGeneratedSections, upsertGeneratedSection } from './lang.ts';
 import { discoverI18nLibs, localeFiles, LOCALE_FILE_RE } from './libs.ts';
 import { loadResources } from './load.ts';
 import { scanVanillaUsage, walkSources } from './scan.ts';
@@ -70,6 +70,10 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
   const result: I18nResult = { files: [], inputs: [], declarations, warnings };
   const packs = (options.packs ?? []).map(pack => ({ ...pack, path: path.resolve(root, pack.path) }));
   const localeNames = new Set(files.keys());
+
+  if (options.metadata) {
+    localeNames.add(defaultLocale);
+  }
 
   for (const pack of packs) {
     const directory = path.join(pack.path, 'texts');
@@ -172,6 +176,20 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
 
     for (const [locale, file] of files) {
       ownRaw.set(locale, await load(file, locale));
+    }
+
+    if (options.metadata) {
+      for (const locale of localeNames) {
+        const table = ownRaw.get(locale) ?? new Map(ownRaw.get(defaultLocale));
+
+        for (const [key, value] of Object.entries(options.metadata)) {
+          if (!table.has(`meta.${key}`)) {
+            table.set(`meta.${key}`, value);
+          }
+        }
+
+        ownRaw.set(locale, table);
+      }
     }
 
     for (const locale of localeNames) {
@@ -413,7 +431,6 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
       locales: {},
     };
 
-    // Resource packs precede behavior packs when collecting existing .lang entries.
     const extraPacks = [...packs.filter(pack => pack.kind === 'resource'), ...packs.filter(pack => pack.kind === 'behavior')];
 
     function read(file: string): string {
@@ -426,9 +443,30 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
 
     for (const locale of localeNames) {
       const extra: Table = new Map();
+      const existingEntries: Table = new Map();
 
       for (const pack of extraPacks) {
-        for (const [key, value] of Object.entries(parseLang(stripGeneratedSection(read(path.join(pack.path, 'texts', `${locale}.lang`)))))) {
+        const content = read(path.join(pack.path, 'texts', `${locale}.lang`));
+
+        for (const [key, value] of Object.entries(parseLang(stripGeneratedSection(content, options.section)))) {
+          if (!['pack.name', 'pack.description'].includes(key)) {
+            if (existingEntries.has(key) && existingEntries.get(key) !== value) {
+              error(`${locale} ${key}`, 'different values in the selected packs');
+            }
+
+            existingEntries.set(key, value);
+          }
+        }
+
+        for (const [key, value] of Object.entries(parseLang(stripAllGeneratedSections(content)))) {
+          if (['pack.name', 'pack.description'].includes(key)) {
+            continue;
+          }
+
+          if (extra.has(key) && extra.get(key) !== value) {
+            error(`${locale} ${key}`, 'different values in the selected packs');
+          }
+
           extra.set(key, value);
         }
       }
@@ -451,17 +489,41 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
 
       const aliases = manifestAliasEntries(entries, namespace);
 
-      for (const pack of packs) {
+      for (const [key, value] of entries) {
+        if (existingEntries.has(key) && existingEntries.get(key) !== value) {
+          error(`${locale} ${key}`, 'authored language entry conflicts with generated translation');
+        }
+      }
+
+      for (const pack of options.client === false ? [] : packs) {
         const file = path.join(pack.path, 'texts', `${locale}.lang`);
         const existing = read(file);
+        const authored = parseLang(stripAllGeneratedSections(existing));
+        const packAliases = pack.aliases === undefined ? new Map(aliases) : new Map<string, string>();
 
-        if (pack.kind === 'resource' || aliases.size) {
-          const generated = pack.kind === 'resource' ? new Map([...entries, ...vanillaOverrides.get(locale)!, ...aliases]) : aliases;
+        for (const [field, key] of Object.entries(pack.aliases ?? {})) {
+          const value = entries.get(`${namespace}.meta.${field}`);
 
-          pending.set(file, upsertGeneratedSection(existing, generated));
+          if (value !== undefined) {
+            packAliases.set(key, value);
+          }
+        }
+
+        for (const field of ['name', 'description'] as const) {
+          const key = pack.aliases?.[field] ?? (pack.aliases === undefined ? `pack.${field}` : undefined);
+
+          if (key && pack.metadata && authored[key] !== undefined && authored[key] !== pack.metadata[field]) {
+            packAliases.set(key, authored[key]);
+          }
+        }
+
+        if (pack.kind === 'resource' || packAliases.size) {
+          const generated = pack.kind === 'resource' ? new Map([...entries, ...vanillaOverrides.get(locale)!, ...packAliases]) : packAliases;
+
+          pending.set(file, upsertGeneratedSection(existing, generated, options.section));
           languagePacks.add(pack.path);
-        } else if (fs.existsSync(file) && stripGeneratedSection(existing) !== existing) {
-          pending.set(file, stripGeneratedSection(existing));
+        } else if (fs.existsSync(file) && stripGeneratedSection(existing, options.section) !== existing) {
+          pending.set(file, stripGeneratedSection(existing, options.section));
         }
       }
 
@@ -505,10 +567,12 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
     if (options.types !== false) {
       const authoredSource = files.get(defaultLocale);
       const authoredFile = authoredSource ? path.join(options.declarationRoot ?? root, path.relative(root, authoredSource)) : undefined;
-      const relative = authoredFile ? path.relative(typesDir, authoredFile).replaceAll('\\', '/') : undefined;
+      const relative = authoredFile ? path.relative(options.declarationDir ?? typesDir, authoredFile).replaceAll('\\', '/') : undefined;
       const declarationFile = path.join(typesDir, 'i18n.generated.d.ts');
 
       pending.set(declarationFile, bundleDtsText({
+        metadata: !!options.metadata,
+        moduleName: options.moduleName,
         defaultLocale,
         ownModule: relative ? relative.startsWith('.') ? relative : `./${relative}` : undefined,
         vanilla: options.vanilla ?? false,
@@ -519,7 +583,7 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
       if (options.vanilla) {
         const vanillaFile = path.join(typesDir, 'vanilla.generated.d.ts');
 
-        pending.set(vanillaFile, vanillaDtsText(vanillaKeys));
+        pending.set(vanillaFile, vanillaDtsText(vanillaKeys, options.moduleName ? `${options.moduleName}-vanilla` : undefined));
         declarations.push(vanillaFile);
       }
     }

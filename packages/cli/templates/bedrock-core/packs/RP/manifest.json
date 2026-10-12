@@ -1,0 +1,23 @@
+{
+  "format_version": 3,
+  "header": {
+    "name": "pack.name",
+    "description": "pack.description",
+    "uuid": "{{RP_HEADER_UUID}}",
+    "pack_scope": "world"
+  },
+  "modules": [
+    {
+      "type": "resources",
+      "uuid": "{{RP_MODULE_UUID}}"
+    }
+  ],
+  "dependencies": [
+    {
+      "pack": "behaviorPack"
+    }
+  ],
+  "metadata": {
+    "product_type": "addon"
+  }
+}

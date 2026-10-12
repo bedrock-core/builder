@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { manifestFor } from '../test-support/manifest.js';
 import { validatePackManifests } from '../src/manifest.ts';
 import { validateConfig } from '../src/config.ts';
-import { transformManifest } from '../src/manifest.ts';
+import { resolveManifest, transformManifest } from '../src/manifest.ts';
+import { run as resolveStage } from '@bedrock-core/builder-manifest/plugin';
 import { projectFor } from '../test-support/project.js';
 import { runBuild } from '../src/run.ts';
 
@@ -97,7 +98,113 @@ test('manifest stage selects profile test scripts without modifying authored fil
   assert.equal(await readFile(manifestPath, 'utf8'), original);
   assert.equal(result.artifacts.some(artifact => artifact.id === 'manifest:gameplay'), true);
 
-  project.config.bedrockCore.profiles.tests.stages.manifest.packs.missing = { scriptEntry: 'scripts/tests.js' };
+  project.config.bedrockCore.profiles.tests.stages.manifest.manifestPath = './packs/missing/manifest.test.json';
   await writeFile(project.configPath, JSON.stringify(project.config));
-  await assert.rejects(runBuild({ configPath: project.configPath, profile: 'tests', logger: {} }), /unconfigured pack/);
+  await assert.rejects(runBuild({ configPath: project.configPath, profile: 'tests', logger: {} }), /configured pack root/);
+});
+
+test('manifest inheritance merges objects, replaces arrays and tracks every source without edits', async (t) => {
+  const project = await projectFor(t);
+  const directory = path.join(project.project, 'packs/gameplay');
+  const base = { ...project.behavior, metadata: { authors: ['Author'], custom: { retained: true } }, dependencies: [{ module_name: 'old', version: '1.0.0' }] };
+  const sources = {
+    'manifest.json': base,
+    'manifest.dev.json': { extends: './manifest.json', metadata: { custom: { added: true } }, header: { name: 'Development' } },
+    'manifest.test.json': { extends: './manifest.dev.json', metadata: { authors: ['Tester'] }, dependencies: [{ module_name: 'test', version: '2.0.0' }] },
+  };
+
+  for (const [file, document] of Object.entries(sources)) {
+    await writeFile(path.join(directory, file), JSON.stringify(document));
+  }
+
+  const result = await resolveManifest(path.join(directory, 'manifest.test.json'), { root: project.project });
+
+  assert.equal(result.manifest.extends, undefined);
+  assert.equal(result.manifest.header.name, 'Development');
+  assert.deepEqual(result.manifest.metadata, { authors: ['Tester'], custom: { retained: true, added: true } });
+  assert.deepEqual(result.manifest.dependencies, [{ module_name: 'test', version: '2.0.0' }]);
+  assert.deepEqual(new Set(result.inputs), new Set(Object.keys(sources).map(file => path.join(directory, file))));
+
+  for (const [file, document] of Object.entries(sources)) {
+    assert.equal(await readFile(path.join(directory, file), 'utf8'), JSON.stringify(document));
+  }
+});
+
+test('manifest sources reject inheritance cycles, missing parents, nonrelative refs and project escapes', async (t) => {
+  const project = await projectFor(t);
+  const directory = path.join(project.project, 'packs/gameplay');
+  const file = path.join(directory, 'manifest.test.json');
+
+  for (const [extendsPath, expected] of [
+    ['./manifest.test.json', /Circular extends chain/],
+    ['./missing.json', /ENOENT/],
+    ['manifest.json', /Invalid extends/],
+    ['../../../outside.json', /stay inside the project/],
+  ]) {
+    await writeFile(file, JSON.stringify({ extends: extendsPath }));
+    await assert.rejects(resolveManifest(file, { root: project.project }), expected);
+  }
+});
+
+test('all configured packs lose staged variants and inherit profile formatting with explicit overrides', async (t) => {
+  const project = await projectFor(t);
+  const profile = project.config.bedrockCore.profiles.tests;
+  const resourceVariant = path.join(project.project, 'packs/visuals/manifest.dev.json');
+
+  await writeFile(resourceVariant, JSON.stringify({ extends: './manifest.json' }));
+  profile.pretty = { indent: 'tab' };
+  profile.debug = true;
+  await writeFile(project.configPath, JSON.stringify(project.config));
+  let result = await runBuild({ configPath: project.configPath, profile: 'tests', logger: {} });
+
+  for (const directory of Object.values(result.outputPaths)) {
+    assert.equal((await readdir(directory)).some(file => /^manifest\..+\.json$/.test(file)), false);
+    assert.match(await readFile(path.join(directory, 'manifest.json'), 'utf8'), /^\{\n\t/);
+  }
+
+  assert.ok(result.dependencies.includes(path.join(project.project, 'packs/gameplay/manifest.test.json')));
+  assert.ok(result.dependencies.includes(path.join(project.project, 'packs/gameplay/manifest.json')));
+  assert.equal(JSON.parse(await readFile(resourceVariant, 'utf8')).extends, './manifest.json');
+  assert.ok((await readdir(project.project + '/packs/gameplay')).includes('manifest.test.json'));
+  assert.ok((await readdir(result.outputPaths.gameplay + '/scripts')).includes('tests.js.map'));
+
+  profile.stages.manifest.pretty = false;
+  profile.stages.bundler = { debug: false };
+  await writeFile(project.configPath, JSON.stringify(project.config));
+  result = await runBuild({ configPath: project.configPath, profile: 'tests', logger: {} });
+  assert.doesNotMatch(await readFile(path.join(result.outputPaths.gameplay, 'manifest.json'), 'utf8'), /\n/);
+  assert.equal((await readdir(result.outputPaths.gameplay + '/scripts')).includes('tests.js.map'), false);
+});
+
+test('manifest arrays select arbitrary pack roots and reject duplicate selection', async (t) => {
+  const project = await projectFor(t);
+  const profile = project.config.bedrockCore.profiles.tests;
+
+  await writeFile(path.join(project.project, 'packs/visuals/manifest.test.json'), JSON.stringify({ extends: './manifest.json', header: { name: 'Test assets' } }));
+  profile.stages.manifest.manifestPath = ['./packs/gameplay/manifest.test.json', './packs/visuals/manifest.test.json'];
+  await writeFile(project.configPath, JSON.stringify(project.config));
+  const result = await runBuild({ configPath: project.configPath, profile: 'tests', logger: {} });
+
+  assert.equal(JSON.parse(await readFile(path.join(result.outputPaths.visuals, 'manifest.json'), 'utf8')).header.name, 'Test assets');
+  profile.stages.manifest.manifestPath.push('./packs/gameplay/manifest.json');
+  await writeFile(project.configPath, JSON.stringify(project.config));
+  await assert.rejects(runBuild({ configPath: project.configPath, profile: 'tests', logger: {} }), /same pack/);
+});
+
+test('a failed manifest chain writes and sweeps no pack', async (t) => {
+  const project = await projectFor(t);
+  const pack = path.join(project.project, 'packs/gameplay');
+  const authored = await readFile(path.join(pack, 'manifest.json'), 'utf8');
+  const bad = path.join(project.project, 'packs/visuals/manifest.test.json');
+
+  await writeFile(bad, JSON.stringify({ extends: './missing.json' }));
+  await assert.rejects(resolveStage({
+    stagedRoot: project.project,
+    projectRoot: project.project,
+    packs: { gameplay: pack, visuals: path.dirname(bad) },
+    registerArtifact() { assert.fail('No artifact should be registered'); },
+    registerDependency() { assert.fail('No dependency should be registered'); },
+  }, { manifestPath: ['packs/gameplay/manifest.test.json', 'packs/visuals/manifest.test.json'] }), /ENOENT/);
+  assert.equal(await readFile(path.join(pack, 'manifest.json'), 'utf8'), authored);
+  assert.ok((await readdir(pack)).includes('manifest.test.json'));
 });

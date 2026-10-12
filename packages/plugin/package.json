@@ -1,0 +1,32 @@
+{
+  "name": "@bedrock-core/builder-plugin",
+  "version": "0.1.0-alpha.0",
+  "type": "module",
+  "description": "Shared contracts and services for @bedrock-core build plugins",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "esbuild": "0.25.12"
+  },
+  "license": "MIT",
+  "files": [
+    "dist/**",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/src/index.d.ts",
+        "default": "./dist/src/index.js"
+      }
+    },
+    "access": "public",
+    "tag": "next"
+  },
+  "private": true
+}

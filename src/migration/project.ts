@@ -1,4 +1,4 @@
-import { lstat, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { lstat, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -64,10 +64,6 @@ export async function migrateRegolithProject(configPath = 'config.json', options
 
         if (manifest.header.min_engine_version) {
           engineVersions.add(manifest.header.min_engine_version);
-        }
-
-        if ((await readdir(packPath)).some(name => /^manifest\..+\.json$/.test(name))) {
-          diagnostics.push({ severity: 'error', code: 'manifest-variants', path: `/packs/${pointer(id)}`, message: 'Port manifest variants and their cleanup to manifest overrides or a TS/JS plugin before migrating this pack.' });
         }
       } catch (error) {
         diagnostics.push({ severity: 'error', code: 'pack-manifest', path: `/packs/${pointer(id)}`, message: `${error instanceof Error ? error.message : String(error)}. Migration only changes config; pack manifests must already use v3.` });

@@ -3,6 +3,10 @@ import type { PackLocales } from './lang.ts';
 
 /** Screen discovery, output formatting and optional metadata settings for the UI stage. */
 export interface UiSettings {
+  /** Builder owner ID; defaults to the sole script pack or sole pack. */
+  owner?: string;
+  /** Builder resource destination ID; inferred from direct local dependencies. */
+  resourcePack?: string;
   /** Override the project namespace for generated UI content. */
   namespace?: string;
   /** Emit optional screen identity metadata. */
@@ -29,6 +33,8 @@ export interface ScreenEntry {
 
 /** Compiled screen data consumed by linking and resource/host writers. */
 export interface ScreenData {
+  kind?: 'action' | 'modal';
+  parameters?: unknown;
   name: string;
   addon: string;
   namespace: string;

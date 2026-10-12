@@ -18,6 +18,34 @@ test('example validates without mutation and preserves other tools', () => {
   assert.deepEqual(config, snapshot);
 });
 
+test('profile defaults and stage overrides validate, while manifests select files', () => {
+  const config = example();
+  const profile = config.bedrockCore.profiles.default;
+
+  profile.pretty = { indent: 'tab', size: 1 };
+  profile.debug = true;
+  profile.stages.manifest = { manifestPath: ['packs/BP/manifest.test.json'], pretty: false, debug: false };
+  profile.stages.bundler = { pretty: false, debug: false };
+  const snapshot = structuredClone(config);
+
+  validateConfig(config);
+  assert.deepEqual(config, snapshot);
+
+  for (const value of [[], 7, [''], [false]]) {
+    profile.stages.manifest.manifestPath = value;
+    assert.throws(() => validateConfig(config), /Invalid project configuration/);
+  }
+
+  profile.stages.manifest = { packs: { behaviorPack: { scriptEntry: 'scripts/tests.js' } } };
+  assert.throws(() => validateConfig(config), /Invalid project configuration/);
+  delete profile.stages.manifest;
+  profile.debug = 'yes';
+  assert.throws(() => validateConfig(config), /Invalid project configuration/);
+  profile.debug = true;
+  profile.pretty = { indent: 'invalid' };
+  assert.throws(() => validateConfig(config), /Invalid project configuration/);
+});
+
 test('Bedrock configs need no type discriminator and key order does not affect validation', () => {
   const config = Object.fromEntries(Object.entries(example()).reverse());
   const snapshot = structuredClone(config);

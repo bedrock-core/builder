@@ -1,5 +1,5 @@
 import { context as createContext, version, type Plugin, type Metafile } from 'esbuild';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { CompilationDependencies } from './dependencies.ts';
 
@@ -36,10 +36,16 @@ export interface BundleOptions {
   inject?: string[];
   /** Package supplying the automatic JSX runtime. */
   jsxImportSource?: string;
-  /** Transform screen JSX before bundling; screen modules require this integration. */
-  transformScreen?: (source: string, file: string) => string;
-  /** Resolve @bedrock-core toolkit imports from the authored dependency root first. */
-  projectModules?: boolean;
+  /** Feature-owned esbuild plugins, applied before the standard resolver. */
+  plugins?: readonly Plugin[];
+  /** Fingerprint of plugin implementations and settings for compiler reuse. */
+  pluginKey?: unknown;
+  /** Additional dependencies used by compiler plugins. */
+  pluginInputs?: readonly string[];
+  /** Opt into reuse when all plugin inputs are tracked; defaults to false. */
+  cachePlugins?: boolean;
+  /** Import prefixes resolved from dependencyRoot before source-relative lookup. */
+  resolveFromProject?: readonly string[];
 }
 /** Written output files, input dependencies and esbuild compilation metadata. */
 export interface BundleResult {
@@ -51,6 +57,8 @@ export interface BundleResult {
   metafile: Metafile;
   /** Resolution candidates include missing files that could shadow an import. */
   watchFiles: string[];
+  /** Directories observed by custom compiler plugins; register them for watch rebuilds. */
+  watchDirs: string[];
   /** Whether module-resolution dependencies allow safe reuse. */
   cacheable: boolean;
 }
@@ -68,23 +76,12 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
   const aliases = options.aliases ?? {};
   const resolving = Symbol('project-dependency');
   const dependencies = new CompilationDependencies(root, options.tsconfig);
+  const watchDirs = new Set<string>();
   let cacheable = true;
 
   const resolver: Plugin = {
     name: '@bedrock-core/project-imports',
     setup(build) {
-      build.onLoad({ filter: /\.screen\.tsx$/ }, async args => options.transformScreen
-        ? {
-            contents: options.transformScreen(await readFile(args.path, 'utf8'), args.path),
-            loader: 'tsx',
-          }
-        : ({
-            errors: [
-              {
-                text: 'Screen JSX requires the UI compiler stage or an explicit screen transform',
-              },
-            ],
-          }));
       build.onResolve({ filter: /.*/ }, async (args) => {
         if (args.pluginData === resolving) {
           return;
@@ -110,7 +107,7 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
 
         // Linked UI libraries share the addon's toolkit instances. Other imports
         // retain source-relative resolution, including staged tsconfig aliases.
-        const shared = options.projectModules && args.path.startsWith('@bedrock-core/');
+        const shared = options.resolveFromProject?.some(prefix => args.path.startsWith(prefix));
         const primaryDirectory = shared ? options.dependencyRoot ?? root : args.resolveDir;
         const fallbackDirectory = shared ? args.resolveDir : options.dependencyRoot ?? root;
         const local = await build.resolve(args.path, {
@@ -146,6 +143,48 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
     },
   };
 
+  function track(result: { watchFiles?: string[]; watchDirs?: string[] } | null | undefined): void {
+    for (const file of result?.watchFiles ?? []) {
+      dependencies.files.add(path.resolve(root, file));
+    }
+
+    // Directory contents need a loader-specific fingerprint to permit reuse.
+    if (result?.watchDirs?.length) {
+      cacheable = false;
+
+      for (const directory of result.watchDirs) {
+        watchDirs.add(path.resolve(root, directory));
+      }
+    }
+  }
+
+  const trackedPlugins: Plugin[] = (options.plugins ?? []).map(plugin => ({
+    name: plugin.name,
+    setup(build) {
+      return plugin.setup({
+        ...build,
+        onLoad(options, callback) {
+          build.onLoad(options, async (args) => {
+            const result = await callback(args);
+
+            track(result);
+
+            return result;
+          });
+        },
+        onResolve(options, callback) {
+          build.onResolve(options, async (args) => {
+            const result = await callback(args);
+
+            track(result);
+
+            return result;
+          });
+        },
+      });
+    },
+  }));
+
   options.signal?.throwIfAborted();
   const build = await createContext({
     absWorkingDir: root,
@@ -167,7 +206,7 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
     logLevel: 'silent',
     external: ['@minecraft/*', ...(options.external ?? [])],
     ...(options.tsconfig ? { tsconfig: path.resolve(root, options.tsconfig) } : {}),
-    plugins: [resolver],
+    plugins: [...trackedPlugins, resolver],
   });
 
   const cancel = () => {
@@ -212,6 +251,7 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
       inputs,
       metafile: result.metafile!,
       watchFiles: [...dependencies.files],
+      watchDirs: [...watchDirs],
       cacheable,
     };
   } finally {

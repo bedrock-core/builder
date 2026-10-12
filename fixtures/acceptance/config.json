@@ -9,7 +9,12 @@
     "formatVersion": "1.0.0",
     "profiles": {
       "default": {
-        "stages": { "generator": { "types": false }, "guides": { "compileScreens": false } },
+        "stages": {
+          "generator": { "types": false },
+          "guides": { "compileScreens": false, "resourcePack": "assets" },
+          "i18n": { "resourcePack": "assets" },
+          "ui-compiler": { "resourcePack": "assets" }
+        },
         "export": { "logic": "./dist/BP", "assets": "./dist/RP", "theme": "./dist/theme" }
       }
     }

@@ -4,11 +4,15 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "debug": {
+      "type": "boolean",
+      "description": "Stage override for the profile debug setting."
+    },
     "sourceDir": {
       "type": "string",
       "pattern": "\\S",
       "default": "i18n",
-      "description": "Project-relative directory containing default-exported locale modules."
+      "description": "Directory inside each owner pack containing default-exported locale modules; resolved relative to the pack root."
     },
     "defaultLocale": {
       "type": "string",
@@ -20,11 +24,14 @@
       "pattern": "^[a-z0-9_]+$",
       "description": "Defaults to the project's namespace."
     },
-    "strict": { "type": "boolean", "default": true },
+    "strict": {
+      "type": "boolean",
+      "default": true
+    },
     "types": {
       "type": "boolean",
       "default": true,
-      "description": "Write editor declarations under .bedrock-core/generated/i18n."
+      "description": "Write separate editor declarations under .bedrock-core/generated/i18n/<packId>."
     },
     "vanilla": {
       "type": "boolean",
@@ -36,20 +43,52 @@
       "pattern": "\\{locale\\}",
       "description": "Vanilla language URL containing a {locale} placeholder."
     },
-    "cacheMaxAgeHours": { "type": "number", "minimum": 0, "default": 24 },
-    "tsconfig": { "type": "string", "pattern": "\\S" },
+    "cacheMaxAgeHours": {
+      "type": "number",
+      "minimum": 0,
+      "default": 24
+    },
+    "tsconfig": {
+      "type": "string",
+      "pattern": "\\S"
+    },
     "pretty": {
       "anyOf": [
-        { "const": false },
+        {
+          "const": false
+        },
         {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "indent": { "enum": ["space", "tab"] },
-            "size": { "type": "integer", "minimum": 1 }
+            "indent": {
+              "enum": [
+                "space",
+                "tab"
+              ]
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 1
+            }
           }
         }
       ]
+    },
+    "owner": {
+      "type": "string",
+      "pattern": "\\S",
+      "description": "Configured feature owner pack ID."
+    },
+    "resourcePack": {
+      "type": "string",
+      "pattern": "\\S",
+      "description": "Direct local resource dependency receiving generated client content."
+    },
+    "client": {
+      "type": "boolean",
+      "default": true,
+      "description": "False emits runtime data without language files."
     }
   }
 }

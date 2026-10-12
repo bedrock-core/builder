@@ -78,7 +78,7 @@ test('TS producer and consumer share generated JSON without touching source', as
     { item: 'custom' },
   );
   assert.deepEqual((await readdir(path.join(project.root, 'packs/BP'))).sort(), ['manifest.json', 'source.json']);
-  assert.equal(result.artifacts[0].id, 'items');
+  assert.ok(result.artifacts.some(artifact => artifact.id === 'items'));
   assert.equal(result.dependencies.includes(path.join(project.root, 'plugin.ts')), true);
   await assert.rejects(readFile(path.join(result.outputPaths.behaviorPack, 'previous.txt')), { code: 'ENOENT' });
 });
@@ -113,7 +113,7 @@ test('targeted modules receive one current pack and record distinct artifact own
 
   for (const [index, id] of ['assets', 'gallery'].entries()) {
     assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPaths[id], 'generated.json'), 'utf8')), {
-      id, kind: 'resource', packs: [id], outputs: [id], seen: ['assets', 'gallery'].slice(0, index + 1), imports: ['@generated/assets', '@generated/gallery'].slice(0, index + 1), settings: { amount: 4 },
+      id, kind: 'resource', packs: [id], outputs: [id], seen: ['assets', 'gallery'].slice(0, index + 1), imports: ['@bedrock-core/generated/project', ...['@generated/assets', '@generated/gallery'].slice(0, index + 1)], settings: { amount: 4 },
     });
     await assert.rejects(readFile(path.join(project.root, 'packs', id, 'generated.json')), { code: 'ENOENT' });
   }

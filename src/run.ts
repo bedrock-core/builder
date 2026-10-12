@@ -15,13 +15,19 @@ import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { validateConfig } from './config.ts';
 import { planBuild } from './plan.ts';
+import { resolveProject, generateProject } from './project.ts';
 import { runNodeFilter } from './regolith.ts';
-import { detectStage } from './detect.ts';
-import { inspectPack, type PackInfo } from './packs.ts';
+import { builtinPlugins } from './builtins.ts';
+import { loadPlugin, executePlugin } from './plugins.ts';
+import type { StageName } from './config.ts';
+import type { BuildPlugin, BundleExtension, CacheOptions } from '@bedrock-core/builder-plugin';
+import { inspectPacks, selectPacks, type PackInfo } from './packs.ts';
+import { describePack, resolvePackGraph } from '@bedrock-core/builder-plugin';
+import { resolveManifest, resolveProjectManifests, type JsonObject } from '@bedrock-core/builder-manifest';
 import { validatePackManifests } from './manifest.ts';
 import { resolveExportPaths, withExportPaths } from './export.ts';
 import { createHash } from 'node:crypto';
-import { createFileCache, attachCache, trackLocations } from './file-cache.ts';
+import { createFileCache, trackLocations } from './file-cache.ts';
 import type { Artifact, BuildContext, BuildOptions, BuildResult } from './contract.d.ts';
 import { validatePackContent, type ContentValidationResult } from '@bedrock-core/builder-validation';
 export type {
@@ -78,30 +84,20 @@ export async function runBuild({
   const project = path.dirname(file);
   const config = validateConfig(JSON.parse(await readFile(file, 'utf8')));
   const plan = planBuild(config, profile);
-  const implementations = { ...stages };
+  const metadata = await resolveProject(config, project);
+  const implementations = new Map<string, BuildPlugin>();
 
-  async function implementation(stage: string) {
-    if (!implementations[stage]) {
-      if (stage === 'manifest') {
-        implementations.manifest = (await import('./stages/manifest.ts')).run;
-      } else if (stage === 'generator') {
-        implementations.generator = (await import('./stages/generator.ts')).run;
-      } else if (stage === 'guides') {
-        implementations.guides = (await import('./stages/guides.ts')).run;
-      } else if (stage === 'i18n') {
-        implementations.i18n = (await import('./stages/i18n.ts')).run;
-      } else if (stage === 'bundler') {
-        implementations.bundler = (await import('./stages/bundler.ts')).run;
-      } else if (stage === 'ui-compiler') {
-        implementations['ui-compiler'] = (await import('./stages/ui-compiler.ts')).run;
-      }
+  async function implementation(stage: StageName): Promise<BuildPlugin> {
+    if (!implementations.has(stage)) {
+      const replacement = stages[stage];
+      const plugin = replacement && typeof replacement !== 'function'
+        ? replacement
+        : await loadPlugin(import.meta.resolve(builtinPlugins[stage]), stage);
+
+      implementations.set(stage, typeof replacement === 'function' ? { ...plugin, run: replacement } : plugin);
     }
 
-    if (typeof implementations[stage] !== 'function') {
-      throw new Error(`Stage implementation unavailable: ${stage}`);
-    }
-
-    return implementations[stage]!;
+    return implementations.get(stage)!;
   }
 
   const exportConfig = config.bedrockCore.profiles[profile]?.export;
@@ -143,7 +139,7 @@ export async function runBuild({
       && !['prepare', 'validate', 'export'].includes(step.stage)
       && step.mode === 'always'
     ) {
-      await implementation(step.stage);
+      await implementation(step.stage as StageName);
     }
   }
 
@@ -196,9 +192,13 @@ export async function runBuild({
 
   return withExportPaths(outputPaths, async (publish) => {
     let workspace: string | undefined;
-    const dependencies = new Set([file, ...modules.values()]);
+    const dependencies = new Set([file, path.join(project, 'package.json'), ...modules.values()]);
     const artifacts = new Map<string, Artifact>();
     const generatedImports = new Map<string, string>();
+    const packImports = new Map<string, Map<string, string>>();
+    const exportExclusions = new Set<string>();
+    const inputDirectories = new Set<string>();
+    const bundleExtensions = new Map<string, BundleExtension>();
     const stageResults: BuildResult['stages'] = [];
     let publishedPacks: PackInfo[] = [];
     let validation: ContentValidationResult;
@@ -226,6 +226,35 @@ export async function runBuild({
           path.join(staged, path.relative(project, source)),
         ]),
       );
+      const withDestinations = (packs: readonly PackInfo[]): readonly PackInfo[] => Object.freeze(packs.map(pack => Object.freeze({ ...pack, outputPath: outputPaths[pack.id]! })));
+
+      async function currentPacks(): Promise<readonly PackInfo[]> {
+        if (Object.keys(stagedPacks).every(id => artifacts.has(`manifest:${id}`))
+          || config.bedrockCore.profiles[profile]?.stages?.manifest === false) {
+          return withDestinations(await inspectPacks(stagedPacks));
+        }
+
+        const selection = config.bedrockCore.profiles[profile]?.stages?.manifest;
+        const requested = typeof selection === 'object' ? selection.manifestPath : undefined;
+        const sources = typeof requested === 'string' ? [requested] : Array.isArray(requested) ? requested as string[] : [];
+        const manifests: Record<string, JsonObject> = {};
+
+        for (const [id, directory] of Object.entries(stagedPacks)) {
+          const source = sources.find(file => path.resolve(staged, path.dirname(file)) === directory);
+          const result = await resolveManifest(source ? path.resolve(staged, source) : path.join(directory, 'manifest.json'), { root: staged, signal, validate: false });
+
+          manifests[id] = result.manifest;
+
+          for (const input of result.inputs) {
+            dependencies.add(path.join(project, path.relative(staged, input)));
+          }
+        }
+
+        const resolved = resolveProjectManifests(manifests, metadata);
+
+        return withDestinations(resolvePackGraph(Object.entries(stagedPacks).map(([id, directory]) => describePack(id, directory, resolved[id]))));
+      }
+
       let owner = 'prepare';
       const dependencyLocations = new Set<string>();
       const cache = await createFileCache({
@@ -255,14 +284,57 @@ export async function runBuild({
       });
       const context: BuildContext = Object.freeze({
         projectRoot: project,
-        namespace: config.namespace,
+        namespace: metadata.namespace,
+        project: metadata,
         stagedRoot: staged,
         generatedDir: generated,
         cache: config.bedrockCore.profiles[profile]?.cache !== false,
         get generatedImports() {
           return Object.freeze(Object.fromEntries(generatedImports));
         },
+        get inputDirectories() {
+          return Object.freeze([...inputDirectories]);
+        },
+        generatedImportsFor(pack: string) {
+          if (!Object.hasOwn(stagedPacks, pack)) {
+            throw new Error(`Generated imports reference an unknown pack: ${pack}`);
+          }
+
+          return Object.freeze(Object.fromEntries([...generatedImports, ...packImports.get(pack) ?? []]));
+        },
+        get bundleExtensions() {
+          return Object.freeze([...bundleExtensions.values()]);
+        },
+        reuse<T>(id: string, options: CacheOptions<T>) {
+          return cache.reuse(id, options);
+        },
+        registerBundleExtension(extension: BundleExtension) {
+          if (!extension || typeof extension.id !== 'string' || !extension.id.trim()
+            || typeof extension.version !== 'string' || !extension.version.trim()) {
+            throw new Error('Bundle extension needs nonempty id and version');
+          }
+
+          if (bundleExtensions.has(extension.id)) {
+            throw new Error(`Bundle extension already registered: ${extension.id}`);
+          }
+
+          if (extension.packs && (!Array.isArray(extension.packs) || extension.packs.some(id => !Object.hasOwn(stagedPacks, id)))) {
+            throw new Error(`Bundle extension references an unknown pack: ${extension.id}`);
+          }
+
+          const copy = Object.freeze({
+            ...extension,
+            ...(extension.packs ? { packs: Object.freeze([...extension.packs]) } : {}),
+            ...(extension.inputs ? { inputs: Object.freeze([...extension.inputs]) } : {}),
+            ...(extension.plugins ? { plugins: Object.freeze([...extension.plugins]) } : {}),
+            ...(extension.resolveFromProject ? { resolveFromProject: Object.freeze([...extension.resolveFromProject]) } : {}),
+          });
+
+          bundleExtensions.set(extension.id, copy);
+        },
         packs: Object.freeze(stagedPacks),
+        allPacks: Object.freeze(stagedPacks),
+        inspectPacks: currentPacks,
         outputPaths,
         profile,
         logger,
@@ -270,7 +342,18 @@ export async function runBuild({
         registerDependency(filePath: string) {
           dependencies.add(path.resolve(project, filePath));
         },
-        async registerArtifact(id: string, filePath: string, options?: { importAs?: string }) {
+        excludeFromExport(filePath: string) {
+          const file = path.resolve(staged, filePath);
+
+          if (!Object.values(stagedPacks).some(pack => inside(pack, file))
+            || Object.values(stagedPacks).some(pack => pack === file || inside(file, pack))) {
+            throw new Error('Export exclusions must stay inside a pack and cannot contain pack roots');
+          }
+
+          exportExclusions.add(file);
+          inputDirectories.add(file);
+        },
+        async registerArtifact(id: string, filePath: string, options?: { importAs?: string; pack?: string }) {
           if (typeof id !== 'string' || !id.trim()) {
             throw new Error('Artifact ID must be nonempty');
           }
@@ -286,20 +369,34 @@ export async function runBuild({
           }
 
           const importAs = options?.importAs;
+          const pack = options?.pack;
+
+          if (pack !== undefined && !Object.hasOwn(stagedPacks, pack)) {
+            throw new Error(`Artifact references an unknown pack: ${pack}`);
+          }
 
           if (importAs !== undefined) {
             if (typeof importAs !== 'string' || !importAs.trim()) {
               throw new Error(`Artifact import name must be nonempty: ${id}`);
             }
 
-            if (generatedImports.has(importAs)) {
+            if (generatedImports.has(importAs)
+              || (pack ? packImports.get(pack)?.has(importAs) || generatedImports.has(`${importAs}/${pack}`) : [...packImports.values()].some(imports => imports.has(importAs)))) {
               throw new Error(`Generated import already registered: ${importAs}; owned by ${generatedImports.get(importAs)}`);
             }
 
-            generatedImports.set(importAs, id);
+            if (pack) {
+              const imports = packImports.get(pack) ?? new Map<string, string>();
+
+              imports.set(importAs, id);
+              packImports.set(pack, imports);
+              generatedImports.set(`${importAs}/${pack}`, id);
+            } else {
+              generatedImports.set(importAs, id);
+            }
           }
 
-          artifacts.set(id, Object.freeze({ id, path: location, owner, ...(importAs ? { importAs } : {}) }));
+          artifacts.set(id, Object.freeze({ id, path: location, owner, ...(importAs ? { importAs } : {}), ...(pack ? { pack } : {}) }));
         },
         artifact(id: string) {
           const artifact = artifacts.get(id);
@@ -319,38 +416,83 @@ export async function runBuild({
             throw new Error(`Pack is not configured: ${id}`);
           }
 
-          return inspectPack(id, directory);
+          return (await currentPacks()).find(pack => pack.id === id)!;
         },
       });
 
-      attachCache(context, cache);
+      await generateProject(context, metadata);
 
       for (const [index, step] of plan.entries()) {
         check(signal);
         owner = step.kind === 'plugin' ? `${step.plugin}:${index}` : step.stage;
         cache.boundary();
 
+        if (step.kind === 'stage' && step.stage === 'generator') {
+          for (const producer of plan) {
+            if (producer.kind !== 'stage' || ['prepare', 'validate', 'export'].includes(producer.stage)) {
+              continue;
+            }
+
+            const plugin = await implementation(producer.stage as StageName);
+
+            for (const directory of await plugin.inputDirectories?.(context, producer.settings ?? {}) ?? []) {
+              if (!Object.values(stagedPacks).some(pack => inside(pack, directory))) {
+                throw new Error('Plugin input directories must be inside configured packs');
+              }
+
+              inputDirectories.add(directory);
+            }
+          }
+        }
+
         if (step.kind === 'plugin' || ['prepare', 'validate', 'export'].includes(owner)) {
           logger.info?.(`@bedrock-core/builder: ${owner}`);
         }
 
         if (step.kind === 'plugin') {
-          const selected = step.targets === undefined
+          const selected = step.targets === undefined && step.scope !== 'pack'
             ? undefined
-            : (
-                await Promise.all(Object.keys(stagedPacks).map(id => context.inspectPack(id)))
-              ).filter(pack => pack.kind === step.targets || (step.targets === 'both' && pack.kind !== 'other'));
+            : step.targets === undefined
+              ? await currentPacks()
+              : (
+                  typeof step.targets === 'object'
+                    ? selectPacks(await currentPacks(), step.targets)
+                    : (await currentPacks()).filter(pack => pack.kind === step.targets || (step.targets === 'both' && pack.kind !== 'other'))
+                );
           const invocations = selected === undefined
             ? [context]
-            : selected.map(pack => Object.freeze({
-                ...context,
-                get generatedImports() {
-                  return context.generatedImports;
-                },
-                pack,
-                packs: Object.freeze({ [pack.id]: pack.path }),
-                outputPaths: Object.freeze({ [pack.id]: outputPaths[pack.id]! }),
-              }));
+            : step.scope === 'project'
+              ? selected.length
+                ? [Object.freeze({
+                    ...context,
+                    get generatedImports() { return context.generatedImports; },
+                    get inputDirectories() { return context.inputDirectories; },
+                    get bundleExtensions() { return context.bundleExtensions; },
+                    registerBundleExtension(extension: BundleExtension) {
+                      context.registerBundleExtension({ ...extension, packs: extension.packs ?? selected.map(pack => pack.id) });
+                    },
+                    packs: Object.freeze(Object.fromEntries(selected.map(pack => [pack.id, pack.path]))),
+                    outputPaths: Object.freeze(Object.fromEntries(selected.map(pack => [pack.id, outputPaths[pack.id]!]))),
+                  })]
+                : []
+              : selected.map(pack => Object.freeze({
+                  ...context,
+                  get generatedImports() {
+                    return context.generatedImportsFor!(pack.id);
+                  },
+                  get inputDirectories() {
+                    return context.inputDirectories;
+                  },
+                  get bundleExtensions() {
+                    return context.bundleExtensions;
+                  },
+                  registerBundleExtension(extension: BundleExtension) {
+                    context.registerBundleExtension({ ...extension, packs: extension.packs ?? [pack.id] });
+                  },
+                  pack,
+                  packs: Object.freeze({ [pack.id]: pack.path }),
+                  outputPaths: Object.freeze({ [pack.id]: outputPaths[pack.id]! }),
+                }));
 
           if (!invocations.length) {
             logger.info?.(`@bedrock-core/builder: ${owner} skipped (No ${step.targets} packs)`);
@@ -363,7 +505,6 @@ export async function runBuild({
             if (invocation.pack) {
               owner = `${step.plugin}:${index}:${invocation.pack.id}`;
               cache.boundary();
-              attachCache(invocation, cache);
               logger.info?.(`@bedrock-core/builder: ${owner}`);
             }
 
@@ -378,15 +519,16 @@ export async function runBuild({
             const url = pathToFileURL(pluginFile);
 
             url.searchParams.set('build', path.basename(workspace));
-            const plugin = await import(url.href);
+            const plugin = await loadPlugin(url.href, step.plugin);
+            const outcome = await executePlugin(plugin, invocation, step.settings, step.mode);
 
-            if (typeof plugin.run !== 'function') {
-              throw new Error(`Plugin must export run(context, settings): ${step.plugin}`);
-            }
-
-            await plugin.run(invocation, step.settings);
+            logger.info?.(`@bedrock-core/builder: ${owner} ${outcome.status}${outcome.reason ? ` (${outcome.reason})` : ''}`);
           }
         } else if (step.stage === 'validate') {
+          for (const file of exportExclusions) {
+            await rm(file, { recursive: true, force: true });
+          }
+
           for (const artifact of artifacts.values()) {
             const current = await realpath(artifact.path);
 
@@ -397,6 +539,7 @@ export async function runBuild({
 
           await validateArtifacts?.(context);
           await validatePackManifests(stagedPacks);
+          await inspectPacks(stagedPacks);
           validation = await validatePackContent({
             packs: await Promise.all(Object.keys(stagedPacks).map(id => context.inspectPack(id))),
             signal,
@@ -421,26 +564,16 @@ export async function runBuild({
             logger.warn?.(`@bedrock-core/builder: ${issue}`);
           }
         } else if (step.stage === 'export') {
-          publishedPacks = await Promise.all(Object.keys(stagedPacks).map(id => context.inspectPack(id)));
+          publishedPacks = [...withDestinations(await inspectPacks(stagedPacks))];
           await inspect(staged, false);
           check(signal);
           await publish(stagedPacks, signal);
         } else if (step.stage !== 'prepare') {
-          const detection = step.mode === 'auto' ? await detectStage(context, step.stage) : undefined;
+          const plugin = await implementation(step.stage);
+          const outcome = await executePlugin(plugin, context, step.settings ?? {}, step.mode);
 
-          if (detection && !detection.needed) {
-            stageResults.push({ stage: step.stage, status: 'skipped', reason: detection.reason });
-            logger.info?.(`@bedrock-core/builder: ${step.stage} skipped (${detection.reason})`);
-            continue;
-          }
-
-          const run = await implementation(step.stage);
-          const outcome = await run(context, step.settings ?? {});
-          const status = outcome?.cached ? 'cached' : 'executed';
-          const reason = outcome?.reason ?? detection?.reason;
-
-          stageResults.push({ stage: step.stage, status, reason });
-          logger.info?.(`@bedrock-core/builder: ${step.stage} ${status}${reason ? ` (${reason})` : ''}`);
+          stageResults.push({ stage: step.stage, ...outcome });
+          logger.info?.(`@bedrock-core/builder: ${step.stage} ${outcome.status}${outcome.reason ? ` (${outcome.reason})` : ''}`);
         }
       }
 
@@ -460,7 +593,7 @@ export async function runBuild({
         stages: stageResults,
         dependencies: [...dependencies],
         compilations: cache.results,
-        artifacts: [...artifacts.values()].map(({ id, owner, importAs }) => ({ id, owner, ...(importAs ? { importAs } : {}) })),
+        artifacts: [...artifacts.values()].map(({ id, owner, importAs, pack }) => ({ id, owner, ...(importAs ? { importAs } : {}), ...(pack ? { pack } : {}) })),
         packs: publishedPacks.map(pack => ({ ...pack, path: outputPaths[pack.id]! })),
       });
 

@@ -102,8 +102,8 @@ test('core settings preserve generator opt-in and infer namespace without enabli
   const stages = result.config.bedrockCore.profiles.default.stages;
 
   assert.deepEqual(stages.generator, { pretty: { indent: 'space', size: 2 } });
-  assert.deepEqual(stages.bundler, { debug: true });
-  assert.equal(stages.i18n.sourceDir, './packs/data/i18n');
+  assert.deepEqual(stages.bundler, { pretty: { indent: 'space', size: 2 }, debug: true });
+  assert.equal(stages.i18n.sourceDir, 'i18n');
   assert.equal(stages.i18n.namespace, 'from_core');
   delete config.regolith.profiles.default.filters[0].settings.generator;
   assert.equal(migrateRegolithConfig(config).config.bedrockCore.profiles.default.stages.generator, false);
@@ -128,7 +128,7 @@ test('referenced profiles flatten and template paths follow authored pack roots'
 
   assert.deepEqual(stages.generator.include, ['packs/BP/entities/**/*.ts', 'packs/RP/textures/**/*.ts']);
   assert.equal(stages.generator.exclude, 'packs/BP/entities/helper.ts');
-  assert.equal(stages.i18n.sourceDir, './packs/data/i18n');
+  assert.equal(stages.i18n.sourceDir, 'i18n');
 });
 
 test('UI settings migrate local screen modules as project paths and preserve package imports', () => {
@@ -226,7 +226,6 @@ test('unsupported behavior is reported rather than dropped or reordered', () => 
     ['profile-cycle', (config) => { config.regolith.profiles.default.filters = [{ profile: 'default' }]; }],
     ['profile-reference', (config) => { config.regolith.profiles.default.filters = [{ profile: 'missing' }]; }],
     ['filter-setting', (config) => { config.regolith.profiles.default.filters[1].settings.entry = 'other.ts'; }],
-    ['manifest-variant', (config) => { config.regolith.profiles.default.filters[0].settings = { manifestPath: 'BP/manifest.test.json' }; }],
     ['export-target', (config) => { config.regolith.profiles.default.export = { target: 'none' }; }],
     ['export-target', (config) => { config.regolith.profiles.default.export = { target: 'world', worldPath: './worlds/test' }; }],
     ['multiple-exports', (config) => { config.regolith.profiles.default.export = [{ target: 'local' }, { target: 'development' }]; }],
@@ -313,15 +312,15 @@ test('local wrapper recognition uses canonical paths and does not execute lookal
   assert.ok(codes(await migrateRegolithProject(project.configPath)).includes('custom-filter'));
 });
 
-test('manifest versions, variants and unsafe export paths block writing', async (t) => {
+test('manifest variants are preserved while invalid versions and unsafe exports block writing', async (t) => {
   const project = await projectWithRegolith(t);
   const config = project.legacy;
 
   await writeFile(path.join(project.project, 'packs/gameplay/manifest.test.json'), '{}');
   let result = await migrateRegolithProject(project.configPath);
 
-  assert.ok(codes(result).includes('manifest-variants'));
-  await assert.rejects(writeMigration(result), /unresolved/);
+  assert.equal(result.ready, true);
+  assert.equal(codes(result).includes('manifest-variants'), false);
   const manifest = { ...project.behavior, format_version: 2 };
 
   await writeFile(path.join(project.project, 'packs/gameplay/manifest.json'), JSON.stringify(manifest));

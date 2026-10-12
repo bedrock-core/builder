@@ -4,31 +4,68 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "debug": {
+      "type": "boolean",
+      "description": "Stage override for the profile debug setting."
+    },
     "namespace": {
       "type": "string",
       "pattern": "^[a-z0-9_]+$",
       "description": "Defaults to the project namespace."
     },
-    "testMetadata": { "type": "boolean", "default": false },
-    "stamp": { "type": "boolean", "default": false },
+    "testMetadata": {
+      "type": "boolean",
+      "default": false
+    },
+    "stamp": {
+      "type": "boolean",
+      "default": false
+    },
     "screens": {
       "type": "array",
-      "items": { "type": "string", "pattern": "\\S" },
+      "items": {
+        "type": "string",
+        "pattern": "\\S"
+      },
       "description": "Additional local or package modules whose default export is a record of screen components."
     },
-    "tsconfig": { "type": "string", "pattern": "\\S" },
+    "tsconfig": {
+      "type": "string",
+      "pattern": "\\S"
+    },
     "pretty": {
       "anyOf": [
-        { "const": false },
+        {
+          "const": false
+        },
         {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "indent": { "enum": ["space", "tab"] },
-            "size": { "type": "integer", "minimum": 1, "maximum": 10 }
+            "indent": {
+              "enum": [
+                "space",
+                "tab"
+              ]
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10
+            }
           }
         }
       ]
+    },
+    "owner": {
+      "type": "string",
+      "pattern": "\\S",
+      "description": "Configured feature owner pack ID."
+    },
+    "resourcePack": {
+      "type": "string",
+      "pattern": "\\S",
+      "description": "Direct local resource dependency receiving generated client content."
     }
   }
 }

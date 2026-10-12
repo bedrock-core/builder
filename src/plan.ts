@@ -1,19 +1,15 @@
+import { builtinPlugins } from './builtins.ts';
 import { validatePluginDefinition, type NodePluginDefinition, type PluginTargets, type ProjectConfig, type StageName, type Settings } from './config.ts';
 /** Ordered built-in boundaries; automatic input detection happens during execution. */
-export const stages: readonly StageName[] = Object.freeze([
-  'manifest',
-  'generator',
-  'guides',
-  'i18n',
-  'ui-compiler',
-  'bundler',
-]);
+export const stages: readonly StageName[] = Object.freeze(Object.keys(builtinPlugins) as StageName[]);
 /** Resolved plugin definition and invocation settings at one pipeline boundary. */
 export type PlannedPlugin = {
   kind: 'plugin';
   plugin: string;
   settings: Settings;
   targets?: PluginTargets;
+  scope?: 'pack' | 'project';
+  mode?: 'auto' | 'always';
   position: 'before' | 'after';
   boundary: string;
 } & ({ module: string; script?: never } | (NodePluginDefinition & { module?: never; arguments: string[] }));
@@ -68,6 +64,10 @@ export function planBuild(config: ProjectConfig, profileName = 'default'): Plann
   }
 
   const enabled = stages.filter(name => selected[name] !== false);
+  const defaults: Settings = {
+    ...(profile.pretty === undefined ? {} : { pretty: profile.pretty }),
+    ...(profile.debug === undefined ? {} : { debug: profile.debug }),
+  };
   const definitions = tool.plugins ?? {};
 
   if (!record(definitions)) {
@@ -127,10 +127,19 @@ export function planBuild(config: ProjectConfig, profileName = 'default'): Plann
       throw new Error(`Script arguments require a script plugin: ${step.plugin}`);
     }
 
+    if (step.mode !== undefined && step.mode !== 'auto' && step.mode !== 'always') {
+      throw new Error(`Invalid plugin mode: ${step.plugin}`);
+    }
+
+    if ('script' in definition && step.mode === 'auto') {
+      throw new Error(`Automatic detection requires a module plugin: ${step.plugin}`);
+    }
+
     const invocation = {
       kind: 'plugin' as const,
       plugin: step.plugin,
       settings: step.settings ?? {},
+      ...(step.mode === undefined ? {} : { mode: step.mode as 'auto' | 'always' }),
       position,
       boundary: boundary!,
     };
@@ -150,7 +159,7 @@ export function planBuild(config: ProjectConfig, profileName = 'default'): Plann
       {
         kind: 'stage',
         stage,
-        settings: record(selected[stage]) ? (selected[stage] as Settings) : {},
+        settings: { ...defaults, ...(record(selected[stage]) ? (selected[stage] as Settings) : {}) },
         mode: selected[stage] === true || record(selected[stage]) ? 'always' : 'auto',
       },
       ...at('after', stage),

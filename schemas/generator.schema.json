@@ -4,6 +4,10 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "debug": {
+      "type": "boolean",
+      "description": "Stage override for the profile debug setting."
+    },
     "include": {
       "$ref": "#/$defs/patterns"
     },

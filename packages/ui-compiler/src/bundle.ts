@@ -10,6 +10,9 @@ export const uiCompilerVersion = version;
 export const libraryModules: Record<string, string> = {
   '@bedrock-core/ui': 'ui',
   '@bedrock-core/ui-runtime': 'ui',
+  '@bedrock-core/ui/navigation': 'navigation',
+  '@bedrock-core/ui-runtime/navigation': 'navigation',
+  '@bedrock-core/navigation': 'serverNavigation',
   '@bedrock-core/ui/jsx-runtime': 'jsx',
   '@bedrock-core/ui/jsx-dev-runtime': 'jsx',
   '@bedrock-core/ui-runtime/jsx-runtime': 'jsx',
@@ -42,6 +45,8 @@ export interface UiBundleOptions {
   signal?: AbortSignal;
   /** Share the active guides stage's installed factories with the UI toolkit. */
   guides?: boolean;
+  /** Absolute source paths mapped to editor buffers. Overrides are evaluated without writing files and disable compilation reuse. */
+  sourceOverrides?: Record<string, string>;
 }
 
 /** Bundled ESM source and dependency records; the caller writes or evaluates the code. */
@@ -63,6 +68,8 @@ export interface UiBundle {
 export async function bundleUiLibrary(options: UiBundleOptions): Promise<UiBundle> {
   return bundle(options, `
     import * as ui from '@bedrock-core/ui';
+    import * as navigation from '@bedrock-core/ui/navigation';
+    import * as serverNavigation from '@bedrock-core/navigation';
     import * as jsx from '@bedrock-core/ui/jsx-dev-runtime';
     import * as compiler from '@bedrock-core/ui-compiler';
     import * as runtime from '@bedrock-core/ui-runtime/compile';
@@ -70,7 +77,7 @@ export async function bundleUiLibrary(options: UiBundleOptions): Promise<UiBundl
     import * as entity from '@bedrock-core/ui-runtime/entity';
     import * as i18n from '@bedrock-core/i18n';
     ${options.guides ? 'import * as guides from \'@bedrock-core/guides\';' : ''}
-    export { ui, jsx, compiler, runtime, container, entity, i18n${options.guides ? ', guides' : ''} };
+    export { ui, navigation, serverNavigation, jsx, compiler, runtime, container, entity, i18n${options.guides ? ', guides' : ''} };
   `);
 }
 
@@ -109,6 +116,15 @@ export async function bundleUiDeclaration(options: UiBundleOptions & { source: s
 async function bundle(options: UiBundleOptions, contents: string, declaration = false): Promise<UiBundle> {
   options.signal?.throwIfAborted();
   const dependencies = new CompilationDependencies(options.root, options.tsconfig);
+  const normalizeSource = (file: string): string => process.platform === 'win32' ? path.resolve(file).toLowerCase() : path.resolve(file);
+  const sourceOverrides = new Map(Object.entries(options.sourceOverrides ?? {}).map(([file, source]) => [normalizeSource(file), source]));
+
+  const sourceText = (file: string): Promise<string> => {
+    const override = sourceOverrides.get(normalizeSource(file));
+
+    return override === undefined ? readFile(file, 'utf8') : Promise.resolve(override);
+  };
+
   const resolving = Symbol('ui-resolution');
   const plugins: Plugin[] = [];
 
@@ -116,7 +132,7 @@ async function bundle(options: UiBundleOptions, contents: string, declaration = 
     plugins.push({
       name: '@bedrock-core/ui-optional-surfaces',
       setup(builder) {
-        builder.onResolve({ filter: /^@bedrock-core\/(?:ui-runtime\/(?:container|entity)|guides)$/ }, async (args) => {
+        builder.onResolve({ filter: /^@bedrock-core\/(?:ui\/navigation|navigation|ui-runtime\/(?:container|entity)|guides)$/ }, async (args) => {
           if (args.pluginData === resolving) {
             return;
           }
@@ -176,9 +192,23 @@ async function bundle(options: UiBundleOptions, contents: string, declaration = 
     name: '@bedrock-core/ui-inputs',
     setup(builder) {
       builder.onLoad({ filter: /\.screen\.tsx$/ }, async args => ({
-        contents: desugarJsxConditionals(await readFile(args.path, 'utf8'), args.path),
+        contents: desugarJsxConditionals(await sourceText(args.path), args.path),
         loader: 'tsx',
       }));
+      builder.onLoad({ filter: /\.(?:[cm]?[jt]sx?|json)$/ }, (args) => {
+        const contents = sourceOverrides.get(normalizeSource(args.path));
+
+        if (contents === undefined) {
+          return;
+        }
+
+        const extension = path.extname(args.path).slice(1);
+        const loader = extension === 'tsx' || extension === 'jsx' || extension === 'json'
+          ? extension
+          : extension.endsWith('ts') ? 'ts' : 'js';
+
+        return { contents, loader };
+      });
       builder.onResolve({ filter: /.*/ }, async (args) => {
         if (args.pluginData === resolving) {
           return;
@@ -246,7 +276,7 @@ async function bundle(options: UiBundleOptions, contents: string, declaration = 
     throw new Error('@bedrock-core UI bundling produced no output');
   }
 
-  let cacheable = true;
+  let cacheable = sourceOverrides.size === 0;
 
   for (const [file, metadata] of Object.entries(result.metafile!.inputs)) {
     if (file === 'ui.entry.ts' || file.startsWith('ui-library:') || file.startsWith('minecraft-stub:') || file.startsWith('ui-declaration:') || file.startsWith('ui-optional:')) {
@@ -259,7 +289,7 @@ async function bundle(options: UiBundleOptions, contents: string, declaration = 
     dependencies.parents(path.dirname(input));
 
     if (options.exports) {
-      const source = await readFile(input, 'utf8');
+      const source = await sourceText(input);
 
       // Node I/O and ambient values cannot be inferred from the static import graph.
       cacheable &&= !metadata.imports.some(item => item.external && !item.path.startsWith('@minecraft/'))

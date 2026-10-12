@@ -12,6 +12,8 @@ export async function installUi(root) {
           export const registerCompiledScreen = (screen, value) => { globalThis.uiScreens ??= []; globalThis.uiScreens.push(value.key); };
           export const registerStaticScreens = values => { globalThis.uiScreens ??= []; globalThis.uiScreens.push(...values.map(value => value.key)); };
           export const registerContainerLooks = () => {};
+          export const registerScreenDescriptor = value => { globalThis.uiDescriptors ??= []; globalThis.uiDescriptors.push(value); };
+          export const isScreenDescriptor = value => typeof value.key === 'string' && typeof value.parameters === 'object';
           export const addonReference = namespace => ({ namespace });
         `,
         'jsx.js': `

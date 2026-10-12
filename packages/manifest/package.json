@@ -1,0 +1,37 @@
+{
+  "name": "@bedrock-core/builder-manifest",
+  "version": "0.1.0-alpha.0",
+  "type": "module",
+  "description": "Manifest processing plugin for @bedrock-core projects",
+  "exports": {
+    ".": "./src/index.ts",
+    "./plugin": "./src/plugin.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "@bedrock-core/builder-plugin": "workspace:*"
+  },
+  "license": "MIT",
+  "files": [
+    "dist/**",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/src/index.d.ts",
+        "default": "./dist/src/index.js"
+      },
+      "./plugin": {
+        "types": "./dist/src/plugin.d.ts",
+        "default": "./dist/src/plugin.js"
+      }
+    },
+    "access": "public",
+    "tag": "next"
+  },
+  "private": true
+}

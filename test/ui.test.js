@@ -18,8 +18,12 @@ async function fixture(t) {
   await installUi(root);
   await mkdir(path.join(root, 'packs/BP/scripts'), { recursive: true });
   await mkdir(path.join(root, 'packs/RP/ui'), { recursive: true });
-  await writeFile(path.join(root, 'packs/BP/manifest.json'), JSON.stringify(manifestFor('script', 'scripts/start.js')));
-  await writeFile(path.join(root, 'packs/RP/manifest.json'), JSON.stringify(manifestFor('resources')));
+  const resource = manifestFor('resources');
+  const behavior = manifestFor('script', 'scripts/start.js');
+
+  behavior.dependencies = [{ uuid: resource.header.uuid, version: resource.header.version }];
+  await writeFile(path.join(root, 'packs/BP/manifest.json'), JSON.stringify(behavior));
+  await writeFile(path.join(root, 'packs/RP/manifest.json'), JSON.stringify(resource));
   await writeFile(path.join(root, 'packs/BP/scripts/start.ts'), 'export const value = 1;');
   const config = {
     name: 'UI', authors: [], targetVersion: '1.26.50', namespace: 'test',
@@ -166,13 +170,15 @@ test('module records, container hosts and multiple resource packs retain complet
 
   assert.deepEqual(executed(result), []);
 
-  for (const id of ['assets', 'extra']) {
+  for (const id of ['assets']) {
     const pack = result.outputPaths[id];
 
     assert.equal((await json(path.join(pack, 'bedrock-core/test-metadata.json'))).screens.length, 2);
     assert.equal((await json(path.join(pack, 'ui/hud_screen.json'))).root_panel.modifications.length, 1);
     assert.ok((await json(path.join(pack, 'ui/core-ui/screens/test/core_build.json'))).stamp.text.startsWith('ui '));
   }
+
+  await assert.rejects(readFile(path.join(result.outputPaths.extra, 'ui/_ui_defs.json')), { code: 'ENOENT' });
 
   const host = (await json(path.join(result.outputPaths.logic, 'entities/host.json')))['minecraft:entity'];
 
@@ -223,4 +229,55 @@ test('removing the last screen refreshes editor keys and removes generated UI fr
 
   await assert.rejects(readFile(path.join(result.outputPaths.assets, 'ui/core-ui/screens/test/last.json')), { code: 'ENOENT' });
   assert.doesNotMatch(await readFile(path.join(project.root, '.bedrock-core/generated/ui/screens.generated.d.ts'), 'utf8'), /test:last/);
+});
+
+test('navigation imports retain their exports and share the UI runtime', async (t) => {
+  const project = await fixture(t);
+  const navigation = path.join(project.root, 'node_modules/@bedrock-core/navigation');
+  const uiPackage = path.join(project.root, 'node_modules/@bedrock-core/ui/package.json');
+  const metadata = await json(uiPackage);
+
+  await mkdir(navigation, { recursive: true });
+  await writeFile(path.join(navigation, 'package.json'), JSON.stringify({ name: '@bedrock-core/navigation', type: 'module', exports: './index.js' }));
+  await writeFile(path.join(navigation, 'index.js'), `
+    import { Text } from '@bedrock-core/ui-runtime';
+    let declaration;
+    export const registerDeclared = value => { declaration = value; };
+    export const pageTargeted = () => Text({ children: declaration });
+  `);
+  metadata.exports['./navigation'] = './navigation.js';
+  await writeFile(uiPackage, JSON.stringify(metadata));
+  await writeFile(path.join(path.dirname(uiPackage), 'navigation.js'), 'export * from \'@bedrock-core/navigation\';');
+  await project.screen('navigation', '{pageTargeted()}', `
+    import { registerDeclared } from '@bedrock-core/navigation';
+    import { pageTargeted } from '@bedrock-core/ui/navigation';
+    registerDeclared('Shared navigation');
+  `);
+  const result = await runBuild(project.options);
+  const output = await json(path.join(result.outputPaths.assets, 'ui/core-ui/screens/test/navigation.json'));
+
+  assert.equal(output.root.fixture.children.text, 'Shared navigation');
+});
+
+test('navigation metadata retains public parameters and native host keys', async (t) => {
+  const project = await fixture(t);
+
+  await project.screen('detail', '<Text>Detail</Text>', 'export const parameters = { item: { type: \'string\' } };');
+  const native = path.join(project.root, 'packs/BP/scripts/native.screen.tsx');
+
+  await writeFile(native, `import { Container, Text } from '@bedrock-core/ui'; export default () => <Container host={{ kind: 'entity', type: 'test:native' }}><Text>Native</Text></Container>;`);
+  await mkdir(path.join(project.root, 'packs/BP/entities'));
+  await writeFile(path.join(project.root, 'packs/BP/entities/native.json'), JSON.stringify({ 'format_version': '1.21.120', 'minecraft:entity': { description: { identifier: 'test:native' } } }));
+  let generated;
+
+  await runBuild({ ...project.options, validateArtifacts: async (context) => {
+    generated = await readFile(context.artifact('ui:bundle').path, 'utf8');
+  } });
+
+  assert.match(generated, /registerScreenDescriptor\(.*"kind":"entity"/);
+  assert.match(generated, /registerCompiledScreen\(.*"parameters":\{"item":\{"type":"string"\}\}/);
+  assert.match(generated, /SCREEN_KEYS = \[.*"test:native"/);
+  const types = await readFile(path.join(project.root, '.bedrock-core/generated/ui/screens.generated.d.ts'), 'utf8');
+
+  assert.match(types, /"test:native": true/);
 });

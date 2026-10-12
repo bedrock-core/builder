@@ -1,0 +1,10 @@
+approvedGitRepositories:
+  - "**"
+
+npmPreapprovedPackages:
+  - "@bedrock-core/*"
+
+enableScripts: true
+enableGlobalCache: true
+
+nodeLinker: node-modules

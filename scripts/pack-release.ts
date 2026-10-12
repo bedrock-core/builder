@@ -10,7 +10,7 @@ const packages: { name: string; version: string; file: string; workspace: string
 
 await mkdir(directory, { recursive: true });
 
-for (const workspace of [...metadata.workspaces, '.']) {
+for (const workspace of new Set([...metadata.workspaces.filter(workspace => workspace !== '.'), '.'])) {
   const pkg = JSON.parse(await readFile(path.join(root, workspace, 'package.json'), 'utf8')) as { name: string; version: string };
   const file = path.join(directory, `${pkg.name.split('/')[1]}-${pkg.version}.tgz`);
 

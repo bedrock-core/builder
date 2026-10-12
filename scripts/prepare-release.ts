@@ -36,13 +36,13 @@ if (emitted.emitSkipped) {
 
 const metadata = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')) as { workspaces: string[] };
 
-for (const workspace of ['.', ...metadata.workspaces]) {
+for (const workspace of new Set(['.', ...metadata.workspaces])) {
   const directory = path.join(root, workspace);
   const dist = path.join(directory, 'dist');
 
   await rm(dist, { recursive: true, force: true });
   await mkdir(dist);
-  await cp(path.join(output, workspace, 'src'), path.join(dist, 'src'), { recursive: true });
+  await cp(path.join(output, workspace, 'src'), workspace === 'packages/cli' ? dist : path.join(dist, 'src'), { recursive: true });
 
   if (workspace === '.') {
     await cp(path.join(output, 'bin'), path.join(dist, 'bin'), { recursive: true });

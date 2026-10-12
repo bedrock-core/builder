@@ -37,8 +37,8 @@ export async function put(root, relative, content) {
 export async function translationsFor(t, options) {
   const project = await projectFor(t, options);
 
-  await put(project.project, 'i18n/en_US.ts', `export default ${JSON.stringify(english)} as const;`);
-  await put(project.project, 'i18n/cs_CZ.ts', `export default ${JSON.stringify(czech)} as const;`);
+  await put(project.project, 'packs/gameplay/i18n/en_US.ts', `export default ${JSON.stringify(english)} as const;`);
+  await put(project.project, 'packs/gameplay/i18n/cs_CZ.ts', `export default ${JSON.stringify(czech)} as const;`);
 
   return project;
 }
@@ -46,6 +46,7 @@ export async function translationsFor(t, options) {
 export function compileOptions(project) {
   return {
     root: project.project,
+    sourceDir: './packs/gameplay/i18n',
     namespace: 'flow_test',
     packs: [
       { path: './packs/gameplay', kind: 'behavior' },

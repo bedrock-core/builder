@@ -4,6 +4,10 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "debug": {
+      "type": "boolean",
+      "description": "Stage override for the profile debug setting."
+    },
     "namespace": {
       "type": "string",
       "pattern": "^[a-z0-9_]+$",
@@ -91,6 +95,16 @@
           }
         }
       ]
+    },
+    "owner": {
+      "type": "string",
+      "pattern": "\\S",
+      "description": "Configured feature owner pack ID."
+    },
+    "resourcePack": {
+      "type": "string",
+      "pattern": "\\S",
+      "description": "Direct local resource dependency receiving generated client content."
     }
   }
 }

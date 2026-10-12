@@ -6,12 +6,16 @@
   "exports": {
     ".": "./src/index.ts",
     "./dependencies": "./src/dependencies.ts",
-    "./internal/*": "./src/*.ts"
+    "./plugin": "./src/plugin.ts",
+    "./compile": "./src/compile.ts",
+    "./entries": "./src/entries.ts"
   },
   "engines": {
     "node": ">=22.18"
   },
   "dependencies": {
+    "@bedrock-core/builder-manifest": "workspace:*",
+    "@bedrock-core/builder-plugin": "workspace:*",
     "esbuild": "0.25.12",
     "typescript": "5.9.3"
   },
@@ -23,10 +27,6 @@
   ],
   "publishConfig": {
     "exports": {
-      "./internal/*": {
-        "types": "./dist/src/*.d.ts",
-        "default": "./dist/src/*.js"
-      },
       ".": {
         "types": "./dist/src/index.d.ts",
         "default": "./dist/src/index.js"
@@ -34,6 +34,18 @@
       "./dependencies": {
         "types": "./dist/src/dependencies.d.ts",
         "default": "./dist/src/dependencies.js"
+      },
+      "./plugin": {
+        "types": "./dist/src/plugin.d.ts",
+        "default": "./dist/src/plugin.js"
+      },
+      "./compile": {
+        "types": "./dist/src/compile.d.ts",
+        "default": "./dist/src/compile.js"
+      },
+      "./entries": {
+        "types": "./dist/src/entries.d.ts",
+        "default": "./dist/src/entries.js"
       }
     },
     "access": "public",

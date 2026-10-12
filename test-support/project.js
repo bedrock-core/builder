@@ -15,9 +15,16 @@ export async function projectFor(t, { cleanup = true } = {}) {
   const behavior = manifestFor('script');
   const resources = manifestFor('resources');
 
+  behavior.dependencies = [{ uuid: resources.header.uuid, version: resources.header.version }];
+
   await mkdir(path.join(project, 'packs/gameplay/scripts'), { recursive: true });
   await mkdir(path.join(project, 'packs/visuals'), { recursive: true });
   await writeFile(path.join(project, 'packs/gameplay/manifest.json'), JSON.stringify(behavior));
+  await writeFile(path.join(project, 'packs/gameplay/manifest.test.json'), JSON.stringify({
+    extends: './manifest.json',
+    header: { name: 'Test pack' },
+    modules: behavior.modules.map(module => ({ ...module, entry: 'scripts/tests.js' })),
+  }));
   await writeFile(path.join(project, 'packs/visuals/manifest.json'), JSON.stringify(resources));
   await writeFile(path.join(project, 'packs/gameplay/scripts/main.ts'), 'export const value: number = 1;');
   await writeFile(path.join(project, 'packs/gameplay/scripts/tests.ts'), 'export const value: number = 99;');
@@ -28,7 +35,7 @@ export async function projectFor(t, { cleanup = true } = {}) {
     bedrockCore: { formatVersion: '1.0.0', profiles: {
       default: { stages: { manifest: true, bundler: { debug: true } }, export: { gameplay: './dist/gameplay', visuals: './dist/visuals' } },
       tests: {
-        stages: { manifest: { packs: { gameplay: { scriptEntry: 'scripts/tests.js', header: { name: 'Test pack' } } } }, bundler: true },
+        stages: { manifest: { manifestPath: './packs/gameplay/manifest.test.json' }, bundler: true },
         export: { gameplay: './dist-tests/gameplay', visuals: './dist-tests/visuals' },
       },
     } },

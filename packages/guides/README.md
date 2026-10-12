@@ -75,6 +75,12 @@ The guides stage detects `guides/**/*.md` and `.mdx` automatically. Options live
 The project namespace supplies localization names; no namespace scan or authored data directory
 is required. A configured `sourceDir` selects an alternative content root.
 
+`owner` selects the script pack receiving generated screens; `resourcePack` selects
+its direct local resource dependency for guide strings. The sole script pack and sole
+local resource candidate are inferred. Multiple candidates require explicit IDs.
+Resource-only content builds select their resource owner and `compileScreens: false`.
+Standalone callers supply pack paths and can choose an explicit `screensDir`.
+
 | Provided artifact | Consumer |
 | --- | --- |
 | `guides:manifest`, imported as `@bedrock-core/generated/guides` | Script bundler and custom build steps |

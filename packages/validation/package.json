@@ -4,8 +4,7 @@
   "type": "module",
   "description": "Standalone pack content validation against Mojang's Bedrock schema catalog",
   "exports": {
-    ".": "./src/index.ts",
-    "./internal/*": "./src/*.ts"
+    ".": "./src/index.ts"
   },
   "engines": {
     "node": ">=22.18"
@@ -27,10 +26,6 @@
   ],
   "publishConfig": {
     "exports": {
-      "./internal/*": {
-        "types": "./dist/src/*.d.ts",
-        "default": "./dist/src/*.js"
-      },
       ".": {
         "types": "./dist/src/index.d.ts",
         "default": "./dist/src/index.js"
