@@ -320,7 +320,7 @@ test('directory-watching compiler hooks expose their dependencies and rebuild on
 test('an external guides plugin detects its configured source directory and selection rules', async (t) => {
   const project = await pluginProject(t);
 
-  await put(project, 'manual/en_US/start.md', '# Start');
+  await put(project, 'packs/gameplay/manual/en_US/start.md', '# Start');
   project.config.bedrockCore.profiles.default.stages.guides = false;
   project.config.bedrockCore.plugins = { manual: { module: '@bedrock-core/builder-guides/plugin' } };
   const step = { plugin: 'manual', before: 'i18n', mode: 'auto', settings: { sourceDir: 'manual', include: ['**/start.md'], compileScreens: false } };
@@ -329,10 +329,10 @@ test('an external guides plugin detects its configured source directory and sele
   await save(project);
   const first = await runBuild({ configPath: project.configPath, logger: {} });
 
-  assert.ok(first.artifacts.some(artifact => artifact.id === 'guides:manifest' && artifact.owner.startsWith('manual:')));
+  assert.ok(first.artifacts.some(artifact => artifact.id === 'guides:gameplay:manifest' && artifact.owner.startsWith('manual:')));
   step.settings.include = ['**/other.md'];
   await save(project);
   const skipped = await runBuild({ configPath: project.configPath, logger: {} });
 
-  assert.ok(!skipped.artifacts.some(artifact => artifact.id === 'guides:manifest'));
+  assert.ok(!skipped.artifacts.some(artifact => artifact.id === 'guides:gameplay:manifest'));
 });

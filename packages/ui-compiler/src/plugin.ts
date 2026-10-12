@@ -73,7 +73,7 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
     root: context.stagedRoot,
     dependencyRoot: context.projectRoot,
     aliases: generatedAliases(context, {}, routed[0].id),
-    guides: Object.hasOwn(context.generatedImports, '@bedrock-core/generated/guides'),
+    guides: Object.hasOwn(context.generatedImportsFor?.(routed[0].id) ?? context.generatedImports, '@bedrock-core/generated/guides'),
     tsconfig: settings.tsconfig,
     signal: context.signal,
   };

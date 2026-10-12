@@ -1,6 +1,6 @@
 import { ItemStack } from '@minecraft/server';
 import { register, type Test } from '@minecraft/server-gametest';
-import guides from '@bedrock-core/generated/guides';
+import guides from '@bedrock-core/generated/guides/logic';
 import translations from '@bedrock-core/generated/i18n';
 import loot from '../loot_tables/drop.json';
 

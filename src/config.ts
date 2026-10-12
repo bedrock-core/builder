@@ -4,7 +4,6 @@ import type { builtinPlugins } from './builtins.ts';
 export type { JsonFormatting } from '@bedrock-core/builder-plugin';
 import type { JsonFormatting } from '@bedrock-core/builder-plugin';
 import type { PackSelector } from '@bedrock-core/builder-plugin';
-import { resolveNamespace, type AddonIdentity } from '@bedrock-core/builder-plugin';
 
 /** Built-in transformation names, in execution order. */
 export type StageName = keyof typeof builtinPlugins;
@@ -58,8 +57,8 @@ export interface ProjectConfig {
   $schema?: string;
   /** Target Minecraft version used by participating stages. */
   targetVersion: string;
-  /** Shared namespace; optional when bedrockCore.addon derives it. */
-  namespace?: string;
+  /** Default namespace for generated content. */
+  namespace: string;
   /** Human-readable project name. */
   name: string;
   /** Optional project description. */
@@ -71,8 +70,6 @@ export interface ProjectConfig {
   /** Builder-specific format, reusable plugin definitions and named profiles. */
   bedrockCore: {
     formatVersion: '1.0.0';
-    /** Stable identity for generated registration metadata and namespace derivation. */
-    addon?: AddonIdentity;
     plugins?: Record<string, PluginDefinition>;
     profiles: Record<string, BuildProfile>;
   };
@@ -128,8 +125,6 @@ export function validateConfig(config: unknown): ProjectConfig {
 
     throw new Error(`Invalid project configuration: ${details}`);
   }
-
-  resolveNamespace(config.namespace, config.bedrockCore.addon);
 
   return config;
 }

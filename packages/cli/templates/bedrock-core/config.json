@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/@bedrock-core/builder/schemas/config.schema.json",
   "targetVersion": "1.26.50",
+  "namespace": "{{CREATOR_ID}}_{{PACK_ID}}",
   "name": "{{DISPLAY_NAME}}",
   "description": "{{DESCRIPTION}}",
   "authors": [
@@ -72,10 +73,6 @@
           "resourcePack": "./build/test/RP"
         }
       }
-    },
-    "addon": {
-      "creator": "{{CREATOR_ID}}",
-      "pack": "{{PACK_ID}}"
     }
   }
 }

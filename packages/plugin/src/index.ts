@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { glob, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { ProjectMetadata } from './project.ts';
-export { resolveNamespace, type AddonIdentity, type ProjectMetadata } from './project.ts';
+export type { ProjectMetadata } from './project.ts';
 
 /** Manifest classification supplied by the host for the current pack. */
 export interface PackInfo {

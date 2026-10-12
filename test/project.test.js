@@ -15,11 +15,10 @@ const json = async file => JSON.parse(await readFile(file, 'utf8'));
 async function fixture(t) {
   const project = await projectFor(t);
 
-  delete project.config.namespace;
+  project.config.namespace = 'stable_identity';
   project.config.name = 'Human Name';
   project.config.description = 'Shared description';
   project.config.authors = ['Creator'];
-  project.config.bedrockCore.addon = { creator: 'stable', pack: 'identity' };
   await writeFile(path.join(project.project, 'package.json'), JSON.stringify({ name: 'npm-name', version: '2.4.0', type: 'module' }));
 
   for (const [id, manifest] of [['gameplay', project.behavior], ['visuals', project.resources]]) {
@@ -41,21 +40,28 @@ async function fixture(t) {
   return project;
 }
 
-test('stable addon identity derives namespace without mutating configuration and rejects disagreement', async (t) => {
+test('project namespace is explicit and validated without mutating configuration', async (t) => {
   const project = await fixture(t);
   const snapshot = structuredClone(project.config);
 
   assert.equal(validateConfig(project.config), project.config);
   assert.deepEqual(project.config, snapshot);
   project.config.namespace = 'different';
-  assert.throws(() => validateConfig(project.config), /must match addon identity/);
+  assert.equal(validateConfig(project.config), project.config);
+  delete project.config.namespace;
+  assert.throws(() => validateConfig(project.config), /namespace/);
+
+  for (const namespace of ['', 'minecraft', 'Bad Namespace']) {
+    project.config.namespace = namespace;
+    assert.throws(() => validateConfig(project.config), /namespace/);
+  }
 });
 
-test('shared metadata completes native manifests and supplies typed runtime registration without source changes', async (t) => {
+test('shared metadata completes native manifests and supplies typed project data without source changes', async (t) => {
   const project = await fixture(t);
   const source = await readFile(path.join(project.project, 'packs/gameplay/manifest.json'), 'utf8');
 
-  await writeFile(path.join(project.project, 'packs/gameplay/scripts/main.ts'), 'import { addonManifest, project } from "@bedrock-core/generated/project"; export const metadata = { addonManifest, project };');
+  await writeFile(path.join(project.project, 'packs/gameplay/scripts/main.ts'), 'import { project } from "@bedrock-core/generated/project"; export const metadata = project;');
   const result = await runBuild({ configPath: project.configPath, logger: {} });
   const manifest = await json(path.join(result.outputPaths.gameplay, 'manifest.json'));
 
@@ -74,9 +80,39 @@ test('shared metadata completes native manifests and supplies typed runtime regi
   assert.match(output, /Human Name/);
   assert.doesNotMatch(output, /profiles|stagedRoot|formatVersion/);
   const declaration = path.join(project.project, '.bedrock-core/generated/project.d.ts');
+  const declarations = await readFile(declaration, 'utf8');
+
+  assert.doesNotMatch(declarations, /addonManifest|"addon"/);
   const program = ts.createProgram([declaration], { noEmit: true, strict: true, types: [] });
 
   assert.deepEqual(ts.getPreEmitDiagnostics(program).map(item => ts.flattenDiagnosticMessageText(item.messageText, '\n')), []);
+});
+
+test('script packs retain independent authored registration identities', async (t) => {
+  const project = await fixture(t);
+  const identities = {
+    gameplay: { creator: 'first', pack: 'gameplay', version: '1.0.0' },
+    secondary: { creator: 'second', pack: 'tools', version: '3.0.0' },
+  };
+
+  project.config.packs.secondary = './packs/secondary';
+  project.config.bedrockCore.profiles.default.export.secondary = './dist/secondary';
+  await mkdir(path.join(project.project, 'packs/secondary/scripts'), { recursive: true });
+  await writeFile(path.join(project.project, 'packs/secondary/manifest.json'), JSON.stringify(manifestFor('script')));
+
+  for (const [id, identity] of Object.entries(identities)) {
+    await writeFile(path.join(project.project, `packs/${id}/scripts/main.ts`), `export const registration = ${JSON.stringify(identity)};`);
+  }
+
+  await writeFile(project.configPath, JSON.stringify(project.config));
+  const result = await runBuild({ configPath: project.configPath, logger: {} });
+
+  for (const [id, identity] of Object.entries(identities)) {
+    const source = await readFile(path.join(result.outputPaths[id], 'scripts/main.js'), 'utf8');
+    const compiled = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+
+    assert.deepEqual(compiled.registration, identity);
+  }
 });
 
 test('targeted hooks see profile-selected manifests and project invocations retain live artifact imports', async (t) => {

@@ -30,10 +30,11 @@ registry packages do not provide these APIs.
 
 ## Generated project
 
-`config.json` declares stable creator/pack IDs, display metadata, named packs and four builder profiles.
-The namespace is derived from those IDs. `package.json` owns the npm name and addon version;
+`config.json` declares the build namespace, display metadata, named packs and four builder profiles.
+Each script pack declares creator/pack IDs and a runtime version in its registration.
+`package.json` owns the npm name and default native pack version;
 native manifests inherit version/engine/author defaults and refer to local packs by ID.
-Runtime registration imports `addonManifest` from `@bedrock-core/generated/project`.
+`@bedrock-core/generated/project` supplies shared metadata for generated content.
 Scripts use `core-builder` from the project's `@bedrock-core/builder` development
 dependency; build tools are installed with the other npm dependencies.
 
@@ -49,7 +50,8 @@ packs go to `build/test/BP` and `build/test/RP`. The watch profiles export to
 the Windows Minecraft development folders through `%APPDATA%`. Change those
 explicit destinations for another client installation or platform.
 
-Translations live in `packs/BP/i18n/` and MDX guides in `guides/`. Builder stages
+Translations live in `packs/BP/i18n/` and MDX guides in `packs/BP/guides/`. Each pack
+owns its sources and generated imports; its linked resource pack receives client text. Builder stages
 write editor declarations under `.bedrock-core/generated/`; run a build
 before typechecking the project. Build-time generated imports are resolved by
 the builder.

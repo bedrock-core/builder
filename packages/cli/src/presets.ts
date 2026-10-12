@@ -15,7 +15,7 @@ export async function applyPreset(root: string, preset: ProjectPreset): Promise<
   const packageFile = path.join(root, 'package.json');
   const pkg = await fs.readJson(packageFile);
 
-  for (const directory of ['guides', 'packs/BP/i18n', 'packs/BP/scripts', 'packs/BP/blocks', 'packs/BP/entities']) {
+  for (const directory of ['packs/BP/guides', 'packs/BP/i18n', 'packs/BP/scripts', 'packs/BP/blocks', 'packs/BP/entities']) {
     await fs.remove(path.join(root, directory));
   }
 

@@ -6,13 +6,13 @@ export interface InlineLink {
 
 /** Guide source selection, localization, navigation and optional screen generation. */
 export interface GuidesSettings {
-  /** Builder owner ID; defaults to the sole script pack or sole pack. */
+  /** Restrict builder compilation to this pack; otherwise discover sources in every selected pack. */
   owner?: string;
   /** Builder resource destination ID; inferred from direct local dependencies. */
   resourcePack?: string;
   /** Override the project namespace for generated guide keys. */
   namespace?: string;
-  /** Guide content directory; defaults to guides. */
+  /** Guide content directory; defaults to guides inside each owner pack, or inside root for standalone callers. */
   sourceDir?: string;
   /** Guide fallback locale; defaults to en_US. */
   defaultLocale?: string;
@@ -26,13 +26,13 @@ export interface GuidesSettings {
   strictLocales?: boolean;
   /** Generate guide screen modules for the UI stage. */
   compileScreens?: boolean;
-  /** Destination for generated screen source modules. */
+  /** Generated screen directory; pack-relative in the builder, root-relative standalone. Defaults to scripts/guides in the owner. */
   screensDir?: string;
   /** Title baked into generated guide screens. */
   screenTitle?: string;
-  /** Module whose default export maps custom guide components. */
+  /** Component registry module; pack-relative in the builder, root-relative standalone. Evaluated by the UI stage. */
   componentsModule?: string;
-  /** Generated guide manifest path. */
+  /** Manifest output path; pack-relative in the builder, root-relative standalone. Defaults to the owner's generated output directory. */
   manifestPath?: string;
   /** Manifest JSON indentation. */
   pretty?: false | { indent?: 'space' | 'tab'; size?: number };

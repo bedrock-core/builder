@@ -9,15 +9,15 @@ export async function guidesFor(t, { screens = false, cleanup = true } = {}) {
 
   project.config.bedrockCore.profiles.default.stages = screens ? {} : { guides: { compileScreens: false } };
   await writeFile(project.configPath, JSON.stringify(project.config));
-  await put(project.project, 'guides/en_US/start.mdx', '# Start\n\nRead [the next page](./next).\n');
-  await put(project.project, 'guides/en_US/next.md', '# Next\n\nMore information.\n');
+  await put(project.project, 'packs/gameplay/guides/en_US/start.mdx', '# Start\n\nRead [the next page](./next).\n');
+  await put(project.project, 'packs/gameplay/guides/en_US/next.md', '# Next\n\nMore information.\n');
 
   return project;
 }
 
 export function guidesOptions(project, settings = {}) {
   return {
-    root: project.project, namespace: 'flow_test', compileScreens: false,
+    root: project.project, sourceDir: 'packs/gameplay/guides', namespace: 'flow_test', compileScreens: false,
     packs: [{ path: 'packs/visuals', kind: 'resource' }, { path: 'packs/gameplay', kind: 'behavior' }],
     ...settings,
   };

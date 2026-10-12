@@ -24,6 +24,7 @@ export async function templateFiles(context: BuildContext, settings: TemplateSel
     '**/*.d.{ts,mts,cts}',
     ...packPaths.map(directory => `${relative(context.stagedRoot, directory)}/scripts/**`),
     ...packPaths.map(directory => `${relative(context.stagedRoot, directory)}/i18n/**`),
+    ...packPaths.map(directory => `${relative(context.stagedRoot, directory)}/guides/**`),
     ...(context.inputDirectories ?? []).map(directory => `${relative(context.stagedRoot, directory)}/**`),
     ...([settings.exclude ?? []].flat()),
   ];

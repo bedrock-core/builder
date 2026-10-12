@@ -32,6 +32,11 @@ carry an ownership header; repeat calls replace their contents and remove obsole
 screens without deleting authored files. Use the builder when coordinated staging and export
 are required.
 
+`moduleName` selects the editor import declaration; `section` identifies a language-file
+contribution when several independent compilations share a resource destination. Other
+owners' sections and handwritten entries are preserved. Conflicting values for the same
+language key fail compilation; use distinct namespaces for independent content with overlapping keys.
+
 `compileGuidePage`, `assembleLocale` and `buildManifest` expose pure compilation and assembly
 for tools that manage their own I/O. `@bedrock-core/builder-guides/screens` exposes screen
 module generation. These APIs use remark, unified, YAML and Markdown utilities; no builder,
@@ -69,24 +74,36 @@ and raw HTML retain the guide compiler's unsupported-content behavior.
 
 ## Builder integration
 
-The guides stage detects `guides/**/*.md` and `.mdx` automatically. Options live in
+The guides stage detects `<pack>/guides/<locale>/**/*.md` and `.mdx` automatically. Options live in
 `bedrockCore.profiles.<name>.stages.guides` and are validated by
 [`schemas/guides.schema.json`](../../schemas/guides.schema.json). Set `guides: false` to disable it.
 The project namespace supplies localization names; no namespace scan or authored data directory
-is required. A configured `sourceDir` selects an alternative content root.
+is required. A configured `sourceDir` selects a pack-relative content root. Guide sources are
+reserved from template discovery and omitted from exported packs after their consumers finish.
 
-`owner` selects the script pack receiving generated screens; `resourcePack` selects
-its direct local resource dependency for guide strings. The sole script pack and sole
-local resource candidate are inferred. Multiple candidates require explicit IDs.
-Resource-only content builds select their resource owner and `compileScreens: false`.
-Standalone callers supply pack paths and can choose an explicit `screensDir`.
+Each selected pack containing guide pages owns a separate manifest, generated import,
+declaration and language section. `owner` restricts discovery to one pack; it does not
+move another pack's content. `resourcePack` selects the owner's direct local resource
+dependency for guide strings. The sole local resource candidate is inferred; multiple
+destinations require an explicit ID. Resource-only content builds keep guides inside
+the resource owner and use `compileScreens: false`.
+
+Builder `sourceDir`, `screensDir`, `componentsModule` and `manifestPath` resolve from
+the owner pack. Generated screen modules default to that owner's `scripts/guides`;
+they require a behavior owner. Manifest outputs and generated screens must stay
+outside reserved guide sources. Standalone paths resolve from the supplied `root`.
+
+Use `@bedrock-core/generated/guides/<packId>` for typed authored imports. The script
+bundler also resolves `@bedrock-core/generated/guides` to the consuming pack's own
+manifest. Configure owner-specific stage/plugin settings when distinct namespaces
+are required for guides sharing resource keys or generated UI screen names.
 
 | Provided artifact | Consumer |
 | --- | --- |
-| `guides:manifest`, imported as `@bedrock-core/generated/guides` | Script bundler and custom build steps |
-| `guides:<pack>:texts/<locale>.lang` | i18n passthrough and UI text measurement |
-| `guides:<pack>:scripts/guides/<screen>.screen.tsx` | Automatic UI screen discovery |
-| `.bedrock-core/generated/guides/guides.generated.d.ts` | Editor types for the generated import |
+| `guides:<owner>:manifest`, imported as `@bedrock-core/generated/guides/<owner>` | Script bundler and custom build steps |
+| `guides:<owner>:<resource>:texts/<locale>.lang` | i18n passthrough and UI text measurement |
+| `guides:<owner>:<owner>:scripts/guides/<screen>.screen.tsx` | Automatic UI screen discovery |
+| `.bedrock-core/generated/guides/<owner>/guides.generated.d.ts` | Editor types for the pack-qualified generated import |
 
 Add `.bedrock-core/generated/guides/**/*.d.ts` to the project's TypeScript `include`.
 The declaration uses `@bedrock-core/builder-guides/types`, which has no runtime or Markdown

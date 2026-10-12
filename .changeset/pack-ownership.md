@@ -11,7 +11,7 @@
 
 Resolve profile-selected pack graphs and module selectors, route feature output through
 declared local resource dependencies, and generate shared project metadata for manifests
-and runtime registration. Native manifests inherit project defaults and preserve
+and authored content. Native manifests inherit project defaults and preserve
 authored pack and module identities. Client translation output requires a
 linked local resource pack; runtime-only translations select `client: false`.
 

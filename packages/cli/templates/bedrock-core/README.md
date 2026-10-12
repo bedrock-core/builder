@@ -31,12 +31,12 @@ archives when necessary.
 Import `core-ui-{{UI_VERSION}}.mcpack` into Minecraft and enable it alongside the
 generated addon packs.
 
-Edit display metadata in `config.json` and the addon version in `package.json`.
-`bedrockCore.addon` contains stable creator/pack IDs; changing a display name does
-not change that identity. Manifests keep stable UUIDs, inherit shared metadata and
+Edit display metadata and the build namespace in `config.json`, native pack version
+defaults in `package.json`, and runtime identity/version in each script pack's
+`core.register()` call. Manifests keep stable UUIDs, inherit shared metadata and
 reference the other local pack by ID. Locale `meta.*` fields override shared display
-defaults when supplied. Registration, generated identifiers and navigation use
-`@bedrock-core/generated/project`. Run `typecheck` after the first build.
+defaults when supplied. Generated identifiers and navigation use shared metadata
+from `@bedrock-core/generated/project`. Run `typecheck` after the first build.
 
 | Script | Profile | Output |
 | --- | --- | --- |
@@ -59,7 +59,7 @@ or platform. The VS Code debugger paths must match those destinations.
 | UI screens | `packs/BP/scripts/UI/screens/*.screen.tsx` |
 | Config schema | `packs/BP/scripts/config.ts` |
 | Translations | `packs/BP/i18n/en_US.ts` |
-| MDX guides | `guides/en_US/` |
+| MDX guides | `packs/BP/guides/en_US/` |
 | Typed JSON templates | `packs/BP/blocks/`, `packs/BP/entities/` |
 | GameTests | `packs/BP/scripts/tests/index.ts` |
 

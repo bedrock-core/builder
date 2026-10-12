@@ -1,4 +1,4 @@
-import manifest from '@bedrock-core/generated/guides';
+import manifest from '@bedrock-core/generated/guides/logic';
 import translations from '@bedrock-core/generated/i18n';
 
 export const guide = manifest;

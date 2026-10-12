@@ -17,7 +17,7 @@
       "type": "string",
       "minLength": 1,
       "default": "guides",
-      "description": "Project-relative content root containing locale directories."
+      "description": "Pack-relative content root containing locale directories; defaults to guides inside each owner pack."
     },
     "defaultLocale": {
       "type": "string",
@@ -58,7 +58,7 @@
     "screensDir": {
       "type": "string",
       "minLength": 1,
-      "description": "Project-relative directory inside a behavior pack's scripts. Defaults to scripts/guides in the first behavior pack."
+      "description": "Pack-relative directory inside the owner behavior pack scripts. Defaults to scripts/guides."
     },
     "screenTitle": {
       "type": "string",
@@ -66,12 +66,12 @@
     },
     "componentsModule": {
       "type": "string",
-      "description": "Project-relative module default-exporting a guide component registry."
+      "description": "Pack-relative module default-exporting a guide component registry."
     },
     "manifestPath": {
       "type": "string",
       "minLength": 1,
-      "description": "Optional project-relative staged manifest output. Normally owned by the generated artifact directory."
+      "description": "Optional pack-relative staged manifest output, outside the guide source directory. Normally owned by the per-pack generated artifact directory."
     },
     "pretty": {
       "oneOf": [
@@ -99,7 +99,7 @@
     "owner": {
       "type": "string",
       "pattern": "\\S",
-      "description": "Configured feature owner pack ID."
+      "description": "Restrict guide compilation to one configured behavior or resource pack; otherwise discover content in every selected pack."
     },
     "resourcePack": {
       "type": "string",

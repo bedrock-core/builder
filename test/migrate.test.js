@@ -149,7 +149,7 @@ test('UI settings migrate local screen modules as project paths and preserve pac
   assert.equal(codes(result).length, 0);
 });
 
-test('guides settings preserve locale patterns and map authored paths into staging', () => {
+test('guides settings use owner-relative paths and report guide content requiring placement in a pack', () => {
   const config = legacy();
 
   config.regolith.profiles.default.filters = [{ filter: 'guides', settings: {
@@ -161,12 +161,14 @@ test('guides settings preserve locale patterns and map authored paths into stagi
 
   assert.equal(result.ready, true);
   assert.deepEqual(result.config.bedrockCore.profiles.default.stages.guides, {
-    sourceDir: './packs/data/manual', screensDir: 'packs/BP/scripts/manual',
-    componentsModule: 'packs/BP/scripts/components.tsx', manifestPath: './packs/data/manual/guides.generated.json',
+    owner: 'behaviorPack', sourceDir: 'guides', screensDir: 'scripts/manual',
+    componentsModule: 'scripts/components.tsx',
     include: ['**/*.mdx'], exclude: ['draft/**'], defaultLocale: 'es_ES', strictLocales: true,
     maxCodeLineBytes: 40, screenTitle: 'Manual',
   });
   assert.ok(result.diagnostics.some(item => item.code === 'guides-declarations'));
+  assert.ok(result.diagnostics.some(item => item.code === 'guides-pack-sources'));
+  assert.ok(result.diagnostics.some(item => item.code === 'guides-pack-output'));
 });
 
 test('disabled filters and profile references cannot activate automatic stages', () => {

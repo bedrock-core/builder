@@ -33,6 +33,8 @@ try {
       assert.ok(contents.has('package/templates/bedrock-core/config.json'));
       assert.ok(contents.has('package/templates/bedrock-core/gitignore'));
       assert.ok(contents.has('package/templates/bedrock-core/yarnrc.yml'));
+      assert.ok(contents.has('package/templates/bedrock-core/packs/BP/guides/en_US/intro.mdx'));
+      assert.ok([...contents.keys()].every(file => !file.startsWith('package/templates/bedrock-core/guides/')));
       assert.ok(contents.has('package/templates/bedrock-core/packs/BP/structures/example/the_addon_loads.mcstructure'));
     }
   }
@@ -94,7 +96,8 @@ try {
   await writeFile(path.join(root, 'types.ts'), `
     import { runBuild, type BuildOptions } from '@bedrock-core/builder/runner';
     import type { BundleOptions } from '@bedrock-core/builder-bundler';
-    import type { GuidesOptions } from '@bedrock-core/builder-guides';
+    import type { GuidesOptions, GuideManifest } from '@bedrock-core/builder-guides';
+    import guides from '@bedrock-core/generated/guides/logic';
     import type { ContentValidationOptions } from '@bedrock-core/builder-validation';
     import type { UiSettings } from '@bedrock-core/builder-ui';
     import type { BuildPlugin, BuildContext, BundleExtension } from '@bedrock-core/builder-plugin';
@@ -107,13 +110,15 @@ try {
       const count: number = result.value.count;
       return count;
     }
-    export { plugin, extension, useContext };
+    const guideManifest: GuideManifest = guides;
+    const guideOptions: GuidesOptions = { root: '.', namespace: 'example', moduleName: '@bedrock-core/generated/guides/example', section: 'example' };
+    export { plugin, extension, useContext, guideManifest, guideOptions };
     export { runBuild };
     export type Options = BuildOptions | BundleOptions | GuidesOptions | ContentValidationOptions | UiSettings;
   `);
   await writeFile(path.join(root, 'tsconfig.json'), JSON.stringify({
     compilerOptions: { strict: true, noEmit: true, module: 'NodeNext', target: 'ES2023', types: ['node'], skipLibCheck: false },
-    files: ['types.ts'],
+    files: ['types.ts', 'addon/.bedrock-core/generated/guides/logic/guides.generated.d.ts'],
   }));
   yarn(['tsc', '--noEmit'], root);
   const cli = spawnSync(process.execPath, ['node_modules/@bedrock-core/builder/dist/bin/builder.js', '--help'], { cwd: root, encoding: 'utf8' });
@@ -151,7 +156,13 @@ try {
         const config = JSON.parse(await readFile(path.join(standalone, 'packed-addon/config.json'), 'utf8'));
 
         validateConfig(config);
-        assert.deepEqual(config.bedrockCore.addon, { creator: 'reviewer', pack: 'packed_addon' });
+        assert.equal(config.namespace, 'reviewer_packed_addon');
+        const registration = await readFile(path.join(standalone, 'packed-addon/packs/BP/scripts/main.ts'), 'utf8');
+
+        assert.match(registration, /creator: 'reviewer'/);
+        assert.match(registration, /pack: 'packed_addon'/);
+        await readFile(path.join(standalone, 'packed-addon/packs/BP/guides/en_US/intro.mdx'), 'utf8');
+        await assert.rejects(readFile(path.join(standalone, 'packed-addon/guides/en_US/intro.mdx')), { code: 'ENOENT' });
         assert.ok(config.bedrockCore.profiles['build-test']);
         const version = spawnSync(process.execPath, [cli, '--version'], { cwd: standalone, encoding: 'utf8' });
 

@@ -45,12 +45,12 @@ test('watch recompiles changed guide pages and reuses other pages on script edit
     }
   });
   await waitFor(() => results.length === 1);
-  await put(project.project, 'guides/en_US/next.md', '# Next\n\nUpdated in watch.');
+  await put(project.project, 'packs/gameplay/guides/en_US/next.md', '# Next\n\nUpdated in watch.');
   await waitFor(() => results.length >= 2);
   const guide = results.at(-1);
 
-  assert.equal(guide.compilations.find(item => item.id === 'guides/page:guides/en_US/next.md').status, 'executed');
-  assert.equal(guide.compilations.find(item => item.id === 'guides/page:guides/en_US/start.mdx').status, 'cached');
+  assert.equal(guide.compilations.find(item => item.id === 'guides/page:packs/gameplay/guides/en_US/next.md').status, 'executed');
+  assert.equal(guide.compilations.find(item => item.id === 'guides/page:packs/gameplay/guides/en_US/start.mdx').status, 'cached');
   assert.match(await readFile(path.join(guide.outputPaths.visuals, 'texts/en_US.lang'), 'utf8'), /Updated in watch/);
   const count = results.length;
 

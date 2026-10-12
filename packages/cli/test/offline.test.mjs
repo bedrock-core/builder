@@ -51,7 +51,8 @@ for (const preset of ['script', 'resource']) {
     const pkg = await JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
 
     assert.equal(config.name, 'Human Name');
-    assert.deepEqual(config.bedrockCore.addon, { creator: 'stable', pack: 'identity' });
+    assert.equal(config.namespace, 'stable_identity');
+    assert.equal(Object.hasOwn(config.bedrockCore, 'addon'), false);
     assert.equal(pkg.name, 'quoted-scaffold');
     assert.ok(Object.keys(pkg.dependencies).every(name => !name.startsWith('@bedrock-core/')));
     const result = await runBuild({ configPath: path.join(root, 'config.json'), profile: 'build', logger: {} });
@@ -74,14 +75,19 @@ test('generated starter validates all builder profiles and escaped metadata', as
   validateConfig(config);
   assert.deepEqual(config.authors, ['O\'Brien']);
   assert.equal(config.description, 'Quoted "title", a \\ path and literal $&.');
-  assert.equal(config.namespace, undefined);
-  assert.deepEqual(config.bedrockCore.addon, { creator: 'o_brien', pack: 'quoted_scaffold' });
+  assert.equal(config.namespace, 'o_brien_quoted_scaffold');
+  assert.equal(Object.hasOwn(config.bedrockCore, 'addon'), false);
   assert.equal(config.regolith, undefined);
   assert.equal(pkg.scripts['regolith-install'], undefined);
   assert.equal(pkg.scripts.build, 'core-builder build config.json build');
   assert.equal(pkg.scripts['build:test'], 'core-builder build config.json build-test');
   assert.equal(pkg.scripts.watch, 'core-builder watch config.json default');
   assert.equal(pkg.scripts['watch:test'], 'core-builder watch config.json test');
+  const registration = await readFile(path.join(root, 'packs/BP/scripts/main.ts'), 'utf8');
+
+  assert.match(registration, /creator: 'o_brien'/);
+  assert.match(registration, /pack: 'quoted_scaffold'/);
+  assert.match(registration, /version: '1\.0\.0'/);
 
   for (const profile of ['build', 'default', 'test', 'build-test']) {
     const stages = planBuild(config, profile).filter(step => step.kind === 'stage').map(step => step.stage);
@@ -96,7 +102,8 @@ test('generated starter validates all builder profiles and escaped metadata', as
 
   assert.equal(tsconfig.compilerOptions.paths, undefined);
   assert.ok(tsconfig.include.includes('.bedrock-core/generated/**/*.d.ts'));
-  await access(path.join(root, 'guides/en_US/intro.mdx'));
+  await access(path.join(root, 'packs/BP/guides/en_US/intro.mdx'));
+  await assert.rejects(access(path.join(root, 'guides')));
   const localeSource = await readFile(path.join(root, 'packs/BP/i18n/en_US.ts'), 'utf8');
   const localeJs = ts.transpileModule(localeSource, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
   const locale = (await import(`data:text/javascript;base64,${Buffer.from(localeJs).toString('base64')}`)).default;

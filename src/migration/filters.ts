@@ -130,9 +130,45 @@ function settingsFor(
   }
 
   if (stage === 'guides') {
-    converted.sourceDir ??= projectPath('data/guides', packs, dataPath, report, location);
-    converted.screensDir ??= projectPath('BP/scripts/guides', packs, dataPath, report, location);
-    report('guides-declarations', location, 'Include .bedrock-core/generated/guides in tsconfig. Runtime imports use @bedrock-core/generated/guides.', 'warning');
+    const source = typeof converted.sourceDir === 'string' ? converted.sourceDir : projectPath('data/guides', packs, dataPath, report, location);
+    const screens = typeof converted.screensDir === 'string' ? converted.screensDir : projectPath('BP/scripts/guides', packs, dataPath, report, location);
+    const normalize = (value: string) => value.replaceAll('\\', '/').replace(/^\.\//, '').replace(/\/$/, '');
+    const ownerFor = (file: string) => Object.entries(packs).find(([, directory]) => normalize(file).startsWith(`${normalize(directory)}/`));
+    const owner = ownerFor(source) ?? ownerFor(screens);
+
+    if (owner) {
+      converted.owner = owner[0];
+      const relative = (file: string) => path.posix.relative(normalize(owner[1]), normalize(file));
+
+      if (ownerFor(source)?.[0] === owner[0]) {
+        converted.sourceDir = relative(source);
+      } else {
+        converted.sourceDir = 'guides';
+        report('guides-pack-sources', location, `Place guide content from ${source} inside ${owner[1]}/guides before building. Migration does not move files or rewrite their imports.`, 'warning');
+      }
+
+      for (const key of ['screensDir', 'componentsModule', 'manifestPath']) {
+        const file = key === 'screensDir' ? screens : converted[key];
+
+        if (typeof file !== 'string') {
+          continue;
+        }
+
+        if (ownerFor(file)?.[0] === owner[0]) {
+          converted[key] = relative(file);
+        } else if (key === 'componentsModule') {
+          report('guides-pack-components', location, `Place the component registry ${file} inside owner pack ${owner[0]} and use a pack-relative componentsModule path.`);
+        } else {
+          delete converted[key];
+          report('guides-pack-output', location, `The guides ${key} uses its owner-specific default. Configure a pack-relative output path to customize it.`, 'warning');
+        }
+      }
+    } else {
+      converted.sourceDir = 'guides';
+      report('guides-pack-sources', location, `Place guide content from ${source} inside the intended owner pack's guides directory before building. Migration does not move files or rewrite their imports.`, 'warning');
+    }
+
+    report('guides-declarations', location, 'Include .bedrock-core/generated/guides/<packId> in tsconfig. Typed runtime imports use @bedrock-core/generated/guides/<packId>. Guide paths are pack-relative.', 'warning');
   }
 
   if (stage === 'i18n') {

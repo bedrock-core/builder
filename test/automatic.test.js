@@ -109,7 +109,7 @@ test('automatic detection sees inputs created by before hooks and still runs aft
 test('false disables detected stages and auto is accepted by the configuration schema', async (t) => {
   const project = await translationsFor(t);
 
-  await put(project.project, 'guides/en_US/start.md', '# Start');
+  await put(project.project, 'packs/gameplay/guides/en_US/start.md', '# Start');
   project.config.bedrockCore.profiles.default.stages = { guides: false, i18n: false, bundler: 'auto' };
   validateConfig(project.config);
   await writeFile(project.configPath, JSON.stringify(project.config));
@@ -123,7 +123,7 @@ test('false disables detected stages and auto is accepted by the configuration s
   const enabled = await runBuild({ configPath: project.configPath, logger: {} });
 
   assert.equal(status(enabled, 'guides'), 'executed');
-  assert.ok(enabled.artifacts.some(artifact => artifact.id === 'guides:manifest'));
+  assert.ok(enabled.artifacts.some(artifact => artifact.id === 'guides:gameplay:manifest'));
 });
 
 test('unchanged local bundles restore to fresh staging and preserve artifacts and dependencies', async (t) => {

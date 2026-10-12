@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, rm, writeFile, readdir } from 'node:fs/promises';
+import { cp, readFile, rm, writeFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { compileGuides, compileGuidePage } from '../packages/guides/src/index.ts';
 import { guideScreenModules } from '../packages/guides/src/screens.ts';
@@ -13,13 +13,13 @@ import { put } from '../test-support/i18n.js';
 import { manifestFor } from '../test-support/manifest.js';
 
 const optionsFor = project => ({ configPath: project.configPath, logger: {} });
-const compiled = (result, file) => result.compilations.find(item => item.id === `guides/page:guides/${file}`)?.status;
+const compiled = (result, file) => result.compilations.find(item => item.id === `guides/page:packs/gameplay/guides/${file}`)?.status;
 const stage = (result, name) => result.stages.find(item => item.stage === name)?.status;
 
 test('standalone guides preserve structural keys, links, locale fallback and handwritten language entries', async (t) => {
   const project = await guidesFor(t);
 
-  await put(project.project, 'guides/es_ES/start.mdx', '# Inicio\n\nLee [la siguiente página](./next).\n');
+  await put(project.project, 'packs/gameplay/guides/es_ES/start.mdx', '# Inicio\n\nLee [la siguiente página](./next).\n');
   await put(project.project, 'packs/visuals/texts/en_US.lang', 'manual.key=Kept\n');
   const result = await compileGuides(guidesOptions(project));
   const manifest = result.manifest;
@@ -55,10 +55,10 @@ test('standalone guides preserve structural keys, links, locale fallback and han
 test('categories, hidden home pages and operator inheritance preserve both navigation chains', async (t) => {
   const project = await guidesFor(t);
 
-  await put(project.project, 'guides/en_US/start.mdx', '---\ntitle: Welcome\nhome: true\nhidden: true\n---\nHello.');
-  await put(project.project, 'guides/en_US/admin/_category_.json', '{"label":"Administration","position":1,"access":"op","link":{"type":"doc","id":"tools"}}');
-  await put(project.project, 'guides/en_US/admin/tools.mdx', '# Tools\n\nReset.');
-  await put(project.project, 'guides/en_US/end.mdx', '# End');
+  await put(project.project, 'packs/gameplay/guides/en_US/start.mdx', '---\ntitle: Welcome\nhome: true\nhidden: true\n---\nHello.');
+  await put(project.project, 'packs/gameplay/guides/en_US/admin/_category_.json', '{"label":"Administration","position":1,"access":"op","link":{"type":"doc","id":"tools"}}');
+  await put(project.project, 'packs/gameplay/guides/en_US/admin/tools.mdx', '# Tools\n\nReset.');
+  await put(project.project, 'packs/gameplay/guides/en_US/end.mdx', '# End');
   const { manifest } = await compileGuides(guidesOptions(project, { compileScreens: true }));
 
   assert.equal(manifest.home, 'start');
@@ -112,12 +112,12 @@ test('strict locale drift, parse failures and broken links preserve every existi
   const before = await readFile(first.manifestPath, 'utf8');
   const language = await readFile(path.join(project.project, 'packs/visuals/texts/en_US.lang'), 'utf8');
 
-  await put(project.project, 'guides/es_ES/start.mdx', '# Inicio');
+  await put(project.project, 'packs/gameplay/guides/es_ES/start.mdx', '# Inicio');
   await assert.rejects(compileGuides(guidesOptions(project, { strictLocales: true })), /untranslated keys/);
-  await rm(path.join(project.project, 'guides/es_ES'), { recursive: true });
-  await put(project.project, 'guides/en_US/start.mdx', '# Start\n\n[Broken](./absent)');
+  await rm(path.join(project.project, 'packs/gameplay/guides/es_ES'), { recursive: true });
+  await put(project.project, 'packs/gameplay/guides/en_US/start.mdx', '# Start\n\n[Broken](./absent)');
   await assert.rejects(compileGuides(guidesOptions(project)), /broken internal link/);
-  await put(project.project, 'guides/en_US/start.mdx', '<Unclosed>');
+  await put(project.project, 'packs/gameplay/guides/en_US/start.mdx', '<Unclosed>');
   await assert.rejects(compileGuides(guidesOptions(project)), /parse error/);
   assert.equal(await readFile(first.manifestPath, 'utf8'), before);
   assert.equal(await readFile(path.join(project.project, 'packs/visuals/texts/en_US.lang'), 'utf8'), language);
@@ -130,7 +130,7 @@ test('guide screen outputs are repeatable, remove owned stale pages and preserve
   await compileGuides(options);
   await compileGuides(options);
   await put(project.project, 'packs/gameplay/scripts/guides/authored.screen.tsx', 'export default () => {};');
-  await rm(path.join(project.project, 'guides/en_US/start.mdx'));
+  await rm(path.join(project.project, 'packs/gameplay/guides/en_US/start.mdx'));
   await compileGuides(options);
   const files = await readdir(path.join(project.project, 'packs/gameplay/scripts/guides'));
 
@@ -146,7 +146,7 @@ test('guide path constraints, duplicate pages and folded screen names fail clear
   await assert.rejects(compileGuides(guidesOptions(project, { sourceDir: '..' })), /sourceDir/);
   await assert.rejects(compileGuides(guidesOptions(project, { compileScreens: true, screensDir: 'outside' })), /screensDir/);
   await assert.rejects(compileGuides(guidesOptions(project, { defaultLocale: 'fr_FR' })), /default locale/);
-  await put(project.project, 'guides/en_US/next.mdx', '# Duplicate');
+  await put(project.project, 'packs/gameplay/guides/en_US/next.mdx', '# Duplicate');
   await assert.rejects(compileGuides(guidesOptions(project)), /more than one source/);
   assert.throws(() => guideScreenModules({ pageIds: ['a-b', 'a_b'], screensDir: 'BP/scripts/guides', manifestPath: 'guides.json', title: 'Guide' }), /both compile to the screen/);
   assert.throws(() => guideScreenModules({ pageIds: ['home'], screensDir: 'BP/scripts/guides', manifestPath: 'guides.json', title: 'Guide' }), /both compile to the screen/);
@@ -158,7 +158,7 @@ test('include and exclude patterns select pages per locale and missing content i
 
   assert.deepEqual(Object.keys(result.manifest.pages), ['next']);
   assert.equal((await compileGuides(guidesOptions(project, { sourceDir: 'absent' }))).manifest, undefined);
-  await put(project.project, 'guides/en_US/_category_.json', '[]');
+  await put(project.project, 'packs/gameplay/guides/en_US/_category_.json', '[]');
   await assert.rejects(compileGuides(guidesOptions(project)), /invalid _category_/);
 });
 
@@ -166,7 +166,7 @@ test('automatic guides, i18n, UI and bundler share artifacts without extra stage
   const project = await guidesFor(t, { screens: true });
 
   await installGuides(project.project);
-  await put(project.project, 'guides/es_ES/start.mdx', '# Inicio\n\nLee [la siguiente página](./next).');
+  await put(project.project, 'packs/gameplay/guides/es_ES/start.mdx', '# Inicio\n\nLee [la siguiente página](./next).');
   await put(project.project, 'packs/gameplay/scripts/main.ts', `
     import manifest from '@bedrock-core/generated/guides';
     import translations from '@bedrock-core/generated/i18n';
@@ -183,7 +183,7 @@ test('automatic guides, i18n, UI and bundler share artifacts without extra stage
   assert.equal(value.translations.extra.en_US['flow_test.guides.next.b1'], 'More information.');
   assert.equal(value.translations.extra.es_ES['flow_test.guides.start.title'], 'Inicio');
   assert.equal(value.translations.locales.en_US['core.guides.adm.note'], 'Note');
-  assert.equal(result.artifacts.find(item => item.id === 'guides:manifest').importAs, '@bedrock-core/generated/guides');
+  assert.equal(result.artifacts.find(item => item.id === 'guides:gameplay:manifest').importAs, '@bedrock-core/generated/guides');
   assert.ok(result.artifacts.some(item => item.id === 'ui:bundle'));
   assert.match(await readFile(path.join(result.outputPaths.visuals, 'ui/core-ui/screens/flow_test/guide_start.json'), 'utf8'), /guide_start/);
   assert.ok(!await readFile(path.join(project.project, 'packs/gameplay/scripts/main.ts'), 'utf8').then(source => source.includes('import \'@bedrock-core/generated/ui\'')));
@@ -198,25 +198,25 @@ test('guides cache pages individually across script edits, translations and cate
   const project = await guidesFor(t);
   const options = optionsFor(project);
 
-  await put(project.project, 'guides/es_ES/next.md', '# Siguiente\n\nMás información.');
+  await put(project.project, 'packs/gameplay/guides/es_ES/next.md', '# Siguiente\n\nMás información.');
   await runBuild(options);
   await put(project.project, 'packs/gameplay/scripts/main.ts', 'export const value = 2;');
   const script = await runBuild(options);
 
   assert.equal(compiled(script, 'en_US/start.mdx'), 'cached');
   assert.equal(compiled(script, 'en_US/next.md'), 'cached');
-  await put(project.project, 'guides/en_US/next.md', '# Next\n\nChanged information.');
+  await put(project.project, 'packs/gameplay/guides/en_US/next.md', '# Next\n\nChanged information.');
   const page = await runBuild(options);
 
   assert.equal(compiled(page, 'en_US/start.mdx'), 'cached');
   assert.equal(compiled(page, 'en_US/next.md'), 'executed');
   assert.equal(compiled(page, 'es_ES/next.md'), 'cached');
-  await put(project.project, 'guides/en_US/_category_.json', '{"access":"op"}');
+  await put(project.project, 'packs/gameplay/guides/en_US/_category_.json', '{"access":"op"}');
   const category = await runBuild(options);
 
   assert.equal(stage(category, 'guides'), 'cached');
   assert.match(await readFile(path.join(category.outputPaths.visuals, 'texts/en_US.lang'), 'utf8'), /Changed information/);
-  await put(project.project, 'guides/es_ES/next.md', '# Siguiente\n\nInformación diferente.');
+  await put(project.project, 'packs/gameplay/guides/es_ES/next.md', '# Siguiente\n\nInformación diferente.');
   const translated = await runBuild(options);
 
   assert.equal(compiled(translated, 'es_ES/next.md'), 'executed');
@@ -229,11 +229,11 @@ test('cached links validate page removals and failed rebuilds preserve the previ
   const first = await runBuild(options);
   const previous = await readFile(path.join(first.outputPaths.visuals, 'texts/en_US.lang'), 'utf8');
 
-  await rm(path.join(project.project, 'guides/en_US/next.md'));
+  await rm(path.join(project.project, 'packs/gameplay/guides/en_US/next.md'));
   await assert.rejects(runBuild(options), /broken internal link/);
   assert.equal(await readFile(path.join(first.outputPaths.visuals, 'texts/en_US.lang'), 'utf8'), previous);
-  await put(project.project, 'guides/en_US/next.md', '# Next\n\nMore information.\n');
-  await put(project.project, 'guides/en_US/added.md', '# Added');
+  await put(project.project, 'packs/gameplay/guides/en_US/next.md', '# Next\n\nMore information.\n');
+  await put(project.project, 'packs/gameplay/guides/en_US/added.md', '# Added');
   const restored = await runBuild(options);
 
   assert.equal(compiled(restored, 'en_US/start.mdx'), 'cached');
@@ -245,7 +245,7 @@ test('texture dimensions invalidate only pages using that resource, including ne
   const project = await guidesFor(t);
   const options = optionsFor(project);
 
-  await put(project.project, 'guides/en_US/next.md', '# Next\n\n![Photo](textures/photo.png)');
+  await put(project.project, 'packs/gameplay/guides/en_US/next.md', '# Next\n\n![Photo](textures/photo.png)');
   await runBuild(options);
   const png = Buffer.alloc(24);
 
@@ -273,6 +273,7 @@ test('guides support a resource-only content build, multiple resources and disab
   project.config.bedrockCore.profiles.default.export.other = './dist/other';
   project.config.bedrockCore.profiles.default.cache = false;
   await put(project.project, 'packs/other/manifest.json', JSON.stringify(manifestFor('resources')));
+  await cp(path.join(project.project, 'packs/gameplay/guides'), path.join(project.project, 'packs/visuals/guides'), { recursive: true });
   delete project.config.packs.gameplay;
   delete project.config.bedrockCore.profiles.default.export.gameplay;
   project.config.bedrockCore.profiles.default.stages.guides = { owner: 'visuals', compileScreens: false };
@@ -284,6 +285,138 @@ test('guides support a resource-only content build, multiple resources and disab
   assert.equal(stage(result, 'guides'), 'executed');
   assert.match(await readFile(path.join(result.outputPaths.visuals, 'texts/en_US.lang'), 'utf8'), /flow_test/);
   await assert.rejects(readFile(path.join(result.outputPaths.other, 'texts/en_US.lang')), { code: 'ENOENT' });
+});
+
+test('project-root guides are ignored by the builder and remain available to standalone callers', async (t) => {
+  const project = await guidesFor(t);
+
+  await cp(path.join(project.project, 'packs/gameplay/guides'), path.join(project.project, 'guides'), { recursive: true });
+  await rm(path.join(project.project, 'packs/gameplay/guides'), { recursive: true });
+  project.config.bedrockCore.profiles.default.stages = {};
+  await writeFile(project.configPath, JSON.stringify(project.config));
+  const result = await runBuild(optionsFor(project));
+
+  assert.equal(stage(result, 'guides'), 'skipped');
+  assert.ok(!result.artifacts.some(item => item.id.startsWith('guides:')));
+  const standalone = await compileGuides(guidesOptions(project, { sourceDir: undefined }));
+
+  assert.deepEqual(Object.keys(standalone.manifest.pages), ['next', 'start']);
+  assert.match(await readFile(standalone.declarations[0], 'utf8'), /declare module "@bedrock-core\/generated\/guides"/);
+});
+
+test('pack-relative guide directories reserve components from generators and omit authored inputs from export', async (t) => {
+  const project = await guidesFor(t);
+
+  project.config.bedrockCore.profiles.default.stages.guides = { sourceDir: 'manual', compileScreens: false, include: ['*.mdx'] };
+  await put(project.project, 'packs/gameplay/manual/en_US/intro.mdx', '# Manual');
+  await put(project.project, 'packs/gameplay/manual/components.ts', 'throw new Error("Guide components must not execute as templates");');
+  await put(project.project, 'packs/gameplay/scripts/main.ts', `import manifest from '@bedrock-core/generated/guides'; export const value = manifest;`);
+  await writeFile(project.configPath, JSON.stringify(project.config));
+  const result = await runBuild(optionsFor(project));
+  const artifact = result.artifacts.find(item => item.id === 'guides:gameplay:manifest');
+  const { value } = await exportedModule(result);
+
+  assert.equal(stage(result, 'generator'), 'skipped');
+  assert.equal(stage(result, 'guides'), 'executed');
+  assert.ok(artifact);
+  assert.deepEqual(Object.keys(value.pages), ['intro']);
+  await assert.rejects(readFile(path.join(result.outputPaths.gameplay, 'manual/en_US/intro.mdx')), { code: 'ENOENT' });
+  await assert.rejects(readFile(path.join(result.outputPaths.gameplay, 'manual/components.ts')), { code: 'ENOENT' });
+  assert.ok(result.dependencies.includes(path.join(project.project, 'packs/gameplay/manual')));
+});
+
+async function addGuidePack(project, { shared = false, page = 'next', title = 'Other guide' } = {}) {
+  const resource = shared ? project.resources : manifestFor('resources');
+  const behavior = manifestFor('script');
+
+  behavior.dependencies = [{ uuid: resource.header.uuid, version: resource.header.version }];
+  project.config.packs.other = './packs/other';
+  project.config.bedrockCore.profiles.default.export.other = './dist/other';
+  await put(project.project, 'packs/other/manifest.json', JSON.stringify(behavior));
+  await put(project.project, `packs/other/guides/en_US/${page}.md`, `# ${title}`);
+  await put(project.project, 'packs/other/scripts/main.ts', `import manifest from '@bedrock-core/generated/guides'; export const value = manifest;`);
+
+  if (!shared) {
+    project.config.packs.otherAssets = './packs/otherAssets';
+    project.config.bedrockCore.profiles.default.export.otherAssets = './dist/otherAssets';
+    await put(project.project, 'packs/otherAssets/manifest.json', JSON.stringify(resource));
+  }
+
+  await put(project.project, 'packs/gameplay/scripts/main.ts', `import manifest from '@bedrock-core/generated/guides'; export const value = manifest;`);
+  await writeFile(project.configPath, JSON.stringify(project.config));
+}
+
+test('multiple guide owners have separate runtime imports, declarations and linked resource output', async (t) => {
+  const project = await guidesFor(t);
+
+  await addGuidePack(project);
+  const result = await runBuild(optionsFor(project));
+  const otherCode = await readFile(path.join(result.outputPaths.other, 'scripts/main.js'), 'utf8');
+  const other = await import(`data:text/javascript;base64,${Buffer.from(otherCode).toString('base64')}`);
+  const gameplay = await exportedModule(result);
+
+  assert.deepEqual(Object.keys(gameplay.value.pages), ['next', 'start']);
+  assert.deepEqual(Object.keys(other.value.pages), ['next']);
+  assert.equal(parseLang(await readFile(path.join(result.outputPaths.visuals, 'texts/en_US.lang'), 'utf8'))['flow_test.guides.next.title'], 'Next');
+  assert.equal(parseLang(await readFile(path.join(result.outputPaths.otherAssets, 'texts/en_US.lang'), 'utf8'))['flow_test.guides.next.title'], 'Other guide');
+
+  for (const owner of ['gameplay', 'other']) {
+    const declaration = await readFile(path.join(project.project, '.bedrock-core/generated/guides', owner, 'guides.generated.d.ts'), 'utf8');
+
+    assert.ok(declaration.includes(`"@bedrock-core/generated/guides/${owner}"`));
+    assert.ok(!declaration.includes('"@bedrock-core/generated/guides"'));
+    assert.equal(result.artifacts.find(item => item.id === `guides:${owner}:manifest`).importAs, '@bedrock-core/generated/guides');
+    await assert.rejects(readFile(path.join(result.outputPaths[owner], 'guides/en_US/next.md')), { code: 'ENOENT' });
+  }
+
+  const warm = await runBuild(optionsFor(project));
+
+  assert.equal(stage(warm, 'guides'), 'cached');
+  assert.equal(stage(warm, 'bundler'), 'cached');
+});
+
+test('guide owners sharing a resource pack preserve independent language contributions', async (t) => {
+  const project = await guidesFor(t);
+
+  await addGuidePack(project, { shared: true, page: 'other', title: 'Other guide' });
+  await put(project.project, 'packs/visuals/texts/en_US.lang', 'manual.key=Keep trailing space \n');
+  await runBuild(optionsFor(project));
+  await put(project.project, 'packs/other/guides/en_US/other.md', '# Updated guide');
+  const result = await runBuild(optionsFor(project));
+  const language = await readFile(path.join(result.outputPaths.visuals, 'texts/en_US.lang'), 'utf8');
+
+  assert.match(language, /manual.key=Keep trailing space \n/);
+  assert.match(language, /flow_test.guides.next.title=Next/);
+  assert.match(language, /flow_test.guides.other.title=Updated guide/);
+  assert.equal(language.split('<core:generated-guides:begin:gameplay>').length, 2);
+  assert.equal(language.split('<core:generated-guides:begin:other>').length, 2);
+  assert.equal(compiled(result, 'en_US/start.mdx'), 'cached');
+});
+
+test('conflicting guide keys in a shared resource destination fail without replacing exported packs', async (t) => {
+  const project = await guidesFor(t);
+  const first = await runBuild(optionsFor(project));
+  const previous = await readFile(path.join(first.outputPaths.visuals, 'texts/en_US.lang'), 'utf8');
+
+  await addGuidePack(project, { shared: true });
+  await assert.rejects(runBuild(optionsFor(project)), /Conflicting guide translation for flow_test\.guides\.next\./);
+  assert.equal(await readFile(path.join(first.outputPaths.visuals, 'texts/en_US.lang'), 'utf8'), previous);
+});
+
+test('builder guides reject source paths outside their owner and outputs inside reserved sources', async (t) => {
+  const project = await guidesFor(t);
+
+  for (const [settings, error] of [
+    [{ sourceDir: '../outside' }, /sourceDir.*inside owner pack/],
+    [{ owner: 'missing' }, /owner.*selected/],
+    [{ manifestPath: 'guides/runtime.json' }, /manifestPath.*outside the source/],
+    [{ compileScreens: true, screensDir: 'guides/screens' }, /screensDir.*separate/],
+    [{ resourcePack: 'gameplay' }, /declaring resources/],
+  ]) {
+    project.config.bedrockCore.profiles.default.stages.guides = { compileScreens: false, ...settings };
+    await writeFile(project.configPath, JSON.stringify(project.config));
+    await assert.rejects(runBuild(optionsFor(project)), error);
+  }
 });
 
 test('configuration validates guides settings through the nested schema', async (t) => {

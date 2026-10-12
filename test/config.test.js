@@ -75,6 +75,9 @@ test('unknown builder fields, malformed metadata and unsupported versions fail',
       c.bedrockCore.dataPath = './data';
     },
     (c) => {
+      c.bedrockCore.addon = { creator: 'author', pack: 'addon' };
+    },
+    (c) => {
       c.bedrockCore.profiles.default.stages.bundelr = true;
     },
     (c) => {

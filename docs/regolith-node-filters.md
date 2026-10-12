@@ -160,11 +160,6 @@ in the directory identified by its Regolith `requirements` property, or its scri
 directory when omitted. Builder runs local installed scripts; downloading
 remote filters and dependency installation remain explicit setup steps.
 
-CommonJS, ESM and Node-supported TypeScript scripts use their normal module
-resolution from the original entry point. Node 22.18 or later handles erasable
-TypeScript. Supply a loader through `nodeArguments` when the filter needs other
-syntax or resolution features.
-
 ## Execution contract
 
 The filter's cwd contains real `BP`, `RP` and `data` directories. `ROOT_DIR` points

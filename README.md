@@ -136,22 +136,20 @@ Minecraft content validation and runtime acceptance require separate checks.
 
 ## Choose only what you use
 
-`bedrockCore.addon: { creator, pack }` declares stable runtime identity and derives the
-project namespace. An explicitly supplied namespace must match it. Standalone projects
-can supply a namespace without addon registration. `config.json` owns display name,
+`namespace` explicitly sets the default namespace for generated content. Each script
+pack declares its own runtime identity in its `core.register()` call. `config.json` owns display name,
 description, authors and Minecraft target; `package.json` owns npm identity and version.
 Manifests retain stable header/module UUIDs and module declarations. Missing pack versions,
 module versions, engine targets and authors inherit shared metadata; explicit values win.
 Local manifest dependencies can use `{ "pack": "visuals" }`; native UUID/version fields
 are generated after profile selection. Every exported manifest is complete native v3.
 
-`@bedrock-core/generated/project` exports plain `project` metadata and, when addon identity
-is configured, `addonManifest`. Pass it explicitly to `core.register({ manifest: addonManifest })`.
+`@bedrock-core/generated/project` exports plain `project` metadata for authored sources.
 The builder generates editor declarations in `.bedrock-core/generated/project.d.ts`;
 include generated declarations in tsconfig. Generated runtime data contains no build config.
 
-i18n, guides and UI settings accept `owner` and `resourcePack` IDs. i18n discovers its
-inputs separately in each pack; `owner` restricts it to one pack. Guides and UI use
+i18n, guides and UI settings accept `owner` and `resourcePack` IDs. i18n and guides discover
+inputs separately in each pack; `owner` restricts discovery to one pack. UI uses
 the sole script pack by default, or the sole pack when no script pack exists. Client output uses
 the owner's sole direct local resource dependency; a resource owner may write into itself.
 Multiple candidates require an explicit destination, which must still be declared as
@@ -173,16 +171,18 @@ enables it even without detected inputs. Installed npm packages do not activate 
 | Stage | Automatic input detection |
 | --- | --- |
 | Manifest | Configured pack manifests |
-| Generator | `.ts` templates inside packs, excluding `scripts/` and declarations |
-| Guides | `guides/**/*.md` or `.mdx` |
+| Generator | `.ts` templates inside packs, excluding `scripts/`, `i18n/`, `guides/`, reserved producer inputs and declarations |
+| Guides | `<pack>/guides/<locale>/**/*.md` or `.mdx` |
 | i18n | `<pack>/i18n/<locale>.ts`, `.js`, `.mts` or `.mjs`, or linked pack `texts/*.lang` |
 | UI compiler | Pack `scripts/**/*.screen.tsx`, generated UI imports, or framework declarations with an installed UI toolkit |
 | Bundler | Script modules declared in staged manifests |
 
 Detection runs after each stage's before hooks. After hooks run even when automatic detection
 skips a stage. Explicitly disabled stages have no boundary, so hooks targeting them are rejected.
-Guides read locale directories under `guides/`, preserve Markdown/MDX authoring, and produce
-the manifest, language sections and screens before i18n and UI run. See the
+Guides read locale directories under each pack's `guides/`, preserve Markdown/MDX authoring,
+and produce separate manifests, language sections and screens before i18n and UI run.
+Editor imports use `@bedrock-core/generated/guides/<packId>`; guide build sources stay
+out of exported packs. See the
 [guides package](packages/guides/README.md) for authoring, options and runtime requirements.
 
 For example, a profile can skip translations while bundling detected scripts:

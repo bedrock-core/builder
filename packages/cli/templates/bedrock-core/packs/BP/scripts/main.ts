@@ -11,7 +11,6 @@
  */
 import { render } from '@bedrock-core/ui';
 import { core } from '@bedrock-core/server';
-import { addonManifest } from '@bedrock-core/generated/project';
 import { registerCatalog } from '@bedrock-core/catalog';
 import { registerConfig } from '@bedrock-core/config';
 import { registerGuides } from '@bedrock-core/guides';
@@ -25,9 +24,11 @@ const isPlayer = (entity: Entity): entity is Player => entity.typeId === Minecra
 
 const { config } = core.register({
   manifest: {
-    ...addonManifest,
+    creator: '{{CREATOR_ID}}',
+    pack: '{{PACK_ID}}',
     packName: i18n.key($ => $.meta.name),
     creatorName: i18n.key($ => $.meta.creator),
+    version: '1.0.0',
     description: i18n.key($ => $.meta.description),
   },
   catalog: registerCatalog(),

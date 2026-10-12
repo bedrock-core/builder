@@ -5,6 +5,7 @@
   "type": "object",
   "required": [
     "targetVersion",
+    "namespace",
     "name",
     "authors",
     "packs",
@@ -19,16 +20,11 @@
       "$ref": "#/definitions/nonempty"
     },
     "namespace": {
-      "allOf": [
-        {
-          "$ref": "#/definitions/nonempty"
-        },
-        {
-          "not": {
-            "const": "minecraft"
-          }
-        }
-      ]
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "not": {
+        "const": "minecraft"
+      }
     },
     "name": {
       "$ref": "#/definitions/nonempty"
@@ -122,24 +118,6 @@
           },
           "additionalProperties": {
             "$ref": "#/definitions/profile"
-          }
-        },
-        "addon": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "creator",
-            "pack"
-          ],
-          "properties": {
-            "creator": {
-              "type": "string",
-              "pattern": "^[a-z0-9_]+$"
-            },
-            "pack": {
-              "type": "string",
-              "pattern": "^[a-z0-9_]+$"
-            }
           }
         }
       }
@@ -528,21 +506,5 @@
         }
       }
     }
-  },
-  "anyOf": [
-    {
-      "required": [
-        "namespace"
-      ]
-    },
-    {
-      "properties": {
-        "bedrockCore": {
-          "required": [
-            "addon"
-          ]
-        }
-      }
-    }
-  ]
+  }
 }
