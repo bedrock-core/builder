@@ -79,10 +79,10 @@ test('generated starter validates all builder profiles and escaped metadata', as
   assert.equal(Object.hasOwn(config.bedrockCore, 'addon'), false);
   assert.equal(config.regolith, undefined);
   assert.equal(pkg.scripts['regolith-install'], undefined);
-  assert.equal(pkg.scripts.build, 'core-builder build config.json build');
-  assert.equal(pkg.scripts['build:test'], 'core-builder build config.json build-test');
-  assert.equal(pkg.scripts.watch, 'core-builder watch config.json default');
-  assert.equal(pkg.scripts['watch:test'], 'core-builder watch config.json test');
+  assert.equal(pkg.scripts.build, 'bc-builder build config.json build');
+  assert.equal(pkg.scripts['build:test'], 'bc-builder build config.json build-test');
+  assert.equal(pkg.scripts.watch, 'bc-builder watch config.json default');
+  assert.equal(pkg.scripts['watch:test'], 'bc-builder watch config.json test');
   const registration = await readFile(path.join(root, 'packs/BP/scripts/main.ts'), 'utf8');
 
   assert.match(registration, /creator: 'o_brien'/);

@@ -124,8 +124,8 @@ try {
   const cli = spawnSync(process.execPath, ['node_modules/@bedrock-core/builder/dist/bin/builder.js', '--help'], { cwd: root, encoding: 'utf8' });
 
   assert.equal(cli.status, 0);
-  assert.match(cli.stdout, /core-builder/);
-  yarn(['exec', 'core-builder', '--help'], root);
+  assert.match(cli.stdout, /bc-builder/);
+  yarn(['exec', 'bc-builder', '--help'], root);
 
   for (const pkg of packages.filter(pkg => pkg.name !== '@bedrock-core/builder')) {
     const standalone = await mkdtemp(path.join(tmpdir(), 'builder-standalone-check-'));

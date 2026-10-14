@@ -129,7 +129,7 @@ __metadata:
     typescript: "npm:5.9.3"
     typescript-eslint: "npm:8.62.0"
   bin:
-    core-builder: ./bin/builder.ts
+    bc-builder: ./bin/builder.ts
   languageName: unknown
   linkType: soft
 

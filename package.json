@@ -96,7 +96,7 @@
   ],
   "publishConfig": {
     "bin": {
-      "core-builder": "./dist/bin/builder.js"
+      "bc-builder": "./dist/bin/builder.js"
     },
     "exports": {
       "./schemas/config.schema.json": "./schemas/config.schema.json",
@@ -143,7 +143,7 @@
     "tag": "next"
   },
   "bin": {
-    "core-builder": "./bin/builder.ts"
+    "bc-builder": "./bin/builder.ts"
   },
   "private": true
 }
