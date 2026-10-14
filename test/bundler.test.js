@@ -182,6 +182,49 @@ test('multiple script packs bundle shared inputs before staged source cleanup', 
   assert.match(await readFile(path.join(root, 'packs/BP/scripts/shared.ts'), 'utf8'), /number/);
 });
 
+test('registered TypeScript inputs remain available for validation and are omitted from cold and cached exports', async (t) => {
+  const { root, config, configPath } = await fixture(t);
+
+  await writeFile(path.join(root, 'packs/BP/scripts/main.ts'), `
+    import { value } from '@bedrock-core/generated/custom';
+    export const result = value;
+  `);
+  await writeFile(path.join(root, 'produce.ts'), `
+    import { writeFile } from 'node:fs/promises';
+    import path from 'node:path';
+    export async function run(context) {
+      const file = path.join(context.packs.behaviorPack, 'scripts/generated.ts');
+      await writeFile(file, 'export const value: number = 42;');
+      await context.registerArtifact('custom', file, { importAs: '@bedrock-core/generated/custom' });
+    }
+  `);
+  config.bedrockCore.plugins = { custom: { module: './produce.ts' } };
+  config.bedrockCore.profiles.default.steps = [{ plugin: 'custom', before: 'bundler' }];
+  await writeFile(configPath, JSON.stringify(config));
+  let validated = 0;
+
+  for (const expected of ['executed', 'cached']) {
+    const result = await runBuild({
+      configPath, logger: {},
+      async validateArtifacts(context) {
+        assert.equal(await readFile(context.artifact('custom').path, 'utf8'), 'export const value: number = 42;');
+        validated++;
+      },
+    });
+
+    assert.equal(result.stages.find(step => step.stage === 'bundler').status, expected);
+    const output = result.outputPaths.behaviorPack;
+    const source = await readFile(path.join(output, 'scripts/main.js'), 'utf8');
+
+    assert.equal((await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)).result, 42);
+    await assert.rejects(readFile(path.join(output, 'scripts/generated.ts')), { code: 'ENOENT' });
+    await assert.rejects(readFile(path.join(output, 'scripts/main.ts')), { code: 'ENOENT' });
+  }
+
+  assert.equal(validated, 2);
+  assert.match(await readFile(path.join(root, 'packs/BP/scripts/main.ts'), 'utf8'), /generated\/custom/);
+});
+
 test('missing manifest sources in a later pack preserve the previous export', async (t) => {
   const { root, config, configPath } = await fixture(t);
 

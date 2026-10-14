@@ -525,10 +525,6 @@ export async function runBuild({
             logger.info?.(`@bedrock-core/builder: ${owner} ${outcome.status}${outcome.reason ? ` (${outcome.reason})` : ''}`);
           }
         } else if (step.stage === 'validate') {
-          for (const file of exportExclusions) {
-            await rm(file, { recursive: true, force: true });
-          }
-
           for (const artifact of artifacts.values()) {
             const current = await realpath(artifact.path);
 
@@ -538,6 +534,11 @@ export async function runBuild({
           }
 
           await validateArtifacts?.(context);
+
+          for (const file of exportExclusions) {
+            await rm(file, { recursive: true, force: true });
+          }
+
           await validatePackManifests(stagedPacks);
           await inspectPacks(stagedPacks);
           validation = await validatePackContent({

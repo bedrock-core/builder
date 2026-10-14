@@ -201,7 +201,11 @@ export async function run(context: BuildContext, settings: BundlerSettings): Pro
   }
 
   for (const source of sources) {
-    await unlink(source);
+    if (context.excludeFromExport) {
+      context.excludeFromExport(source);
+    } else {
+      await unlink(source);
+    }
   }
 
   if (settings.tsconfig) {
