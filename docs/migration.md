@@ -29,13 +29,8 @@ expressions, runs shell commands or downloads filters.
 | i18n sources | Pack-owned directories; sourceDir is relative to the owning pack. Sources outside packs require manual relocation |
 | Local and exact exports | Exact per-pack paths; local defaults use `build/<project-name>_bp` and `_rp` |
 
-Remote filters are recognized by their `github.com/bedrock-core/regolith-filters`
-repository URL, not just their ID. Local wrappers are recognized only when their canonical
-paths match this workspace's sibling `regolith-filters` repository. Other local modules and
-forks require an explicit verified mapping with `--filter id=stage` or `id=core`.
-That mapping names a built-in equivalent; it does not adapt or execute custom filter code.
-Define standalone Node scripts directly under `bedrockCore.plugins` and invoke their
-names in profile steps. See [running Node filters](regolith-node-filters.md).
+Supported @bedrock-core wrappers are recognized by verified repository identity or canonical script paths. Other modules and forks require an explicit verified mapping with `--filter id=stage` or `id=core`. The mapping selects a built-in equivalent and does not adapt custom code. Standalone Node programs use named script plugins; see [Node scripts](node-scripts.md).
+
 Pinned filter versions produce a parity warning because built-in stages use the installed builder.
 
 Pack modules determine behavior/resource classification, including arbitrary pack IDs.
