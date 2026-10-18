@@ -20,6 +20,7 @@ const packageFile = resolve(template, 'package.json');
 const pkg = read(packageFile);
 
 pkg.dependencies['@bedrock-core/ui'] = uiVersion;
+pkg.dependencies['@bedrock-core/navigation'] = read(resolve(uiRoot, 'packages/navigation/package.json')).version;
 pkg.devDependencies['@bedrock-core/builder'] = builderVersion;
 save(packageFile, pkg);
 

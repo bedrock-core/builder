@@ -83,6 +83,14 @@ test('generated starter validates all builder profiles and escaped metadata', as
   assert.equal(pkg.scripts['build:test'], 'bc-builder build config.json build-test');
   assert.equal(pkg.scripts.watch, 'bc-builder watch config.json default');
   assert.equal(pkg.scripts['watch:test'], 'bc-builder watch config.json test');
+  assert.equal(pkg.dependencies['@bedrock-core/navigation'], pkg.dependencies['@bedrock-core/ui']);
+  const home = await readFile(path.join(root, 'packs/BP/scripts/UI/screens/home.screen.tsx'), 'utf8');
+  const plan = await readFile(path.join(root, 'packs/BP/scripts/UI/screens/plan.tsx'), 'utf8');
+
+  assert.match(home, /createStaticNavigation\(RootStack\)/);
+  assert.match(home, /screen=\{'Plan'\}/);
+  assert.match(home, /Profile: `\$\{project\.namespace\}:profile_form`/);
+  assert.match(plan, /CommonActions\.goBack\(\)/);
   const registration = await readFile(path.join(root, 'packs/BP/scripts/main.ts'), 'utf8');
 
   assert.match(registration, /creator: 'o_brien'/);

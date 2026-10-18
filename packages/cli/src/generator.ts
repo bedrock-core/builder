@@ -112,7 +112,7 @@ async function copyTemplate(
     'packs/BP/texts/en_US.lang',
     'packs/BP/scripts/main.ts',
     'packs/BP/scripts/UI/screens/home.screen.tsx',
-    'packs/BP/scripts/UI/screens/plan.screen.tsx',
+    'packs/BP/scripts/UI/screens/plan.tsx',
     'packs/BP/scripts/UI/screens/profile_form.screen.tsx',
     'packs/BP/blocks/tutorial.block.ts',
     'packs/BP/entities/training_dummy.entity.ts',

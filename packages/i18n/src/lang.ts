@@ -67,6 +67,29 @@ export function stripAllGeneratedSections(content: string): string {
   return remaining;
 }
 
+/** Remove replaced authored keys while preserving other producers' generated sections. */
+export function stripLangEntries(content: string, keys: ReadonlySet<string>): string {
+  let generated = false;
+
+  return content.split(/(?<=\n)/).filter((line) => {
+    if (line.startsWith('## <core:generated-i18n:begin')) {
+      generated = true;
+    }
+
+    if (generated) {
+      if (line.startsWith('## <core:generated-i18n:end')) {
+        generated = false;
+      }
+
+      return true;
+    }
+
+    const separator = line.indexOf('=');
+
+    return separator === -1 || !keys.has(line.slice(0, separator).trim());
+  }).join('');
+}
+
 /**
  * Replace/append the generated section. Keys are emitted sorted for
  * deterministic output. `.lang` values must be single-line — enforced here

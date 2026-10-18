@@ -159,7 +159,7 @@ test('i18n adds typed shared metadata and routes client strings to the local res
 
   assert.match(resources, /stable_identity.greeting=Hello/);
   assert.match(behavior, /pack.name=Localized Name/);
-  assert.match(resources, /pack.name=Human Name/);
+  assert.match(resources, /pack.name=Localized Name/);
   assert.match(resources, /stable_identity.meta.creator=Creator/);
   assert.doesNotMatch(behavior, /stable_identity.greeting/);
   const resourceLocale = await readFile(path.join(result.outputPaths.visuals, 'texts/cs_CZ.lang'), 'utf8');

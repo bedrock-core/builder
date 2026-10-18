@@ -219,6 +219,10 @@ export async function run(context: BuildContext, settings: GuidesSettings): Prom
 
     context.excludeFromExport?.(sourceDir);
 
+    for (const file of result.files.filter(file => file.endsWith('.screen.tsx'))) {
+      context.excludeFromExport?.(file);
+    }
+
     for (const file of result.files.filter(file => file !== result.manifestPath)) {
       const pack = routed.find(pack => inside(pack.path, file));
 

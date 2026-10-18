@@ -12,9 +12,8 @@ export async function installUi(root) {
           export const registerCompiledScreen = (screen, value) => { globalThis.uiScreens ??= []; globalThis.uiScreens.push(value.key); };
           export const registerStaticScreens = values => { globalThis.uiScreens ??= []; globalThis.uiScreens.push(...values.map(value => value.key)); };
           export const registerContainerLooks = () => {};
-          export const registerScreenDescriptor = value => { globalThis.uiDescriptors ??= []; globalThis.uiDescriptors.push(value); };
-          export const isScreenDescriptor = value => typeof value.key === 'string' && typeof value.parameters === 'object';
-          export const addonReference = namespace => ({ namespace });
+          export const registerScreenMetadata = value => { globalThis.uiMetadata ??= []; globalThis.uiMetadata.push(value); };
+          export const isScreenMetadata = value => typeof value.key === 'string' && typeof value.parameters === 'object';
         `,
         'jsx.js': `
           export const jsx = (type, props) => ({ type, props });
@@ -46,6 +45,7 @@ export async function installUi(root) {
         'compile.js': `
           import { render } from './index.js';
           export const buildScreenOnce = render;
+          export const buildScreenTree = render;
           export const hostFor = tree => ({ id: tree.kind === 'chest' ? 'chest' : 'form' });
           export const setBuildLocales = () => {};
           export const charsetLang = () => ['fixture.charset=value'];
@@ -69,7 +69,7 @@ export async function installUi(root) {
               document: { namespace: spec.namespace + '_' + spec.name, root: { type: 'panel', fixture: tree } },
               facesNamespace: spec.namespace + '_faces', faces: {}, face: { document: {} }, hasBackdrop: false,
               ...(tree.kind === 'chest' ? { host: tree.host, layoutId: 2, allocation: { size: 9 }, looks: ['fixture'], hasText: true }
-                : { title: spec.name, ...(tree.live ? { snapshot: { shape: 'fixture', baked: [], vis: [] } } : { table: { values: [JSON.stringify(tree.children)], targets: [null] } }) }),
+                : { title: spec.name, ...(tree.live ? { snapshot: { shape: 'fixture', baked: [], vis: [] } } : { table: { values: [JSON.stringify(tree.children)], actions: [null] } }) }),
               ...(spec.testMetadata ? { testMetadata: { fixture: true } } : {}),
             };
           }

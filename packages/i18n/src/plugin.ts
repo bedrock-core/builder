@@ -77,12 +77,15 @@ export async function run(context: BuildContext, settings: I18nSettings): Promis
     }
 
     const routed = resource && resource.id !== owner.id ? [owner, resource] : [owner];
+    const resourceOwners = resource && graph.filter(pack => pack.kind === 'behavior' && pack.dependencies?.some(dependency => dependency.kind === 'local' && dependency.packId === resource.id));
+    const resourceSources = resource && resource.id !== owner.id && await hasFiles(path.resolve(resource.path, settings.sourceDir ?? 'i18n'), '*.{ts,js,mts,mjs}', ['**/*.d.{ts,mts}']);
+    const inheritResourceMetadata = resourceOwners?.length === 1 && resourceOwners[0].id === owner.id && !resourceSources;
     const packs: TranslationPack[] = routed.map((pack) => {
       const header = pack.manifest?.header as { name?: string; description?: string } | undefined;
 
       return {
         path: pack.path, kind: pack.kind as 'behavior' | 'resource',
-        aliases: pack.id === owner.id
+        aliases: pack.id === owner.id || inheritResourceMetadata
           ? {
               ...(header?.name === 'pack.name' ? { name: 'pack.name' } : {}),
               ...(header?.description === 'pack.description' ? { description: 'pack.description' } : {}),

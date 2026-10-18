@@ -196,6 +196,12 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
           });
           const file = path.join(directory, `module-${digest(relative)}.mjs`);
 
+          for (const input of result.inputs) {
+            if (/\.(?:ts|tsx|mts|cts)$/.test(input) && routed.some(pack => input.startsWith(`${pack.path}${path.sep}`))) {
+              context.excludeFromExport?.(input);
+            }
+          }
+
           compiledModules += Number(!result.cached);
           await writeFile(file, result.value.code);
           modules.set(source, { file, bundle: { ...result.value, inputs: result.inputs } });
@@ -331,7 +337,7 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
 
   const declarations = path.join(context.projectRoot, '.bedrock-core/generated/ui/screens.generated.d.ts');
   const content = [
-    'declare module \'@bedrock-core/ui-runtime\' {',
+    'declare module \'@bedrock-core/navigation\' {',
     '  interface ScreenKeys {',
     ...screens.map(screen => `    ${JSON.stringify(`${namespace}:${screen.name}`)}: true;`),
     '  }', '}', 'export {};', '',

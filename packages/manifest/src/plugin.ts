@@ -87,6 +87,28 @@ export async function run(context: BuildContext, settings: ManifestSettings): Pr
         await mkdir(texts, { recursive: true });
         await writeFile(lang, `${text.trimEnd()}\n${lines.join('\n')}\n`);
       }
+
+      if (lines.length || Object.values((manifests?.[id] ?? manifest).header as Record<string, unknown>).some(value => value === 'pack.name' || value === 'pack.description')) {
+        const catalog = path.join(texts, 'languages.json');
+        let languages: unknown = [];
+
+        try {
+          languages = JSON.parse(await readFile(catalog, 'utf8'));
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+            throw error;
+          }
+        }
+
+        if (!Array.isArray(languages) || languages.some(locale => typeof locale !== 'string')) {
+          throw new Error(`Pack ${id} texts/languages.json must be an array of locale codes`);
+        }
+
+        if (!languages.includes('en_US')) {
+          await mkdir(texts, { recursive: true });
+          await writeFile(catalog, `${JSON.stringify([...languages, 'en_US'], null, indent)}\n`);
+        }
+      }
     }
   }
 }

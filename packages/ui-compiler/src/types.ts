@@ -55,7 +55,7 @@ export interface ScreenData {
   snapshot?: { shape: string; baked: readonly string[]; vis: readonly number[] };
   table?: {
     values: readonly string[];
-    targets: readonly unknown[];
+    actions: readonly unknown[];
   };
 }
 
@@ -104,7 +104,7 @@ export interface UiLibrary {
     buildUiPack(screens: ScreenData[], namespace: string): Pick<LinkedUi, 'screens' | 'hooks' | 'documents'>;
   };
   runtime: Record<string, unknown> & {
-    buildScreenOnce(screen: unknown): unknown;
+    buildScreenTree(screen: unknown): unknown;
     hostFor(tree: unknown): { id: string };
     setBuildLocales(locales: PackLocales): void;
     charsetLang(): string[];

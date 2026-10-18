@@ -192,6 +192,30 @@ try {
 
     script('build');
     const releaseBp = join(project, 'build', `${name}_bp`);
+    const namespace = json(join(project, 'config.json')).namespace;
+    const screens = join(project, 'build', `${name}_rp`, 'ui/core-ui/screens', namespace);
+    const controls = [];
+
+    const collect = (value) => {
+      if (value && typeof value === 'object') {
+        if (value.type) {
+          controls.push(value);
+        }
+
+        Object.values(value).forEach(collect);
+      }
+    };
+
+    collect(json(join(screens, 'home.json')));
+    const navigation = controls.filter(control => control.type === 'toggle' && control.toggle_name?.endsWith('_starter'));
+    const links = navigation.filter(control => control.focus_enabled !== false);
+
+    assert.equal(links.length, 2, 'Home and Plan need native forward and Back controls');
+    assert.deepEqual(links.map(control => control.toggle_group_forced_index).sort(), [0, 1]);
+    assert.ok(links.every(control => !JSON.stringify(control.button_mappings ?? []).includes('button.form_button_click')), 'Local page links must not submit the server form');
+    assert.equal(navigation.length - links.length, 2, 'Both page selections need persistent owners');
+    assert.ok(!existsSync(join(screens, 'plan.json')), 'Plan is a resident page of Home');
+    assert.ok(existsSync(join(screens, 'profile_form.json')), 'Profile remains a native modal form');
 
     assert.ok(!json(join(releaseBp, 'manifest.json')).dependencies.some(dep => dep.module_name === '@minecraft/server-gametest'));
     assert.ok(!readFileSync(join(releaseBp, 'scripts/main.js'), 'utf8').includes('@minecraft/server-gametest'));

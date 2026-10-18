@@ -16,6 +16,21 @@ const optionsFor = project => ({ configPath: project.configPath, logger: {} });
 const compiled = (result, file) => result.compilations.find(item => item.id === `guides/page:packs/gameplay/guides/${file}`)?.status;
 const stage = (result, name) => result.stages.find(item => item.stage === name)?.status;
 
+test('guide generation selects the resident runtime for every entry and caller-return variant', () => {
+  const modules = guideScreenModules({
+    pageIds: ['intro', 'chapter'], screensDir: 'scripts/guides', manifestPath: 'generated/guides.json',
+    title: 'Guide', components: 'scripts/guide/components.tsx',
+  });
+
+  assert.ok(modules.every(module => module.source.includes('import { guideNavigationScreen } from \'@bedrock-core/guides\'')));
+  assert.ok(modules.every(module => module.source.includes('import components from "../guide/components"')));
+  assert.ok(modules.every(module => !/guide(?:Home|Index|Page)Screen/.test(module.source)));
+  const returned = modules.find(module => module.file.endsWith('guideback_page_chapter.screen.tsx'));
+
+  assert.match(returned.source, /entry: \{ page: "chapter" \}, back: true, components/);
+  assert.ok(modules.some(module => module.file.endsWith('guideback_index.screen.tsx')));
+});
+
 test('standalone guides preserve structural keys, links, locale fallback and handwritten language entries', async (t) => {
   const project = await guidesFor(t);
 
@@ -192,6 +207,33 @@ test('automatic guides, i18n, UI and bundler share artifacts without extra stage
   assert.equal(stage(second, 'guides'), 'cached');
   assert.equal(stage(second, 'ui-compiler'), 'cached');
   assert.equal(stage(second, 'bundler'), 'cached');
+});
+
+test('generated guide screen sources are validated but omitted from cold and cached exports', async (t) => {
+  const project = await guidesFor(t, { screens: true });
+
+  await installGuides(project.project);
+  await put(project.project, 'packs/gameplay/scripts/main.ts', `export { default as value } from '@bedrock-core/generated/guides';`);
+  let validated = 0;
+
+  for (const expected of ['executed', 'cached']) {
+    const result = await runBuild({
+      ...optionsFor(project),
+      async validateArtifacts(context) {
+        const screen = context.artifact('guides:gameplay:gameplay:scripts/guides/guide_start.screen.tsx');
+
+        assert.match(await readFile(screen.path, 'utf8'), /guideNavigationScreen/);
+        validated++;
+      },
+    });
+
+    assert.equal(stage(result, 'guides'), expected);
+    await assert.rejects(readFile(path.join(result.outputPaths.gameplay, 'scripts/guides/guide_start.screen.tsx')), { code: 'ENOENT' });
+    assert.match(await readFile(path.join(result.outputPaths.visuals, 'ui/core-ui/screens/flow_test/guide_start.json'), 'utf8'), /guide_start/);
+    assert.equal((await exportedModule(result)).value.ns, 'flow_test');
+  }
+
+  assert.equal(validated, 2);
 });
 
 test('guides cache pages individually across script edits, translations and category changes', async (t) => {

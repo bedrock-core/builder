@@ -11,8 +11,9 @@ export const libraryModules: Record<string, string> = {
   '@bedrock-core/ui': 'ui',
   '@bedrock-core/ui-runtime': 'ui',
   '@bedrock-core/ui/navigation': 'navigation',
-  '@bedrock-core/ui-runtime/navigation': 'navigation',
-  '@bedrock-core/navigation': 'serverNavigation',
+  '@bedrock-core/navigation': 'navigation',
+  '@bedrock-core/navigation/core': 'coreNavigation',
+  '@bedrock-core/navigation/runtime': 'navigationRuntime',
   '@bedrock-core/ui/jsx-runtime': 'jsx',
   '@bedrock-core/ui/jsx-dev-runtime': 'jsx',
   '@bedrock-core/ui-runtime/jsx-runtime': 'jsx',
@@ -68,8 +69,9 @@ export interface UiBundle {
 export async function bundleUiLibrary(options: UiBundleOptions): Promise<UiBundle> {
   return bundle(options, `
     import * as ui from '@bedrock-core/ui';
-    import * as navigation from '@bedrock-core/ui/navigation';
-    import * as serverNavigation from '@bedrock-core/navigation';
+    import * as navigation from '@bedrock-core/navigation';
+    import * as coreNavigation from '@bedrock-core/navigation/core';
+    import * as navigationRuntime from '@bedrock-core/navigation/runtime';
     import * as jsx from '@bedrock-core/ui/jsx-dev-runtime';
     import * as compiler from '@bedrock-core/ui-compiler';
     import * as runtime from '@bedrock-core/ui-runtime/compile';
@@ -77,7 +79,7 @@ export async function bundleUiLibrary(options: UiBundleOptions): Promise<UiBundl
     import * as entity from '@bedrock-core/ui-runtime/entity';
     import * as i18n from '@bedrock-core/i18n';
     ${options.guides ? 'import * as guides from \'@bedrock-core/guides\';' : ''}
-    export { ui, navigation, serverNavigation, jsx, compiler, runtime, container, entity, i18n${options.guides ? ', guides' : ''} };
+    export { ui, navigation, coreNavigation, navigationRuntime, jsx, compiler, runtime, container, entity, i18n${options.guides ? ', guides' : ''} };
   `);
 }
 
@@ -132,7 +134,7 @@ async function bundle(options: UiBundleOptions, contents: string, declaration = 
     plugins.push({
       name: '@bedrock-core/ui-optional-surfaces',
       setup(builder) {
-        builder.onResolve({ filter: /^@bedrock-core\/(?:ui\/navigation|navigation|ui-runtime\/(?:container|entity)|guides)$/ }, async (args) => {
+        builder.onResolve({ filter: /^@bedrock-core\/(?:navigation(?:\/(?:core|runtime))?|ui-runtime\/(?:container|entity)|guides)$/ }, async (args) => {
           if (args.pluginData === resolving) {
             return;
           }
@@ -155,7 +157,7 @@ async function bundle(options: UiBundleOptions, contents: string, declaration = 
       setup(builder) {
         builder.onResolve({ filter: /^@bedrock-core\/generated\/ui$/ }, () => ({ path: 'generated-ui', namespace: 'ui-declaration' }));
         builder.onLoad({ filter: /.*/, namespace: 'ui-declaration' }, () => ({
-          contents: 'export const UI_REFERENCE = []; export const SCREEN_KEYS = []; export const UI_NAMESPACE = ""; export const uiReference = () => ({});',
+          contents: 'export const UI_REFERENCE = []; export const SCREEN_KEYS = []; export const UI_NAMESPACE = "";',
           loader: 'js',
         }));
       },

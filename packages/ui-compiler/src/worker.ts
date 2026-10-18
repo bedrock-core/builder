@@ -50,7 +50,7 @@ port.on('message', async (request: UiRequest) => {
         }
 
         const spec = { name: request.name, namespace: request.namespace, testMetadata: request.testMetadata === true };
-        const host = library.runtime.hostFor(library.runtime.buildScreenOnce(component)).id;
+        const host = library.runtime.hostFor(library.runtime.buildScreenTree(component)).id;
         const compiled = host === 'chest' ? library.compiler.compileScreen(component, spec) : library.compiler.compileFormScreen(component, spec);
         let parameters = loaded.parameters;
 
@@ -64,10 +64,10 @@ port.on('message', async (request: UiRequest) => {
         }
 
         if (parameters !== undefined) {
-          const validate = library.ui.isScreenDescriptor;
+          const validate = library.ui.isScreenMetadata;
 
           if (typeof validate !== 'function' || !validate({ key: `${request.namespace}:${request.name}`, kind: 'custom', parameters })) {
-            throw new Error(`Invalid navigation parameter contract for ${request.name}`);
+            throw new Error(`Invalid screen parameter contract for ${request.name}`);
           }
 
           compiled.parameters = parameters;

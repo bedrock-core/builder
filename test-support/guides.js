@@ -35,9 +35,9 @@ export async function installGuides(root) {
   await put(root, 'node_modules/@bedrock-core/guides/index.js', `
     import { Screen, Text } from '@bedrock-core/ui';
     export const openGuide = () => Date.now();
-    export const guidePageScreen = (manifest, page) => () => Screen({ children: Text({ children: manifest.pages[page] }) });
-    export const guideHomeScreen = manifest => () => Screen({ children: Text({ children: manifest.home ?? manifest.tree }) });
-    export const guideIndexScreen = manifest => () => Screen({ children: Text({ children: manifest.tree }) });
+    export const guideNavigationScreen = (manifest, options = {}) => () => Screen({
+      children: Text({ children: typeof options.entry === 'object' ? manifest.pages[options.entry.page] : manifest.home ?? manifest.tree }),
+    });
   `);
 }
 

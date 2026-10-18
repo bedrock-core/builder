@@ -170,11 +170,18 @@ export async function writeUiResource(pack: string, linked: LinkedUi, entries: S
  */
 export function uiRegistration(linked: Pick<LinkedUi, 'screens'>, entries: ScreenEntry[], directory: string, namespace: string): string {
   const imports: string[] = [];
+  const components = new Map<string, string>();
   const calls: string[] = [];
   const table: unknown[] = [];
   const keys: string[] = [];
 
   const reference = (name: string): string => {
+    const existing = components.get(name);
+
+    if (existing !== undefined) {
+      return existing;
+    }
+
     const entry = entries.find(entry => entry.name === name)!;
     const relative = path.isAbsolute(entry.source) ? path.relative(directory, entry.source).replaceAll('\\', '/') : entry.source;
     const source = path.isAbsolute(entry.source) && !relative.startsWith('.') ? `./${relative}` : relative;
@@ -182,17 +189,21 @@ export function uiRegistration(linked: Pick<LinkedUi, 'screens'>, entries: Scree
 
     imports.push(`import ${alias} from ${JSON.stringify(source)};`);
 
-    return entry.member ? `${alias}[${JSON.stringify(entry.member)}]` : alias;
+    const component = entry.member ? `${alias}[${JSON.stringify(entry.member)}]` : alias;
+
+    components.set(name, component);
+
+    return component;
   };
 
   for (const screen of linked.screens) {
     const key = `${namespace}:${screen.name}`;
     const parameters = screen.parameters ?? (screen.table ? {} : undefined);
-    const descriptor = { key, kind: screen.host?.kind ?? screen.kind ?? 'action',
+    const metadata = { key, kind: screen.host?.kind ?? screen.kind ?? 'action',
       ...parameters === undefined ? {} : { parameters } };
 
     keys.push(key);
-    calls.push(`registerScreenDescriptor(${JSON.stringify(descriptor)});`);
+    calls.push(`registerScreenMetadata(${JSON.stringify(metadata)}${screen.host ? `, ${reference(screen.name)}` : ''});`);
 
     if (screen.host) {
       if (screen.looks?.length) {
@@ -200,15 +211,15 @@ export function uiRegistration(linked: Pick<LinkedUi, 'screens'>, entries: Scree
       }
     } else {
       if (screen.table) {
-        table.push({ key, title: screen.title, values: screen.table.values, targets: screen.table.targets });
+        table.push({ key, title: screen.title, values: screen.table.values, actions: screen.table.actions });
       } else {
-        calls.push(`registerCompiledScreen(${reference(screen.name)}, ${JSON.stringify({ ...descriptor, title: screen.title, snapshot: screen.snapshot })});`);
+        calls.push(`registerCompiledScreen(${reference(screen.name)}, ${JSON.stringify({ ...metadata, title: screen.title, snapshot: screen.snapshot })});`);
       }
     }
   }
 
   return [
-    `import { addonReference, registerCompiledScreen, registerContainerLooks, registerScreenDescriptor, registerStaticScreens } from '@bedrock-core/ui';`,
+    `import { registerCompiledScreen, registerContainerLooks, registerScreenMetadata, registerStaticScreens } from '@bedrock-core/ui';`,
     ...imports,
     `export const UI_NAMESPACE = ${JSON.stringify(namespace)};`,
     `export const UI_REFERENCE = ${JSON.stringify(table)} as const;`,
@@ -216,7 +227,6 @@ export function uiRegistration(linked: Pick<LinkedUi, 'screens'>, entries: Scree
     ...calls,
     `export const SCREEN_KEYS = ${JSON.stringify(keys)} as const;`,
     'export type ScreenKey = typeof SCREEN_KEYS[number];',
-    `export function uiReference() { return addonReference(UI_NAMESPACE); }`,
     '',
   ].join('\n');
 }

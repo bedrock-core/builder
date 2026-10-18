@@ -51,6 +51,28 @@ async function fixture(t) {
 const screenChecks = result => result.compilations.filter(item => item.id.startsWith('ui-compiler/screen:'));
 const executed = result => screenChecks(result).filter(item => item.status === 'executed').map(item => item.id.split(':').at(-1)).sort();
 
+test('isolates host detection between component roots with retained state', async (t) => {
+  const project = await fixture(t);
+  const compile = path.join(project.root, 'node_modules/@bedrock-core/ui-runtime/compile.js');
+  const source = await readFile(compile, 'utf8');
+
+  await writeFile(compile, source.replace('export const buildScreenOnce = render;', `
+    let retained;
+    export const buildScreenOnce = component => {
+      if (retained && retained !== component) { throw new Error('Host probe retained another screen root'); }
+      retained = component;
+      return render(component);
+    };
+  `));
+  await project.screen('first', '<Text>First root</Text>');
+  await project.screen('second', '<Text>Second root</Text>');
+  const result = await runBuild(project.options);
+
+  assert.deepEqual(executed(result), ['first', 'second']);
+  assert.match(await readFile(path.join(result.outputPaths.assets, 'ui/core-ui/screens/test/first.json'), 'utf8'), /First root/);
+  assert.match(await readFile(path.join(result.outputPaths.assets, 'ui/core-ui/screens/test/second.json'), 'utf8'), /Second root/);
+});
+
 test('automatically compiles UI and registers it in the manifest entry without source edits', async (t) => {
   const project = await fixture(t);
 
@@ -73,6 +95,42 @@ test('automatically compiles UI and registers it in the manifest entry without s
   assert.ok(defs.includes('ui/authored.json'));
   assert.ok(defs.includes('ui/core-ui/screens/test/hello.json'));
   assert.deepEqual(executed(result), ['hello', 'subpath']);
+});
+
+test('omits compiled pack-local UI sources from cold and cached exports', async (t) => {
+  const project = await fixture(t);
+  const scripts = path.join(project.root, 'packs/BP/scripts');
+  const screen = await project.screen('static', '<Text>{caption}</Text>', 'import { caption } from \'./nested/caption\';');
+  const sources = {
+    'static.screen.tsx': await readFile(screen, 'utf8'),
+    'nested/caption.ts': 'export { caption } from \'./label\';',
+    'nested/label.tsx': 'export const caption = \'Static caption\';',
+  };
+
+  await mkdir(path.join(scripts, 'nested'));
+
+  for (const [file, content] of Object.entries(sources)) {
+    await writeFile(path.join(scripts, file), content);
+  }
+
+  await writeFile(path.join(scripts, 'custom.js'), 'export const custom = true;');
+  await writeFile(path.join(scripts, 'data.json'), '{"value":7}');
+
+  for (const expected of ['executed', 'cached']) {
+    const result = await runBuild(project.options);
+
+    assert.equal(result.stages.find(step => step.stage === 'ui-compiler').status, expected);
+    assert.equal(result.stages.find(step => step.stage === 'bundler').status, expected);
+    assert.match(await readFile(path.join(result.outputPaths.assets, 'ui/core-ui/screens/test/static.json'), 'utf8'), /Static caption/);
+    assert.match(await readFile(path.join(result.outputPaths.logic, 'scripts/start.js'), 'utf8'), /test:static/);
+    assert.equal(await readFile(path.join(result.outputPaths.logic, 'scripts/custom.js'), 'utf8'), 'export const custom = true;');
+    assert.deepEqual(await json(path.join(result.outputPaths.logic, 'scripts/data.json')), { value: 7 });
+
+    for (const [file, content] of Object.entries(sources)) {
+      await assert.rejects(readFile(path.join(result.outputPaths.logic, 'scripts', file)), { code: 'ENOENT' });
+      assert.equal(await readFile(path.join(scripts, file), 'utf8'), content);
+    }
+  }
 });
 
 test('reuses screens across builds and recompiles only consumers of an imported helper or JSON', async (t) => {
@@ -231,32 +289,40 @@ test('removing the last screen refreshes editor keys and removes generated UI fr
   assert.doesNotMatch(await readFile(path.join(project.root, '.bedrock-core/generated/ui/screens.generated.d.ts'), 'utf8'), /test:last/);
 });
 
-test('navigation imports retain their exports and share the UI runtime', async (t) => {
+test('navigation factories, host extensions, UI facade and Core adapter share one runtime', async (t) => {
   const project = await fixture(t);
   const navigation = path.join(project.root, 'node_modules/@bedrock-core/navigation');
   const uiPackage = path.join(project.root, 'node_modules/@bedrock-core/ui/package.json');
   const metadata = await json(uiPackage);
 
   await mkdir(navigation, { recursive: true });
-  await writeFile(path.join(navigation, 'package.json'), JSON.stringify({ name: '@bedrock-core/navigation', type: 'module', exports: './index.js' }));
+  await writeFile(path.join(navigation, 'package.json'), JSON.stringify({
+    name: '@bedrock-core/navigation', type: 'module', exports: { '.': './index.js', './core': './core.js', './runtime': './runtime.js' },
+  }));
   await writeFile(path.join(navigation, 'index.js'), `
     import { Text } from '@bedrock-core/ui-runtime';
     let declaration;
     export const registerDeclared = value => { declaration = value; };
     export const pageTargeted = () => Text({ children: declaration });
   `);
+  await writeFile(path.join(navigation, 'core.js'), 'export { registerDeclared as registerCore } from \'./index.js\';');
+  await writeFile(path.join(navigation, 'runtime.js'), 'export { registerDeclared as registerRuntime } from \'./index.js\';');
   metadata.exports['./navigation'] = './navigation.js';
   await writeFile(uiPackage, JSON.stringify(metadata));
   await writeFile(path.join(path.dirname(uiPackage), 'navigation.js'), 'export * from \'@bedrock-core/navigation\';');
   await project.screen('navigation', '{pageTargeted()}', `
     import { registerDeclared } from '@bedrock-core/navigation';
+    import { registerCore } from '@bedrock-core/navigation/core';
+    import { registerRuntime } from '@bedrock-core/navigation/runtime';
     import { pageTargeted } from '@bedrock-core/ui/navigation';
-    registerDeclared('Shared navigation');
+    registerDeclared('Base navigation');
+    registerCore('Shared navigation');
+    registerRuntime('Shared navigator factory');
   `);
   const result = await runBuild(project.options);
   const output = await json(path.join(result.outputPaths.assets, 'ui/core-ui/screens/test/navigation.json'));
 
-  assert.equal(output.root.fixture.children.text, 'Shared navigation');
+  assert.equal(output.root.fixture.children.text, 'Shared navigator factory');
 });
 
 test('navigation metadata retains public parameters and native host keys', async (t) => {
@@ -274,10 +340,11 @@ test('navigation metadata retains public parameters and native host keys', async
     generated = await readFile(context.artifact('ui:bundle').path, 'utf8');
   } });
 
-  assert.match(generated, /registerScreenDescriptor\(.*"kind":"entity"/);
+  assert.match(generated, /registerScreenMetadata\(.*"kind":"entity"/);
   assert.match(generated, /registerCompiledScreen\(.*"parameters":\{"item":\{"type":"string"\}\}/);
   assert.match(generated, /SCREEN_KEYS = \[.*"test:native"/);
   const types = await readFile(path.join(project.root, '.bedrock-core/generated/ui/screens.generated.d.ts'), 'utf8');
 
   assert.match(types, /"test:native": true/);
+  assert.match(types, /declare module '@bedrock-core\/navigation'/);
 });

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { bundleDtsText } from './dts.ts';
 import { flattenNesting, templateVars, toPositional } from './interp.ts';
-import { manifestAliasEntries, parseLang, stripGeneratedSection, stripAllGeneratedSections, upsertGeneratedSection } from './lang.ts';
+import { manifestAliasEntries, parseLang, stripGeneratedSection, stripAllGeneratedSections, stripLangEntries, upsertGeneratedSection } from './lang.ts';
 import { discoverI18nLibs, localeFiles, LOCALE_FILE_RE } from './libs.ts';
 import { loadResources } from './load.ts';
 import { scanVanillaUsage, walkSources } from './scan.ts';
@@ -513,14 +513,14 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
           const key = pack.aliases?.[field] ?? (pack.aliases === undefined ? `pack.${field}` : undefined);
 
           if (key && pack.metadata && authored[key] !== undefined && authored[key] !== pack.metadata[field]) {
-            packAliases.set(key, authored[key]);
+            packAliases.delete(key);
           }
         }
 
         if (pack.kind === 'resource' || packAliases.size) {
           const generated = pack.kind === 'resource' ? new Map([...entries, ...vanillaOverrides.get(locale)!, ...packAliases]) : packAliases;
 
-          pending.set(file, upsertGeneratedSection(existing, generated, options.section));
+          pending.set(file, upsertGeneratedSection(stripLangEntries(existing, new Set(packAliases.keys())), generated, options.section));
           languagePacks.add(pack.path);
         } else if (fs.existsSync(file) && stripGeneratedSection(existing, options.section) !== existing) {
           pending.set(file, stripGeneratedSection(existing, options.section));

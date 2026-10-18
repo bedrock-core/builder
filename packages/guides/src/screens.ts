@@ -1,12 +1,5 @@
-// Generated screen modules — one per guide page, the entry and the index —
-// dropped into the addon's scripts so the UI stage compiles each as
-// a form-action screen and the bundler ships it like any authored screen.
-//
-// A guide with anything gated compiles a second set, for operators, under
-// names of its own. The ordinary names are what every player is shown, with
-// the gated pages left out, so an entry that fails to tell an operator apart
-// shows less rather than more. Each set is whole: its entry, index and pages
-// link only to one another, so the choice is made once, as a reader enters.
+// Generated entries preload every audience-visible guide page in one client navigation group.
+// Fixed page and boundary variants restore a confirmed selection after a server action.
 
 import path from 'node:path';
 
@@ -163,35 +156,35 @@ export function guideScreenModules(input: GuideScreensInput): GuideScreenModule[
   for (const { audience, pageIds } of screenSets(input)) {
     const names = guideScreenNames(audience);
     const operators = audience === 'op';
-    // The set every player reads is built with no audience at all, so a guide with nothing gated
-    // compiles exactly the modules it would if access did not exist.
     const audienceOption = operators ? ', audience: "op"' : '';
-    const entryOptions = `{ title: ${JSON.stringify(title)}${audienceOption} }`;
-    const backOptions = `{ title: ${JSON.stringify(title)}${audienceOption}, back: true }`;
-    const pageOptions = `{ title: ${JSON.stringify(title)}${audienceOption}${registry === undefined ? '' : ', components'} }`;
+    const componentOption = registry === undefined ? '' : ', components';
+    const options = (entry: string, back = false): string =>
+      `{ title: ${JSON.stringify(title)}${audienceOption}, entry: ${entry}${back ? ', back: true' : ''}${componentOption} }`;
     const whose = operators ? 'the operators\' ' : 'the ';
+    const boundaryPrefix = operators ? 'guideopback_' : 'guideback_';
 
-    claim(names.home, `(${whose}guide entry)`);
-    claim(names.homeBack, `(${whose}guide entry with a back control)`);
-    claim(names.index, `(${whose}guide index)`);
+    const add = (name: string, owner: string, entry: string, back = false): void => {
+      claim(name, owner);
+      modules.push(moduleFor(name, 'guideNavigationScreen', `guideNavigationScreen(manifest, ${options(entry, back)})`, registryImport));
+    };
 
-    modules.push(moduleFor(names.home, 'guideHomeScreen', `guideHomeScreen(manifest, ${entryOptions})`));
+    add(names.home, `(${whose}guide entry)`, '"home"');
 
     for (const pageId of pageIds) {
-      const name = names.page(pageId);
-
-      claim(name, pageId);
-      modules.push(moduleFor(name, 'guidePageScreen', `guidePageScreen(manifest, ${JSON.stringify(pageId)}, ${pageOptions})`, registryImport));
+      add(names.page(pageId), pageId, `{ page: ${JSON.stringify(pageId)} }`);
     }
 
-    // Last, after the pages: the entry again, with a back control that leaves
-    // the guide — a screen's shape is fixed, so the entry a host opens is a
-    // second screen rather than a state of the first — and the index the pages
-    // return to.
-    modules.push(
-      moduleFor(names.homeBack, 'guideHomeScreen', `guideHomeScreen(manifest, ${backOptions})`),
-      moduleFor(names.index, 'guideIndexScreen', `guideIndexScreen(manifest, ${entryOptions})`),
-    );
+    add(names.homeBack, `(${whose}guide entry with a back control)`, '"home"', true);
+    add(names.index, `(${whose}guide index)`, '"index"');
+
+    // Server actions restore a fixed entry with the caller's boundary Back behavior.
+    for (const pageId of pageIds) {
+      const folded = names.page(pageId).slice(PREFIX[audience].length);
+
+      add(`${boundaryPrefix}page_${folded}`, `(${whose}return to ${pageId})`, `{ page: ${JSON.stringify(pageId)} }`, true);
+    }
+
+    add(`${boundaryPrefix}index`, `(${whose}return to the index)`, '"index"', true);
   }
 
   return modules;
