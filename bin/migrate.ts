@@ -4,7 +4,7 @@ import { stages } from '../src/plan.ts';
 
 const help = `@bedrock-core Regolith configuration migration
 
-Usage: yarn migrate [config.json] [options]
+Usage: bc-builder migrate [config.json] [options]
 
 Preview is the default. Filters, shell commands and expressions are never executed.
 

@@ -124,16 +124,21 @@ test('Minecraft imports remain external and staged tsconfig aliases resolve', as
   assert.match(output, /@minecraft\/server/);
   assert.doesNotMatch(output, /@local\/helper/);
 });
-test('pack-local TypeScript entry compiles without exporting its consumed source', async (t) => {
+test('pack-local TypeScript compiles without exporting entry or unused source', async (t) => {
   const { root, config, configPath } = await fixture(t);
   const input = path.join(root, 'packs/BP/scripts/main.ts');
+  const unused = path.join(root, 'packs/BP/scripts/tests/unused.ts');
 
   await writeFile(input, 'export const value: number = 42;');
+  await mkdir(path.dirname(unused), { recursive: true });
+  await writeFile(unused, 'export const unused: number = 1;');
   await writeFile(configPath, JSON.stringify(config));
   await runBuild({ configPath, logger: {} });
   assert.match(await readFile(input, 'utf8'), /number/);
+  assert.match(await readFile(unused, 'utf8'), /unused/);
   assert.match(await readFile(path.join(root, 'dist/behaviorPack/scripts/main.js'), 'utf8'), /42/);
   await assert.rejects(readFile(path.join(root, 'dist/behaviorPack/scripts/main.ts')), { code: 'ENOENT' });
+  await assert.rejects(readFile(path.join(root, 'dist/behaviorPack/scripts/tests/unused.ts')), { code: 'ENOENT' });
   assert.equal(JSON.parse(await readFile(path.join(root, 'dist/behaviorPack/manifest.json'), 'utf8')).modules[0].type, 'script');
 });
 

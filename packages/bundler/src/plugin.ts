@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { copyFile, lstat, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, readdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { fingerprint, generatedAliases, type BuildContext, type BuildDetection, type BuildStepResult } from '@bedrock-core/builder-plugin';
 import { readScriptEntries } from '@bedrock-core/builder-manifest';
 import { bundleScripts, compilerVersion } from './index.ts';
@@ -42,6 +42,19 @@ async function exists(file: string): Promise<boolean> {
     }
 
     throw error;
+  }
+}
+
+// Bedrock loads the bundled JavaScript; other authored TypeScript in scripts is build input.
+async function collectPackTypeScript(directory: string, sources: Set<string>): Promise<void> {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const file = path.join(directory, entry.name);
+
+    if (entry.isDirectory()) {
+      await collectPackTypeScript(file, sources);
+    } else if (entry.isFile() && /\.(?:ts|tsx|mts|cts)$/.test(entry.name)) {
+      sources.add(file);
+    }
   }
 }
 
@@ -182,6 +195,10 @@ export async function run(context: BuildContext, settings: BundlerSettings): Pro
   }
 
   // Keep staged inputs intact until every bundle has finished, including JS entries.
+  for (const packPath of new Set(scripts.map(script => script.packPath))) {
+    await collectPackTypeScript(path.join(packPath, 'scripts'), sources);
+  }
+
   for (const output of outputs) {
     await mkdir(path.dirname(output.destination), { recursive: true });
 
