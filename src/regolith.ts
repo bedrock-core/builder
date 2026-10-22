@@ -1,9 +1,11 @@
 import { spawn } from 'node:child_process';
-import { cp, lstat, mkdir, mkdtemp, readdir, realpath, rm } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
 import type { BuildContext } from './contract.d.ts';
 import type { NodePluginDefinition, Settings } from './config.ts';
+import { withSourceWrites } from './source-writes.ts';
 
 interface NodeFilterOptions extends NodePluginDefinition {
   settings?: Settings;
@@ -13,9 +15,11 @@ interface NodeFilterOptions extends NodePluginDefinition {
 interface Session {
   directory: string;
   dataSource: string;
+  baseline?: string;
+  persist: boolean;
 }
 
-const sessions = new WeakMap<BuildContext, Session>();
+const sessions = new WeakMap<BuildContext, Map<string, Session>>();
 const roles = ['BP', 'RP'] as const;
 
 function contains(root: string, file: string): boolean {
@@ -59,9 +63,9 @@ async function inspect(directory: string): Promise<void> {
 }
 
 async function packPaths(context: BuildContext, options: NodeFilterOptions): Promise<Partial<Record<'BP' | 'RP', string>>> {
-  const selected: Partial<Record<'BP' | 'RP', string>> = options.packs ? { ...options.packs } : {};
+  const selected: Partial<Record<'BP' | 'RP', string>> = options.folders ? { ...options.folders } : {};
 
-  if (!options.packs) {
+  if (!options.folders) {
     for (const id of Object.keys(context.packs)) {
       const pack = await context.inspectPack(id);
       const role = pack.kind === 'behavior' ? 'BP' : pack.kind === 'resource' ? 'RP' : undefined;
@@ -71,14 +75,14 @@ async function packPaths(context: BuildContext, options: NodeFilterOptions): Pro
       }
 
       if (selected[role]) {
-        throw new Error('Node filters need an explicit packs.' + role + ' mapping when more than one pack has that type');
+        throw new Error('Node filters need an explicit folders.' + role + ' mapping when more than one pack has that type');
       }
 
       selected[role] = id;
     }
   }
 
-  if (!Object.keys(selected).length) {
+  if (!options.folders && !Object.keys(selected).length) {
     throw new Error('Node filter needs at least one BP or RP pack mapping');
   }
 
@@ -93,6 +97,13 @@ async function packPaths(context: BuildContext, options: NodeFilterOptions): Pro
 
     if (!Object.hasOwn(context.packs, id)) {
       throw new Error('Node filter pack is not configured: ' + id);
+    }
+
+    const pack = await context.inspectPack(id);
+    const expected = role === 'BP' ? 'behavior' : 'resource';
+
+    if (pack.kind !== expected) {
+      throw new Error(`Node filter folders.${role} requires a ${expected} pack: ${id}`);
     }
 
     const directory = path.resolve(context.packs[id]!);
@@ -113,22 +124,40 @@ async function packPaths(context: BuildContext, options: NodeFilterOptions): Pro
   return paths;
 }
 
-async function sessionFor(context: BuildContext, options: NodeFilterOptions): Promise<Session> {
-  const source = path.resolve(context.projectRoot, options.dataPath ?? './data');
-  const current = sessions.get(context);
+async function dataFingerprint(root: string): Promise<string> {
+  await inspect(root);
+  const hash = createHash('sha256');
 
-  if (current) {
-    if (options.dataPath !== undefined && path.relative(current.dataSource, source) !== '') {
-      throw new Error('Node filter steps in one build must share the same dataPath');
+  async function visit(directory: string): Promise<void> {
+    for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
+      const file = path.join(directory, entry.name);
+
+      hash.update(JSON.stringify([path.relative(root, file), entry.isDirectory()]));
+
+      if (entry.isDirectory()) {
+        await visit(file);
+      } else {
+        hash.update(createHash('sha256').update(await readFile(file)).digest());
+      }
     }
-
-    await inspect(current.directory);
-
-    return current;
   }
 
-  if (!contains(context.projectRoot, source)) {
-    throw new Error('Node filter dataPath must be inside the project');
+  await visit(root);
+
+  return hash.digest('hex');
+}
+
+async function sessionFor(context: BuildContext, options: NodeFilterOptions): Promise<Session> {
+  if (options.persistData && options.dataPath === undefined) {
+    throw new Error('Persistent Node data requires an explicit dataPath');
+  }
+
+  const source = path.resolve(context.projectRoot, options.dataPath ?? './data');
+  const key = process.platform === 'win32' ? source.toLowerCase() : source;
+  const current = sessions.get(context)?.get(key);
+
+  if (!contains(context.projectRoot, source) || source === context.projectRoot) {
+    throw new Error('Node filter dataPath must be a dedicated directory inside the project');
   }
 
   const stagedSource = path.join(context.stagedRoot, path.relative(context.projectRoot, source));
@@ -143,6 +172,18 @@ async function sessionFor(context: BuildContext, options: NodeFilterOptions): Pr
   }
 
   context.registerDependency(source);
+
+  if (current) {
+    if (options.persistData && !current.persist) {
+      current.persist = true;
+      current.baseline = await dataFingerprint(stagedSource);
+    }
+
+    await inspect(current.directory);
+
+    return current;
+  }
+
   const directory = await mkdtemp(path.join(context.generatedDir, 'regolith-node-'));
   const data = path.join(directory, 'data');
 
@@ -152,9 +193,16 @@ async function sessionFor(context: BuildContext, options: NodeFilterOptions): Pr
     await mkdir(data);
   }
 
-  const session = { directory, dataSource: source };
+  const session: Session = { directory, dataSource: source, persist: options.persistData === true };
 
-  sessions.set(context, session);
+  if (session.persist) {
+    session.baseline = await dataFingerprint(stagedSource);
+  }
+
+  const entries = sessions.get(context) ?? new Map<string, Session>();
+
+  entries.set(key, session);
+  sessions.set(context, entries);
 
   return session;
 }
@@ -257,6 +305,125 @@ export async function runNodeFilter(context: BuildContext, options: NodeFilterOp
     if (packs[role]) {
       await rm(packs[role]!, { recursive: true, force: true });
       await cp(path.join(session.directory, role), packs[role]!, { recursive: true });
+    }
+  }
+}
+
+/** Publish opted-in data with pack publication, restoring authored data if publication fails. */
+export async function publishNodeData<T>(context: BuildContext, publish: () => Promise<T>): Promise<T> {
+  const all = [...sessions.get(context)?.values() ?? []];
+  const selected = all.filter(session => session.persist);
+
+  if (!selected.length) {
+    return publish();
+  }
+
+  const jobs: { source: string; candidate: string; backup?: string; installed: boolean; fingerprint: string; session: Session }[] = [];
+  const locks: string[] = [];
+  let retainBackups = false;
+
+  for (const session of selected) {
+    const source = session.dataSource;
+    const parts = path.relative(context.projectRoot, source).split(path.sep);
+    const roots = [...Object.values(context.allPacks ?? context.packs).map(directory => path.join(context.projectRoot, path.relative(context.stagedRoot, directory))), ...Object.values(context.outputPaths)];
+
+    if (!contains(context.projectRoot, source) || source === context.projectRoot
+      || parts.some(part => ['.git', 'node_modules', '.bedrock-core'].includes(part) || part.includes('.builder-'))
+      || roots.some(root => contains(root, source) || contains(source, root))) {
+      throw new Error('Persistent Node data must use a dedicated source directory outside packs, exports and project internals: ' + source);
+    }
+
+    if (all.some(other => other !== session && (contains(source, other.dataSource) || contains(other.dataSource, source)))) {
+      throw new Error('Persistent Node data sources must not overlap: ' + source);
+    }
+  }
+
+  try {
+    for (const session of selected.sort((a, b) => a.dataSource.localeCompare(b.dataSource))) {
+      context.signal?.throwIfAborted();
+      const source = session.dataSource;
+      const lock = source + '.builder-data-lock';
+
+      await mkdir(lock);
+      locks.push(lock);
+
+      if (await dataFingerprint(source) !== session.baseline) {
+        throw new Error('Node data changed during the build: ' + source);
+      }
+
+      const job = { source, candidate: source + '.builder-data-' + randomUUID(), installed: false, fingerprint: '', session };
+
+      jobs.push(job);
+      await cp(path.join(session.directory, 'data'), job.candidate, { recursive: true });
+      job.fingerprint = await dataFingerprint(job.candidate);
+    }
+
+    return await withSourceWrites(context.projectRoot, jobs.map(job => ({
+      directory: job.source,
+      async matches() {
+        try {
+          return await dataFingerprint(job.source) === (job.installed ? job.fingerprint : job.session.baseline);
+        } catch { return false; }
+      },
+    })), async () => {
+      try {
+        for (const job of jobs) {
+          context.signal?.throwIfAborted();
+
+          if (await dataFingerprint(job.source) !== job.session.baseline) {
+            throw new Error('Node data changed during the build: ' + job.source);
+          }
+
+          job.backup = job.source + '.builder-data-backup-' + randomUUID();
+          await rename(job.source, job.backup);
+          await rename(job.candidate, job.source);
+          job.installed = true;
+        }
+
+        context.signal?.throwIfAborted();
+        const result = await publish();
+
+        return result;
+      } catch (error) {
+        const failures: unknown[] = [];
+
+        for (const job of [...jobs].reverse()) {
+          try {
+            if (job.installed) {
+              if (await dataFingerprint(job.source) !== job.fingerprint) {
+                throw new Error('Node data was edited during publication; preserving the edited source: ' + job.source, { cause: error });
+              }
+
+              await rm(job.source, { recursive: true, force: true });
+              job.installed = false;
+            }
+
+            if (job.backup && await exists(job.backup)) {
+              await rename(job.backup, job.source);
+              job.backup = undefined;
+            }
+          } catch (failure) {
+            failures.push(failure);
+          }
+        }
+
+        if (failures.length) {
+          retainBackups = true;
+          throw new AggregateError([error, ...failures], 'Node data rollback failed; backups retained at ' + jobs.flatMap(job => job.backup ?? []).join(', '), { cause: error });
+        }
+
+        throw error;
+      }
+    });
+  } finally {
+    const cleanup = [...jobs.flatMap(job => [job.candidate, ...(job.backup && !retainBackups ? [job.backup] : [])]), ...locks];
+
+    for (const file of cleanup) {
+      try {
+        await rm(file, { recursive: true, force: true });
+      } catch {
+        context.logger.warn?.('Node data cleanup failed: ' + file);
+      }
     }
   }
 }

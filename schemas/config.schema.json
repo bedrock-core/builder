@@ -164,15 +164,20 @@
               "$ref": "#/definitions/nonempty",
               "description": "Local TS/JS module or npm package exporting run(context, settings)."
             },
-            "targets": {
-              "$ref": "#/definitions/pluginTargets"
-            },
             "scope": {
               "enum": [
                 "pack",
                 "project"
               ],
-              "description": "Targeted module plugins run per pack unless project scope is selected."
+              "description": "Plugins declaring requirements run per owner unless project scope is selected."
+            },
+            "packs": {
+              "$ref": "#/definitions/packIds",
+              "description": "Restrict eligible owners to these configured pack IDs."
+            },
+            "links": {
+              "$ref": "#/definitions/packLinks",
+              "description": "Owner pack IDs and named plugin requirements mapped to direct dependencies."
             }
           }
         },
@@ -182,19 +187,10 @@
           "required": [
             "script"
           ],
-          "not": {
-            "required": [
-              "targets",
-              "packs"
-            ]
-          },
           "properties": {
             "script": {
               "$ref": "#/definitions/nonempty",
               "description": "Standalone Node entry point, relative to filterDir, using the Regolith BP/RP/data contract."
-            },
-            "targets": {
-              "$ref": "#/definitions/pluginTargets"
             },
             "filterDir": {
               "$ref": "#/definitions/nonempty",
@@ -202,11 +198,17 @@
             },
             "dataPath": {
               "$ref": "#/definitions/nonempty",
-              "description": "Project directory copied into shared staged data. Defaults to ./data when present."
+              "description": "Project-relative authored data source. Steps using the same source share its working copy; distinct sources remain independent. Defaults to ./data when present."
             },
-            "packs": {
+            "nodeArguments": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Node flags before the script, such as loader flags."
+            },
+            "folders": {
               "type": "object",
-              "minProperties": 1,
               "additionalProperties": false,
               "properties": {
                 "BP": {
@@ -216,53 +218,15 @@
                   "$ref": "#/definitions/nonempty"
                 }
               },
-              "description": "Conventional folders mapped to configured pack IDs. Omission infers one behavior and one resource pack."
+              "description": "Temporary BP/RP folders mapped to configured pack IDs. Omission infers one behavior and one resource pack; an empty map selects data-only processing."
             },
-            "nodeArguments": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "description": "Node flags before the script, such as loader flags."
+            "persistData": {
+              "type": "boolean",
+              "description": "Write an explicit dataPath back after successful pack validation and publication. Defaults to false."
             }
           }
         }
       ]
-    },
-    "pluginTargets": {
-      "anyOf": [
-        {
-          "enum": [
-            "resource",
-            "behavior",
-            "both"
-          ]
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "minProperties": 1,
-          "properties": {
-            "packs": {
-              "type": "array",
-              "minItems": 1,
-              "uniqueItems": true,
-              "items": {
-                "$ref": "#/definitions/nonempty"
-              }
-            },
-            "modules": {
-              "type": "array",
-              "minItems": 1,
-              "uniqueItems": true,
-              "items": {
-                "$ref": "#/definitions/nonempty"
-              }
-            }
-          }
-        }
-      ],
-      "description": "Select pack IDs intersected with any-of module capabilities. Each pack is selected once."
     },
     "packDefinition": {
       "type": "object",
@@ -503,6 +467,59 @@
             "type": "string"
           },
           "description": "Script arguments following nonempty JSON settings. With empty settings, they start at argv[2]."
+        },
+        "packs": {
+          "$ref": "#/definitions/packIds"
+        },
+        "links": {
+          "$ref": "#/definitions/packLinks"
+        },
+        "folders": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "BP": {
+              "$ref": "#/definitions/nonempty"
+            },
+            "RP": {
+              "$ref": "#/definitions/nonempty"
+            }
+          },
+          "description": "Temporary BP/RP folders mapped to configured pack IDs. Omission infers one behavior and one resource pack; an empty map selects data-only processing."
+        },
+        "dataPath": {
+          "$ref": "#/definitions/nonempty"
+        },
+        "persistData": {
+          "type": "boolean"
+        }
+      }
+    },
+    "packIds": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/definitions/nonempty"
+      }
+    },
+    "packLinks": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/nonempty"
+            },
+            {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/definitions/nonempty"
+              }
+            }
+          ]
         }
       }
     }

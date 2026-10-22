@@ -1,5 +1,5 @@
 import { builtinPlugins } from './builtins.ts';
-import { validatePluginDefinition, type NodePluginDefinition, type PluginTargets, type ProjectConfig, type StageName, type Settings } from './config.ts';
+import { validatePluginDefinition, type NodePluginDefinition, type ModulePluginDefinition, type ProjectConfig, type StageName, type Settings } from './config.ts';
 /** Ordered built-in boundaries; automatic input detection happens during execution. */
 export const stages: readonly StageName[] = Object.freeze(Object.keys(builtinPlugins) as StageName[]);
 /** Resolved plugin definition and invocation settings at one pipeline boundary. */
@@ -7,12 +7,10 @@ export type PlannedPlugin = {
   kind: 'plugin';
   plugin: string;
   settings: Settings;
-  targets?: PluginTargets;
-  scope?: 'pack' | 'project';
   mode?: 'auto' | 'always';
   position: 'before' | 'after';
   boundary: string;
-} & ({ module: string; script?: never } | (NodePluginDefinition & { module?: never; arguments: string[] }));
+} & ((ModulePluginDefinition & { script?: never }) | (NodePluginDefinition & { module?: never; arguments: string[] }));
 /** Built-in or lifecycle operation in a resolved plan. */
 export type PlannedStage = {
   kind: 'stage';
@@ -135,6 +133,35 @@ export function planBuild(config: ProjectConfig, profileName = 'default'): Plann
       throw new Error(`Automatic detection requires a module plugin: ${step.plugin}`);
     }
 
+    if ('script' in definition && (step.packs !== undefined || step.links !== undefined)) {
+      throw new Error(`Pack and link overrides require a native module plugin: ${step.plugin}`);
+    }
+
+    if ('module' in definition && (step.packs !== undefined || step.links !== undefined)) {
+      validatePluginDefinition({ module: definition.module,
+        ...(step.packs === undefined ? {} : { packs: step.packs }),
+        ...(step.links === undefined ? {} : { links: step.links }),
+      }, step.plugin);
+    }
+
+    const scriptOverrides = {
+      ...(step.folders === undefined ? {} : { folders: step.folders }),
+      ...(step.dataPath === undefined ? {} : { dataPath: step.dataPath }),
+      ...(step.persistData === undefined ? {} : { persistData: step.persistData }),
+    };
+
+    if ('module' in definition && Object.keys(scriptOverrides).length) {
+      throw new Error(`Folder and data overrides require a Node script: ${step.plugin}`);
+    }
+
+    const script = 'script' in definition
+      ? validatePluginDefinition({ ...definition, ...scriptOverrides }, step.plugin) as NodePluginDefinition
+      : undefined;
+
+    if (script?.persistData && script.dataPath === undefined) {
+      throw new Error(`Persistent Node data requires an explicit dataPath: ${step.plugin}`);
+    }
+
     const invocation = {
       kind: 'plugin' as const,
       plugin: step.plugin,
@@ -145,8 +172,17 @@ export function planBuild(config: ProjectConfig, profileName = 'default'): Plann
     };
 
     return 'module' in definition
-      ? { ...invocation, ...definition }
-      : { ...invocation, ...definition, arguments: step.arguments ?? [] };
+      ? { ...invocation, ...definition,
+          ...(step.packs === undefined ? {} : { packs: step.packs as string[] }),
+          ...(step.links === undefined
+            ? {}
+            : { links: Object.fromEntries(
+                [...new Set([...Object.keys(definition.links ?? {}), ...Object.keys(step.links as object)])].map(owner => [owner, {
+                  ...definition.links?.[owner], ...(step.links as ModulePluginDefinition['links'])?.[owner],
+                }]),
+              ) }),
+        }
+      : { ...invocation, ...script!, arguments: step.arguments ?? [] };
   });
   const at = (position: 'before' | 'after', boundary: string) =>
     hooks.filter(step => step.position === position && step.boundary === boundary);

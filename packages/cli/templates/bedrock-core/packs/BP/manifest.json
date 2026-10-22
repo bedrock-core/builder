@@ -24,8 +24,7 @@
     },
     {
       "uuid": "761ecd37-ad1c-4a64-862a-d6cc38767426",
-      "version": "1.12.1",
-      "description": "@bedrock-core shared resource pack"
+      "version": "1.12.1"
     },
     {
       "module_name": "@minecraft/server",

@@ -119,10 +119,11 @@ test('targeted hooks see profile-selected manifests and project invocations reta
   const project = await fixture(t);
 
   await writeFile(path.join(project.project, 'packs/visuals/manifest.release.json'), JSON.stringify({ extends: './manifest.json', header: { version: '3.0.0' } }));
-  project.config.bedrockCore.plugins = { probe: { module: './probe.mjs', targets: { modules: ['script'] }, scope: 'project' } };
+  project.config.bedrockCore.plugins = { probe: { module: './probe.mjs', scope: 'project' } };
   project.config.bedrockCore.profiles.default.steps = [{ plugin: 'probe', after: 'prepare' }];
   project.config.bedrockCore.profiles.default.stages.manifest = { manifestPath: 'packs/visuals/manifest.release.json' };
   await writeFile(path.join(project.project, 'probe.mjs'), `
+    export const requirements = { modules: ['script'] };
     import { writeFile } from 'node:fs/promises';
     import path from 'node:path';
     export async function run(context) {
@@ -194,5 +195,68 @@ test('manifest defaults retain explicit values and reject unknown pack reference
 
   for (const dependency of [{ pack: 'unknown' }, { uuid: 'invalid', version: '1.0.0' }, { uuid: manifest.header.uuid, module_name: '@minecraft/server', version: '1.0.0' }]) {
     assert.throws(() => resolveProjectManifests({ logic: { ...manifest, dependencies: [dependency] } }, project), /invalid/);
+  }
+});
+
+test('package license and homepage fill manifest defaults while preserving authored metadata', async (t) => {
+  const project = await fixture(t);
+  const pkg = { name: 'licensed-project', version: '2.4.0', license: 'MIT', homepage: 'https://example.com/project', url: 'https://example.com/fallback' };
+
+  await writeFile(path.join(project.project, 'package.json'), JSON.stringify(pkg));
+  const resourceFile = path.join(project.project, 'packs/visuals/manifest.json');
+  const resource = await json(resourceFile);
+
+  resource.metadata = { authors: ['Pack author'], license: 'Apache-2.0', url: 'https://example.com/pack', generated_with: { 'custom_tool': ['1.0.0'], 'bedrock-core': ['0.0.1'] } };
+  await writeFile(resourceFile, JSON.stringify(resource));
+  const source = await readFile(resourceFile, 'utf8');
+  const result = await runBuild({ configPath: project.configPath, logger: {} });
+  const behavior = (await json(path.join(result.outputPaths.gameplay, 'manifest.json'))).metadata;
+  const metadata = (await json(path.join(result.outputPaths.visuals, 'manifest.json'))).metadata;
+
+  assert.deepEqual(behavior.authors, ['Creator']);
+  assert.equal(behavior.license, 'MIT');
+  assert.equal(behavior.url, pkg.homepage);
+  assert.equal(behavior.product_type, undefined);
+  assert.deepEqual(metadata.authors, ['Pack author']);
+  assert.equal(metadata.license, 'Apache-2.0');
+  assert.equal(metadata.url, 'https://example.com/pack');
+  assert.deepEqual(metadata.generated_with.custom_tool, ['1.0.0']);
+  assert.deepEqual(metadata.generated_with['bedrock-core'], ['0.0.1', ...behavior.generated_with['bedrock-core']]);
+  assert.equal(await readFile(resourceFile, 'utf8'), source);
+  assert.ok(result.dependencies.includes(path.join(project.project, 'package.json')));
+  const again = resolveProjectManifests({ visuals: await json(path.join(result.outputPaths.visuals, 'manifest.json')) }, { namespace: 'test', name: 'Name', description: '', authors: [], targetVersion: '1.26.50' });
+
+  assert.deepEqual(again.visuals.metadata.generated_with, metadata.generated_with);
+});
+
+test('root license text and package URL are tracked across rebuilds', async (t) => {
+  const project = await fixture(t);
+
+  await writeFile(path.join(project.project, 'package.json'), JSON.stringify({ version: '2.4.0', url: 'https://example.com' }));
+  const license = path.join(project.project, 'LICENSE');
+
+  await writeFile(license, 'License text\nCopyright Example\n');
+  let result = await runBuild({ configPath: project.configPath, logger: {} });
+  let metadata = (await json(path.join(result.outputPaths.gameplay, 'manifest.json'))).metadata;
+
+  assert.equal(metadata.license, 'License text\nCopyright Example');
+  assert.equal(metadata.url, 'https://example.com');
+  assert.ok(result.dependencies.includes(license));
+  await writeFile(license, 'Updated license text');
+  result = await runBuild({ configPath: project.configPath, logger: {} });
+  metadata = (await json(path.join(result.outputPaths.gameplay, 'manifest.json'))).metadata;
+  assert.equal(metadata.license, 'Updated license text');
+  await writeFile(path.join(project.project, 'package.json'), JSON.stringify({ version: '2.4.0', license: 'SEE LICENSE IN terms.txt' }));
+  await assert.rejects(runBuild({ configPath: project.configPath, logger: {} }), /license file is missing or empty/);
+  await writeFile(path.join(project.project, 'terms.txt'), 'Custom terms');
+  result = await runBuild({ configPath: project.configPath, logger: {} });
+  assert.equal((await json(path.join(result.outputPaths.gameplay, 'manifest.json'))).metadata.license, 'Custom terms');
+});
+
+test('manifest tool metadata rejects malformed authored values', () => {
+  const project = { namespace: 'test', name: 'Name', description: '', authors: [], targetVersion: '1.26.50' };
+
+  for (const metadata of [[], { generated_with: [] }, { generated_with: { 'bedrock-core': '1.0.0' } }, { generated_with: { 'bedrock-core': ['invalid'] } }]) {
+    assert.throws(() => resolveProjectManifests({ logic: { ...manifestFor('data'), metadata } }, project), /metadata/);
   }
 });

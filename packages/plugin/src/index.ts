@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import { glob, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { ProjectMetadata } from './project.ts';
+import type { LinkedPacks, PluginRequirements } from './routing.ts';
+export type { PackRequirement, PluginRequirements, PackLinkOverrides, LinkedPacks } from './routing.ts';
 export type { ProjectMetadata } from './project.ts';
 
 /** Manifest classification supplied by the host for the current pack. */
@@ -139,12 +141,14 @@ export interface BuildContext {
   generatedImportsFor?(pack: string): Readonly<Record<string, string>>;
   /** Whether the profile enables verified output reuse. */
   readonly cache: boolean;
-  /** Pack IDs mapped to staged directories; targeted invocations expose one pack. */
+  /** Participating pack IDs mapped to staged directories, including declared related packs. */
   readonly packs: Readonly<Record<string, string>>;
   /** All configured staged directories, including destinations outside a targeted invocation. */
   readonly allPacks?: Readonly<Record<string, string>>;
   /** Current pack for a targeted invocation. */
   readonly pack?: PackInfo;
+  /** Declared related packs; project-scoped invocations contain the union for their owners. */
+  readonly linkedPacks?: LinkedPacks;
   /** Absolute export destinations, restricted for targeted invocations. */
   readonly outputPaths: Readonly<Record<string, string>>;
   /** Selected profile. */
@@ -199,6 +203,8 @@ export type BuildStep = (
 
 /** Module contract used for both built-in and external plugins. */
 export interface BuildPlugin {
+  /** Module eligibility and direct pack requirements. Omission denotes a project-wide tool. */
+  requirements?: PluginRequirements;
   /** Declare non-template pack input directories without evaluating their content. */
   inputDirectories?: (context: BuildContext, settings: Record<string, unknown>) => readonly string[] | Promise<readonly string[]>;
   /** Apply settings to the staged workspace. */

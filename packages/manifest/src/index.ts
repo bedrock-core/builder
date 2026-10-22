@@ -1,6 +1,9 @@
 import { readFile, realpath, stat } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { JsonFormatting, ProjectMetadata } from '@bedrock-core/builder-plugin';
+
+const toolVersion: string = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
 /** Manifest files selected by a profile and formatting for the resolved output. */
 export interface ManifestSettings {
@@ -342,12 +345,38 @@ export function resolveProjectManifests(inputs: Readonly<Record<string, JsonObje
       }
     }
 
-    if (project.authors.length) {
-      const metadata = isRecord(manifest.metadata) ? manifest.metadata as JsonObject : {};
-
-      metadata.authors ??= [...project.authors];
-      manifest.metadata = metadata;
+    if (manifest.metadata !== undefined && !isRecord(manifest.metadata)) {
+      throw new Error(`Pack ${id} metadata must be an object`);
     }
+
+    const metadata = (manifest.metadata ?? {}) as JsonObject;
+
+    if (project.authors.length) {
+      metadata.authors ??= [...project.authors];
+    }
+
+    if (project.license) {
+      metadata.license ??= project.license;
+    }
+
+    if (project.url) {
+      metadata.url ??= project.url;
+    }
+
+    if (metadata.generated_with !== undefined && !isRecord(metadata.generated_with)) {
+      throw new Error(`Pack ${id} metadata.generated_with must be an object`);
+    }
+
+    const generated = (metadata.generated_with ?? {}) as JsonObject;
+    const versions = generated['bedrock-core'] ?? [];
+
+    if (!Array.isArray(versions) || versions.some(version => typeof version !== 'string' || !isManifestVersion(version))) {
+      throw new Error(`Pack ${id} metadata.generated_with.bedrock-core must list semantic versions`);
+    }
+
+    generated['bedrock-core'] = [...new Set([...versions, toolVersion])];
+    metadata.generated_with = generated;
+    manifest.metadata = metadata;
   }
 
   const uuids = new Map<string, string>();

@@ -261,6 +261,7 @@ test('targeted plugins scope bundler extensions to their current pack by default
 
   project.config.packs = { visuals: project.config.packs.visuals, gameplay: project.config.packs.gameplay };
   await put(project, 'targeted.ts', `
+    export const requirements = { modules: ['data', 'script', 'resources'] };
     export function run(context) {
       const value = context.pack.kind === 'behavior' ? 22 : 73;
       context.registerBundleExtension({
@@ -273,7 +274,7 @@ test('targeted plugins scope bundler extensions to their current pack by default
       });
     }
   `);
-  project.config.bedrockCore.plugins = { targeted: { module: './targeted.ts', targets: 'both' } };
+  project.config.bedrockCore.plugins = { targeted: { module: './targeted.ts' } };
   project.config.bedrockCore.profiles.default.steps = [{ plugin: 'targeted', before: 'bundler' }];
   await save(project);
   const result = await runBuild({ configPath: project.configPath, logger: {} });

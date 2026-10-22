@@ -102,7 +102,9 @@ test('final plugin manifest changes are validated before replacing an export', a
 
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(path.join(root, 'pack'));
-  await writeFile(path.join(root, 'pack/manifest.json'), JSON.stringify(manifestFor('data')));
+  const authored = JSON.stringify(manifestFor('data'));
+
+  await writeFile(path.join(root, 'pack/manifest.json'), authored);
   const config = configFor({ gameplay: './pack' });
   const configPath = path.join(root, 'config.json');
 
@@ -127,7 +129,7 @@ test('final plugin manifest changes are validated before replacing an export', a
   await writeFile(configPath, JSON.stringify(config));
   await assert.rejects(runBuild({ configPath, logger: {} }), /manifest.header.uuid/);
   assert.equal(await readFile(path.join(root, 'dist/gameplay/manifest.json'), 'utf8'), previous);
-  assert.equal(await readFile(path.join(root, 'pack/manifest.json'), 'utf8'), previous);
+  assert.equal(await readFile(path.join(root, 'pack/manifest.json'), 'utf8'), authored);
 
   hook.settings.uuid = 'abcdefff-1234-1234-1234-123456789abc';
   await writeFile(configPath, JSON.stringify(config));

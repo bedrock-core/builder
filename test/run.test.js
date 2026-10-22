@@ -85,6 +85,7 @@ test('TS producer and consumer share generated JSON without touching source', as
 
 test('targeted modules receive one current pack and record distinct artifact owners', async (t) => {
   const project = await fixture(t, `
+    export const requirements = { modules: ['resources'] };
     import { writeFile } from 'node:fs/promises';
     import path from 'node:path';
     const seen = [];
@@ -106,7 +107,6 @@ test('targeted modules receive one current pack and record distinct artifact own
     project.config.bedrockCore.profiles.default.export[id] = './built/' + id;
   }
 
-  project.config.bedrockCore.plugins.custom.targets = 'resource';
   project.config.bedrockCore.profiles.default.steps[0].settings = { amount: 4 };
   await writeFile(project.configPath, JSON.stringify(project.config));
   const result = await runBuild(project.options);

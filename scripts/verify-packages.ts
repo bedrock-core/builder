@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,6 +51,39 @@ try {
     import { Screen, Text } from '@bedrock-core/ui';
     export default function Page() { return <Screen><Text>Installed UI compiler</Text></Screen>; }
   `);
+  const addonConfig = JSON.parse(await readFile(path.join(root, 'addon/config.json'), 'utf8'));
+
+  addonConfig.bedrockCore.plugins = { routing: { module: './routing.mjs', packs: ['logic'], links: { logic: { assets: 'assets' } } } };
+  addonConfig.bedrockCore.plugins.legacy = { script: './legacy.cjs', folders: { BP: 'logic', RP: 'assets' }, dataPath: './filter-data' };
+  addonConfig.bedrockCore.profiles.default.steps = [
+    { plugin: 'routing', after: 'manifest' },
+    { plugin: 'legacy', after: 'manifest', settings: { output: 'first' } },
+    { plugin: 'legacy', after: 'manifest', dataPath: './other-data', settings: { output: 'other' } },
+    { plugin: 'legacy', before: 'export', settings: { output: 'again' } },
+  ];
+
+  for (const [directory, count] of [['filter-data', 7], ['other-data', 10]] as const) {
+    await mkdir(path.join(root, 'addon', directory));
+    await writeFile(path.join(root, 'addon', directory, 'input.json'), JSON.stringify({ count }));
+  }
+
+  await writeFile(path.join(root, 'addon/legacy.cjs'), `
+    const fs = require('node:fs');
+    const settings = JSON.parse(process.argv[2]);
+    const value = JSON.parse(fs.readFileSync('data/input.json', 'utf8'));
+    fs.writeFileSync('RP/' + settings.output + '.json', JSON.stringify(value));
+    fs.writeFileSync('data/input.json', JSON.stringify({ count: value.count + 1 }));
+  `);
+  await writeFile(path.join(root, 'addon/config.json'), JSON.stringify(addonConfig));
+  await writeFile(path.join(root, 'addon/routing.mjs'), `
+    import { writeFile } from 'node:fs/promises';
+    import path from 'node:path';
+    export const requirements = { modules: ['script'], dependencies: { assets: { modules: ['resources'] } } };
+    export async function run(context) {
+      const destination = context.linkedPacks.assets[0];
+      await writeFile(path.join(destination.path, 'routing.json'), JSON.stringify({ owner: context.pack.id, destination: destination.id }));
+    }
+  `);
   await writeFile(path.join(root, 'verify.mjs'), `
     import assert from 'node:assert/strict';
     import { createRequire } from 'node:module';
@@ -85,6 +118,11 @@ try {
     validateConfig(JSON.parse(await readFile('addon/config.json', 'utf8')));
     const result = await runBuild({ configPath: 'addon/config.json', logger: {} });
     assert.equal(result.packs.length, 3);
+    for (const [name, count] of [['first', 7], ['other', 10], ['again', 8]]) {
+      assert.deepEqual(JSON.parse(await readFile(result.outputPaths.assets + '/' + name + '.json', 'utf8')), { count });
+    }
+    assert.deepEqual(JSON.parse(await readFile('addon/filter-data/input.json', 'utf8')), { count: 7 });
+    assert.deepEqual(JSON.parse(await readFile(result.outputPaths.assets + '/routing.json', 'utf8')), { owner: 'logic', destination: 'assets' });
     assert.ok(result.validation.files.some(file => file.schema));
     assert.equal(result.stages.find(stage => stage.stage === 'ui-compiler').status, 'executed');
     const cached = await runBuild({ configPath: 'addon/config.json', logger: {} });
@@ -100,9 +138,10 @@ try {
     import guides from '@bedrock-core/generated/guides/logic';
     import type { ContentValidationOptions } from '@bedrock-core/builder-validation';
     import type { UiSettings } from '@bedrock-core/builder-ui';
-    import type { BuildPlugin, BuildContext, BundleExtension } from '@bedrock-core/builder-plugin';
+    import type { BuildPlugin, BuildContext, BundleExtension, PluginRequirements } from '@bedrock-core/builder-plugin';
     import * as generatorPlugin from '@bedrock-core/builder-generator/plugin';
-    const plugin: BuildPlugin = generatorPlugin;
+    const requirements: PluginRequirements = { modules: ['script'], dependencies: { assets: { modules: ['resources'] } } };
+    const plugin: BuildPlugin = { ...generatorPlugin, requirements };
     const extension: BundleExtension = { id: 'example:types', version: '1', plugins: [{ name: 'typed', setup(build) { build.onLoad({ filter: /example/ }, () => ({ contents: '', loader: 'js' })); } }] };
     async function useContext(context: BuildContext) {
       context.registerBundleExtension(extension);

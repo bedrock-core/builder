@@ -5,6 +5,7 @@ import { validateConfig, type ProjectConfig } from './config.ts';
 import { resolveExportPaths } from './export.ts';
 import { runBuild } from './run.ts';
 import { inputLocations } from './file-cache.ts';
+import { observeSourceWrites } from './source-writes.ts';
 import type { BuildOptions, BuildResult } from './contract.d.ts';
 
 /** Build options with required cancellation and optional result/error callbacks. */
@@ -52,6 +53,7 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
   let active: Promise<void> | undefined;
   let failure: unknown;
   const signatures = new Map<string, string>();
+  const ownedWrites = new Set<string>();
 
   let removeAbortListener = () => {};
 
@@ -78,7 +80,7 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
   function ignored(file: string): boolean {
     const parts = path.relative(project, file).split(path.sep);
 
-    if (parts.some(part => ['.git', 'node_modules', '.bedrock-core'].includes(part))) {
+    if (parts.some(part => ['.git', 'node_modules', '.bedrock-core'].includes(part) || part.includes('.builder-data-'))) {
       return true;
     }
 
@@ -284,11 +286,16 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
     // Windows may emit unchanged directory events while recursive watches are attached.
     file = file.startsWith('\\\\?\\') ? file.slice(4) : file;
 
-    if (ignored(file)) {
+    if (ignored(file) || [...ownedWrites].some(root => contains(root, file))) {
       return;
     }
 
     const current = await signature(file);
+
+    if ([...ownedWrites].some(root => contains(root, file))) {
+      return;
+    }
+
     const previous = signatures.get(file);
 
     // A new empty directory may contain only ignored output paths.
@@ -328,6 +335,39 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
     void changed(file).catch(report);
   });
 
+  const stopObservingWrites = observeSourceWrites(project, (writes) => {
+    const directories = writes.map(write => write.directory);
+
+    for (const directory of directories) {
+      ownedWrites.add(directory);
+    }
+
+    return async () => {
+      try {
+        for (const directory of directories) {
+          for (const file of signatures.keys()) {
+            if (contains(directory, file)) {
+              signatures.set(file, await signature(file));
+            }
+          }
+
+          await snapshot(directory);
+          signatures.set(path.dirname(directory), await signature(path.dirname(directory)));
+        }
+
+        if ((await Promise.all(writes.map(write => write.matches()))).some(matches => !matches)) {
+          requestBuild();
+        }
+      } catch (error) {
+        report(error);
+      } finally {
+        for (const directory of directories) {
+          ownedWrites.delete(directory);
+        }
+      }
+    };
+  });
+
   try {
     await new Promise<void>((resolve) => {
       const stop = () => {
@@ -350,6 +390,7 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
     });
   } finally {
     stopped = true;
+    stopObservingWrites();
     removeAbortListener();
     clearTimeout(timer);
     watcher.close();

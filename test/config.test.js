@@ -160,8 +160,8 @@ test('named Node scripts and native modules validate without changing settings',
   const config = example();
 
   config.bedrockCore.plugins = {
-    generate: { script: './filters/main.cjs', filterDir: '.', dataPath: './data', packs: { RP: 'visuals' }, nodeArguments: ['--no-warnings'] },
-    finish: { module: './finish.ts', targets: 'resource' },
+    generate: { script: './filters/main.cjs', filterDir: '.', dataPath: './data', folders: { RP: 'visuals' }, nodeArguments: ['--no-warnings'] },
+    finish: { module: './finish.ts', packs: ['visuals'] },
   };
   config.bedrockCore.profiles.default.steps = [
     { plugin: 'generate', after: 'prepare', settings: { name: 'Example' }, arguments: ['extra'] },
@@ -176,7 +176,7 @@ test('named Node scripts and native modules validate without changing settings',
     {}, { script: '' }, { script: './main.js', module: './main.js' },
     { script: './main.js', settings: {} }, { script: './main.js', arguments: ['extra'] },
     { script: './main.js', filterDir: 7 }, { script: './main.js', nodeArguments: [true] },
-    { script: './main.js', packs: {} }, { script: './main.js', packs: { RP: 7 } },
+    { script: './main.js', folders: { unknown: 'visuals' } }, { script: './main.js', folders: { RP: 7 } },
     { script: './main.js', targets: 'textures' }, { script: './main.js', targets: ['resource'] },
     { script: './main.js', targets: 'resource', packs: { RP: 'visuals' } },
   ]) {
@@ -185,14 +185,12 @@ test('named Node scripts and native modules validate without changing settings',
   }
 });
 
-test('pack targets validate for scripts and modules', () => {
-  for (const targets of ['resource', 'behavior', 'both']) {
-    for (const entry of [{ script: './filter.cjs' }, { module: './plugin.ts' }]) {
-      const config = example();
+test('scripts use folder mappings while native plugins use owner restrictions', () => {
+  const config = example();
 
-      config.bedrockCore.plugins = { generate: { ...entry, targets } };
-      config.bedrockCore.profiles.default.steps = [{ plugin: 'generate', after: 'prepare' }];
-      assert.equal(planBuild(validateConfig(config)).find(step => step.plugin === 'generate').targets, targets);
-    }
-  }
+  config.bedrockCore.plugins = { generate: { script: './filter.cjs', folders: { RP: 'visuals' } } };
+  config.bedrockCore.profiles.default.steps = [{ plugin: 'generate', after: 'prepare' }];
+  assert.deepEqual(planBuild(validateConfig(config)).find(step => step.plugin === 'generate').folders, { RP: 'visuals' });
+  config.bedrockCore.plugins.generate = { module: './plugin.ts', packs: ['visuals'] };
+  assert.deepEqual(planBuild(validateConfig(config)).find(step => step.plugin === 'generate').packs, ['visuals']);
 });

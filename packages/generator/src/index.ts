@@ -173,10 +173,16 @@ export async function generateTemplates(options: GeneratorOptions): Promise<Gene
           throw new Error(`Template must export default JSON data or [name, data, items]: ${source}`);
         }
 
-        const value = module.default;
-        const category = templateCategory(value);
+        let value: unknown = await module.default;
+        const defaultCategory = templateCategory(value);
 
-        if (Array.isArray(value)) {
+        if (typeof value === 'function') {
+          value = await value();
+        }
+
+        const category = templateCategory(value) ?? defaultCategory;
+
+        if (Array.isArray(value) && (typeof value[0] === 'function' || typeof value[1] === 'function')) {
           if (value.length !== 3 || typeof value[0] !== 'function' || typeof value[1] !== 'function' || !Array.isArray(value[2])) {
             throw new Error(`Invalid default export array: expected [nameFn, dataFn, items] in ${source}`);
           }
@@ -187,10 +193,8 @@ export async function generateTemplates(options: GeneratorOptions): Promise<Gene
             options.signal?.throwIfAborted();
             emitted.push(document(source, await name(item, index), await data(item, index), category));
           }
-        } else if (value !== null && typeof value === 'object') {
-          emitted.push(document(source, path.basename(source, path.extname(source)), value, category));
         } else {
-          throw new Error(`Unsupported template: expected a default export object or [nameFn, dataFn, items] in ${source}`);
+          emitted.push(document(source, path.basename(source, path.extname(source)), value, category));
         }
 
         const helpers = ['templates', 'category'].map(file => path.join(import.meta.dirname, `${file}.${sourceExtension}`));

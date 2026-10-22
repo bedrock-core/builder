@@ -93,6 +93,7 @@ test('targeted invocations retain the full graph and project scope invokes once 
   await writeFile(path.join(root, 'plugin.ts'), `
     import { writeFile } from 'node:fs/promises';
     import path from 'node:path';
+    export const requirements = { modules: ['data', 'script', 'resources'] };
     export async function run(context, settings) {
       const graph = await context.inspectPacks();
       if (settings.extension) {
@@ -109,8 +110,8 @@ test('targeted invocations retain the full graph and project scope invokes once 
     name: 'Graph', authors: [], targetVersion: '1.26.50', namespace: 'graph_test',
     packs: Object.fromEntries(Object.keys(directories).map(id => [id, `./${id}`])),
     bedrockCore: { formatVersion: '1.0.0', plugins: {
-      owner: { module: './plugin.ts', targets: { modules: ['script', 'data'] } },
-      project: { module: './plugin.ts', targets: { modules: ['resources'] }, scope: 'project' },
+      owner: { module: './plugin.ts', packs: ['gameplay'] },
+      project: { module: './plugin.ts', packs: ['resources', 'extras'], scope: 'project' },
       each: { module: './plugin.ts', scope: 'pack' },
     }, profiles: { default: {
       stages: { bundler: false },

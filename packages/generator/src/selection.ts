@@ -1,4 +1,5 @@
-import { glob, stat } from 'node:fs/promises';
+import { glob, readFile, stat } from 'node:fs/promises';
+import ts from 'typescript';
 import path from 'node:path';
 import type { BuildContext } from '@bedrock-core/builder-plugin';
 
@@ -41,6 +42,21 @@ export async function templateFiles(context: BuildContext, settings: TemplateSel
 
     if (!packPaths.some(directory => within(directory, file))) {
       throw new Error(`Generator templates must be inside configured packs: ${name}`);
+    }
+
+    if (settings.include === undefined) {
+      const source = ts.createSourceFile(file, await readFile(file, 'utf8'), ts.ScriptTarget.Latest, true);
+      const producesOutput = source.statements.some(statement =>
+        (ts.isExportAssignment(statement) && !statement.isExportEquals)
+        || ((ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement))
+          && statement.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.DefaultKeyword))
+        || (ts.isExportDeclaration(statement) && statement.exportClause && ts.isNamedExports(statement.exportClause)
+          && statement.exportClause.elements.some(element => element.name.text === 'default')),
+      );
+
+      if (!producesOutput) {
+        continue;
+      }
     }
 
     files.add(file);

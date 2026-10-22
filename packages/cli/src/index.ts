@@ -29,10 +29,10 @@ program
   .argument('[project-name]', 'Name of the project directory')
   .option('-a, --author <name>', 'Author name (skips the prompt; enables non-interactive use)')
   .option('-d, --description <text>', 'Project description (skips the prompt; enables non-interactive use)')
-  .option('--display-name <name>', 'Human-readable addon name; defaults to the npm project name')
+  .option('--display-name <name>', 'Human-readable project name; defaults to the npm project name')
   .option('--creator-id <id>', 'Stable Minecraft creator identifier')
-  .option('--pack-id <id>', 'Stable Minecraft addon identifier')
-  .addOption(new Option('--preset <preset>', 'Choose a full stack, plain script addon, or resource pack starter').choices(['full', 'script', 'resource']).default('full'))
+  .option('--pack-id <id>', 'Stable runtime addon identifier')
+  .addOption(new Option('--preset <preset>', 'Choose a full framework, behavior-only script, or resource-only project').choices(['full', 'script', 'resource']).default('full'))
   .addOption(new Option('-p, --package-manager <manager>', 'Install with yarn, npm, pnpm, or choose none')
     .choices(['yarn', 'npm', 'pnpm', 'none']))
   .action(async (projectName: string | undefined, options: CliOptions) => {

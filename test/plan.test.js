@@ -87,7 +87,7 @@ test('Node steps resolve named script definitions and pass invocation settings d
     { plugin: 'generate', after: 'prepare', settings: { count: 7 } },
     { plugin: 'custom', before: 'export', settings: { finish: true } },
   ] });
-  const definition = { script: './filters/main.cjs', filterDir: '.', nodeArguments: ['--no-warnings'], targets: 'resource' };
+  const definition = { script: './filters/main.cjs', filterDir: '.', nodeArguments: ['--no-warnings'], folders: { RP: 'visuals' } };
 
   project.bedrockCore.plugins.generate = definition;
   const snapshot = structuredClone(project);
@@ -105,7 +105,7 @@ test('Node steps resolve named script definitions and pass invocation settings d
 test('the planner rejects invalid entries and script arguments on native modules', () => {
   const project = config({ steps: [{ plugin: 'custom', after: 'prepare' }] });
 
-  for (const definition of [{}, { script: 7 }, { script: './main.js', module: './main.js' }, { script: './main.js', packs: { BP: 7 } }]) {
+  for (const definition of [{}, { script: 7 }, { script: './main.js', module: './main.js' }, { script: './main.js', folders: { BP: 7 } }]) {
     project.bedrockCore.plugins.custom = definition;
     assert.throws(() => planBuild(project), /Invalid plugin definition/);
   }
@@ -116,4 +116,22 @@ test('the planner rejects invalid entries and script arguments on native modules
   project.bedrockCore.plugins.custom = { script: './main.js' };
   project.bedrockCore.profiles.default.steps[0].arguments = [7];
   assert.throws(() => planBuild(project), /Invalid plugin arguments/);
+});
+
+test('script step overrides replace folders and data without changing their definitions', () => {
+  const project = config({ steps: [{ plugin: 'custom', after: 'prepare', folders: { RP: 'textures' }, dataPath: './second', persistData: true }] });
+
+  project.bedrockCore.plugins.custom = { script: './main.js', folders: { BP: 'logic', RP: 'assets' }, dataPath: './first' };
+  const snapshot = structuredClone(project);
+  const step = planBuild(project)[1];
+
+  assert.deepEqual(step.folders, { RP: 'textures' });
+  assert.equal(step.dataPath, './second');
+  assert.equal(step.persistData, true);
+  assert.deepEqual(project, snapshot);
+  project.bedrockCore.plugins.custom = { module: './native.ts' };
+  assert.throws(() => planBuild(project), /Folder and data overrides require a Node script/);
+  project.bedrockCore.plugins.custom = { script: './main.js' };
+  delete project.bedrockCore.profiles.default.steps[0].dataPath;
+  assert.throws(() => planBuild(project), /requires an explicit dataPath/);
 });

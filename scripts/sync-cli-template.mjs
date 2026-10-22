@@ -9,7 +9,7 @@ const template = resolve(root, 'packages/cli/templates/bedrock-core');
 const read = file => JSON.parse(readFileSync(file, 'utf8'));
 const save = (file, value) => writeFileSync(file, JSON.stringify(value, null, '\t') + '\n');
 const uiVersion = read(resolve(uiRoot, 'package.json')).version;
-const builderVersion = read(resolve(root, 'package.json')).version;
+const builderVersion = read(resolve(root, 'package.json')).version.split('-')[0];
 const render = read(resolve(uiRoot, 'packages/resource-pack/packs/RP/manifest.json'));
 
 if (typeof render.header?.uuid !== 'string' || typeof render.header?.version !== 'string') {
@@ -34,6 +34,7 @@ for (const file of ['manifest.json', 'manifest.test.json']) {
   }
 
   dependency.version = render.header.version;
+  delete dependency.description;
   save(manifestFile, manifest);
 }
 

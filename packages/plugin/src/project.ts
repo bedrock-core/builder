@@ -7,4 +7,8 @@ export interface ProjectMetadata {
   readonly targetVersion: string;
   readonly packageName?: string;
   readonly version?: string;
+  /** Project license identifier or root license text. */
+  readonly license?: string;
+  /** Project homepage supplied by package metadata. */
+  readonly url?: string;
 }

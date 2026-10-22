@@ -62,3 +62,6 @@ TODO
 # Generated artifacts
 **/*.generated.json
 **/*.generated.d.ts
+
+# Headless server cache
+.bds/

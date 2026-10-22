@@ -14,14 +14,15 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { validateConfig } from './config.ts';
-import { planBuild } from './plan.ts';
+import { planBuild, type PlannedPlugin } from './plan.ts';
 import { resolveProject, generateProject } from './project.ts';
-import { runNodeFilter } from './regolith.ts';
+import { runNodeFilter, publishNodeData } from './regolith.ts';
 import { builtinPlugins } from './builtins.ts';
 import { loadPlugin, executePlugin } from './plugins.ts';
+import { nativePluginContexts, sharedPackWrites } from './plugin-routing.ts';
 import type { StageName } from './config.ts';
 import type { BuildPlugin, BundleExtension, CacheOptions } from '@bedrock-core/builder-plugin';
-import { inspectPacks, selectPacks, type PackInfo } from './packs.ts';
+import { inspectPacks, type PackInfo } from './packs.ts';
 import { describePack, resolvePackGraph } from '@bedrock-core/builder-plugin';
 import { resolveManifest, resolveProjectManifests, type JsonObject } from '@bedrock-core/builder-manifest';
 import { validatePackManifests } from './manifest.ts';
@@ -84,7 +85,8 @@ export async function runBuild({
   const project = path.dirname(file);
   const config = validateConfig(JSON.parse(await readFile(file, 'utf8')));
   const plan = planBuild(config, profile);
-  const metadata = await resolveProject(config, project);
+  const metadataInputs = new Set<string>();
+  const metadata = await resolveProject(config, project, file => metadataInputs.add(file));
   const implementations = new Map<string, BuildPlugin>();
 
   async function implementation(stage: StageName): Promise<BuildPlugin> {
@@ -192,7 +194,7 @@ export async function runBuild({
 
   return withExportPaths(outputPaths, async (publish) => {
     let workspace: string | undefined;
-    const dependencies = new Set([file, path.join(project, 'package.json'), ...modules.values()]);
+    const dependencies = new Set([file, ...metadataInputs, ...modules.values()]);
     const artifacts = new Map<string, Artifact>();
     const generatedImports = new Map<string, string>();
     const packImports = new Map<string, Map<string, string>>();
@@ -420,6 +422,17 @@ export async function runBuild({
         },
       });
 
+      async function nativeImplementation(step: PlannedPlugin & { module: string }): Promise<BuildPlugin> {
+        const module = modules.get(step.module)!;
+        const local = step.module.startsWith('.') || path.isAbsolute(step.module);
+        const pluginFile = local ? path.join(staged, path.relative(project, module)) : module;
+        const url = pathToFileURL(pluginFile);
+
+        url.searchParams.set('build', path.basename(workspace!));
+
+        return loadPlugin(url.href, step.plugin);
+      }
+
       await generateProject(context, metadata);
 
       for (const [index, step] of plan.entries()) {
@@ -429,18 +442,36 @@ export async function runBuild({
 
         if (step.kind === 'stage' && step.stage === 'generator') {
           for (const producer of plan) {
-            if (producer.kind !== 'stage' || ['prepare', 'validate', 'export'].includes(producer.stage)) {
+            let plugin: BuildPlugin;
+
+            if (producer.kind === 'stage') {
+              if (['prepare', 'validate', 'export'].includes(producer.stage)) {
+                continue;
+              }
+
+              plugin = await implementation(producer.stage as StageName);
+            } else if (producer.module !== undefined) {
+              plugin = await nativeImplementation(producer);
+            } else {
               continue;
             }
 
-            const plugin = await implementation(producer.stage as StageName);
+            if (!plugin.inputDirectories) {
+              continue;
+            }
 
-            for (const directory of await plugin.inputDirectories?.(context, producer.settings ?? {}) ?? []) {
-              if (!Object.values(stagedPacks).some(pack => inside(pack, directory))) {
-                throw new Error('Plugin input directories must be inside configured packs');
+            const invocations = producer.kind === 'stage'
+              ? [context]
+              : nativePluginContexts(context, plugin, producer, plugin.requirements === undefined ? [] : await currentPacks());
+
+            for (const invocation of invocations) {
+              for (const directory of await plugin.inputDirectories(invocation, producer.settings ?? {})) {
+                if (!Object.values(invocation.packs).some(pack => inside(pack, directory))) {
+                  throw new Error('Plugin input directories must be inside selected packs');
+                }
+
+                inputDirectories.add(directory);
               }
-
-              inputDirectories.add(directory);
             }
           }
         }
@@ -450,80 +481,35 @@ export async function runBuild({
         }
 
         if (step.kind === 'plugin') {
-          const selected = step.targets === undefined && step.scope !== 'pack'
-            ? undefined
-            : step.targets === undefined
-              ? await currentPacks()
-              : (
-                  typeof step.targets === 'object'
-                    ? selectPacks(await currentPacks(), step.targets)
-                    : (await currentPacks()).filter(pack => pack.kind === step.targets || (step.targets === 'both' && pack.kind !== 'other'))
-                );
-          const invocations = selected === undefined
-            ? [context]
-            : step.scope === 'project'
-              ? selected.length
-                ? [Object.freeze({
-                    ...context,
-                    get generatedImports() { return context.generatedImports; },
-                    get inputDirectories() { return context.inputDirectories; },
-                    get bundleExtensions() { return context.bundleExtensions; },
-                    registerBundleExtension(extension: BundleExtension) {
-                      context.registerBundleExtension({ ...extension, packs: extension.packs ?? selected.map(pack => pack.id) });
-                    },
-                    packs: Object.freeze(Object.fromEntries(selected.map(pack => [pack.id, pack.path]))),
-                    outputPaths: Object.freeze(Object.fromEntries(selected.map(pack => [pack.id, outputPaths[pack.id]!]))),
-                  })]
-                : []
-              : selected.map(pack => Object.freeze({
-                  ...context,
-                  get generatedImports() {
-                    return context.generatedImportsFor!(pack.id);
-                  },
-                  get inputDirectories() {
-                    return context.inputDirectories;
-                  },
-                  get bundleExtensions() {
-                    return context.bundleExtensions;
-                  },
-                  registerBundleExtension(extension: BundleExtension) {
-                    context.registerBundleExtension({ ...extension, packs: extension.packs ?? [pack.id] });
-                  },
-                  pack,
-                  packs: Object.freeze({ [pack.id]: pack.path }),
-                  outputPaths: Object.freeze({ [pack.id]: outputPaths[pack.id]! }),
-                }));
+          if (step.script === undefined) {
+            const plugin = await nativeImplementation(step);
+            const invocations = nativePluginContexts(context, plugin, step, plugin.requirements === undefined ? [] : await currentPacks());
+            const writes = sharedPackWrites(invocations, step.plugin);
 
-          if (!invocations.length) {
-            logger.info?.(`@bedrock-core/builder: ${owner} skipped (No ${step.targets} packs)`);
+            if (!invocations.length) {
+              logger.info?.(`@bedrock-core/builder: ${owner} skipped (No packs match the plugin module requirements)`);
+            }
+
+            for (const invocation of invocations) {
+              check(signal);
+
+              if (invocation.pack) {
+                owner = `${step.plugin}:${index}:${invocation.pack.id}`;
+                cache.boundary();
+                logger.info?.(`@bedrock-core/builder: ${owner}`);
+              }
+
+              const before = await writes.snapshot(invocation);
+              const outcome = await executePlugin(plugin, invocation, step.settings, step.mode);
+
+              await writes.verify(invocation, before);
+              logger.info?.(`@bedrock-core/builder: ${owner} ${outcome.status}${outcome.reason ? ` (${outcome.reason})` : ''}`);
+            }
+
             continue;
           }
 
-          for (const invocation of invocations) {
-            check(signal);
-
-            if (invocation.pack) {
-              owner = `${step.plugin}:${index}:${invocation.pack.id}`;
-              cache.boundary();
-              logger.info?.(`@bedrock-core/builder: ${owner}`);
-            }
-
-            if (step.script !== undefined) {
-              await runNodeFilter(invocation, step, context);
-              continue;
-            }
-
-            const module = modules.get(step.module)!;
-            const local = step.module.startsWith('.') || path.isAbsolute(step.module);
-            const pluginFile = local ? path.join(staged, path.relative(project, module)) : module;
-            const url = pathToFileURL(pluginFile);
-
-            url.searchParams.set('build', path.basename(workspace));
-            const plugin = await loadPlugin(url.href, step.plugin);
-            const outcome = await executePlugin(plugin, invocation, step.settings, step.mode);
-
-            logger.info?.(`@bedrock-core/builder: ${owner} ${outcome.status}${outcome.reason ? ` (${outcome.reason})` : ''}`);
-          }
+          await runNodeFilter(context, step, context);
         } else if (step.stage === 'validate') {
           for (const artifact of artifacts.values()) {
             const current = await realpath(artifact.path);
@@ -568,7 +554,7 @@ export async function runBuild({
           publishedPacks = [...withDestinations(await inspectPacks(stagedPacks))];
           await inspect(staged, false);
           check(signal);
-          await publish(stagedPacks, signal);
+          await publishNodeData(context, () => publish(stagedPacks, signal));
         } else if (step.stage !== 'prepare') {
           const plugin = await implementation(step.stage);
           const outcome = await executePlugin(plugin, context, step.settings ?? {}, step.mode);

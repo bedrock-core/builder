@@ -69,6 +69,56 @@ test('official block validation resolves the pinned legacy Molang reference and 
   await assert.rejects(validatePackContent(project), ContentValidationError);
 });
 
+test('official terrain atlas validation accepts single paths and path arrays while rejecting invalid values', async (t) => {
+  const project = await fixture(t);
+  const resource = path.join(project.root, 'packs/RP');
+  const file = path.join(resource, 'textures/terrain_texture.json');
+  const options = { packs: [{ id: 'assets', path: resource, kind: 'resource' }] };
+  const atlas = { resource_pack_name: 'validation', texture_name: 'atlas.terrain', texture_data: {
+    stone: { textures: 'textures/blocks/stone' },
+    variants: { textures: ['textures/blocks/stone', 'textures/blocks/dirt'] },
+  } };
+
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, JSON.stringify(atlas));
+  const result = await validatePackContent(options);
+
+  assert.match(result.files[0].schema, /rp\/textures\/terrain_texture/);
+  assert.equal(result.files[0].schemaIssue, undefined);
+
+  for (const invalid of [42, ['textures/blocks/stone', 42], { invalid: true }]) {
+    atlas.texture_data.stone.textures = invalid;
+    await writeFile(file, JSON.stringify(atlas));
+    await assert.rejects(validatePackContent(options), ContentValidationError);
+  }
+});
+
+test('custom terrain atlas schemas retain their declared texture types', async (t) => {
+  const project = await fixture(t);
+  const schemaRoot = path.join(project.root, 'custom-schema');
+  const relative = 'schemas/rp/textures/terrain_texture.schema.json';
+  const resource = path.join(project.root, 'packs/RP');
+  const file = path.join(resource, 'textures/terrain_texture.json');
+
+  await mkdir(path.dirname(path.join(schemaRoot, relative)), { recursive: true });
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(path.join(schemaRoot, 'package.json'), JSON.stringify({ version: '1.26.50' }));
+  await writeFile(path.join(schemaRoot, 'catalog.json'), JSON.stringify({ schemas: [
+    { url: './' + relative, fileMatch: ['textures/terrain_texture.json'] },
+  ] }));
+  await writeFile(path.join(schemaRoot, relative), JSON.stringify({ type: 'object', properties: {
+    texture_data: { type: 'object', additionalProperties: { type: 'object', properties: {
+      textures: { type: 'array', items: { type: 'string' } },
+    } } },
+  } }));
+  const options = { schemaRoot, packs: [{ id: 'assets', path: resource, kind: 'resource' }] };
+
+  await writeFile(file, JSON.stringify({ texture_data: { stone: { textures: 'textures/blocks/stone' } } }));
+  await assert.rejects(validatePackContent(options), ContentValidationError);
+  await writeFile(file, JSON.stringify({ texture_data: { stone: { textures: ['textures/blocks/stone'] } } }));
+  await validatePackContent(options);
+});
+
 test('custom schema roots retain their own unresolved references without applying package aliases', async (t) => {
   const project = await fixture(t);
   const schemaRoot = path.join(project.root, 'custom-schema');

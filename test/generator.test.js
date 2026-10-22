@@ -190,12 +190,19 @@ test('invalid filenames and values leave templates intact and produce no JSON', 
   assert.deepEqual(await readdir(root), ['many.ts', 'value.ts']);
 });
 
-test('default export shapes and JSON serialization follow the documented object and tuple forms', async (t) => {
+test('default exports accept JSON values and reject malformed multi-document tuples', async (t) => {
   const root = await fixture(t);
 
-  for (const value of ['null', '7', '"text"', '[1, 2]', '[() => "name", {}, [1]]', '[() => "name", () => ({}), {}]']) {
+  for (const value of ['null', '7', '"text"', '[1, 2]']) {
     await writeFile(path.join(root, 'shape.ts'), `export default ${value};`);
-    await assert.rejects(generateTemplates({ root, files: ['shape.ts'] }), /Unsupported template|Invalid default export array/);
+    const result = await generateTemplates({ root, files: ['shape.ts'] });
+
+    assert.deepEqual(result.documents[0].value, JSON.parse(value));
+  }
+
+  for (const value of ['[() => "name", {}, [1]]', '[() => "name", () => ({}), {}]']) {
+    await writeFile(path.join(root, 'shape.ts'), `export default ${value};`);
+    await assert.rejects(generateTemplates({ root, files: ['shape.ts'] }), /Invalid default export array/);
   }
 
   await writeFile(path.join(root, 'shape.ts'), 'export default { absent: undefined, value: Number.NaN, list: [, 1] };');
@@ -347,4 +354,44 @@ test('generator settings schema rejects malformed selectors, formatting and unkn
 
   config.bedrockCore.profiles.default.stages.generator = { include: 'packs/**/*.ts', exclude: [], pretty: { indent: 'space', size: 12 }, types: false, typesDir: null, schemaVersion: 'latest', strict: false, typePrefix: 'Mc', maxAgeHours: 24 };
   validateConfig(config);
+});
+
+test('templates resolve promised defaults and async factory results before serialization', async (t) => {
+  const root = await fixture(t);
+
+  await writeFile(path.join(root, 'promised.ts'), 'export default Promise.resolve({ value: 3 });');
+  await writeFile(path.join(root, 'factory.ts'), 'export default async () => [await Promise.resolve(4), null];');
+  await writeFile(path.join(root, 'many.ts'), 'export default async () => [async n => "value-" + n, async n => ({ n }), [5]];');
+  const result = await generateTemplates({ root, files: ['promised.ts', 'factory.ts', 'many.ts'] });
+
+  assert.deepEqual(result.documents.map(document => document.value), [[4, null], { n: 5 }, { value: 3 }]);
+});
+
+test('automatic discovery skips named helpers shared by a template and runtime bundle', async (t) => {
+  const { project, config, configPath } = await projectFor(t);
+
+  config.bedrockCore.profiles.default.stages.generator = { types: false };
+  await mkdir(path.join(project, 'packs/gameplay/content'));
+  const helper = path.join(project, 'packs/gameplay/content/helper.ts');
+
+  await writeFile(helper, 'export const value: number = 42;');
+  await writeFile(path.join(project, 'packs/gameplay/content/settings.ts'), 'import { value } from "./helper.ts"; export default async () => ({ value });');
+  await writeFile(path.join(project, 'packs/gameplay/scripts/main.ts'), 'import { value } from "../content/helper.ts"; export { value };');
+  await writeFile(configPath, JSON.stringify(config));
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = await runBuild({ configPath, logger: {} });
+
+    assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPaths.gameplay, 'content/settings.json'), 'utf8')), { value: 42 });
+    const script = await readFile(path.join(result.outputPaths.gameplay, 'scripts/main.js'), 'utf8');
+
+    assert.equal((await import(`data:text/javascript;base64,${Buffer.from(script).toString('base64')}`)).value, 42);
+    await assert.rejects(readFile(path.join(result.outputPaths.gameplay, 'content/helper.ts')), { code: 'ENOENT' });
+    await assert.rejects(readFile(path.join(result.outputPaths.gameplay, 'content/helper.json')), { code: 'ENOENT' });
+    assert.match(await readFile(helper, 'utf8'), /value: number/);
+  }
+
+  await writeFile(path.join(project, 'packs/gameplay/content/settings.ts'), 'export default async () => { throw new Error("factory rejected"); };');
+  await assert.rejects(runBuild({ configPath, logger: {} }), /factory rejected/);
+  assert.deepEqual(JSON.parse(await readFile(path.join(project, 'dist/gameplay/content/settings.json'), 'utf8')), { value: 42 });
 });

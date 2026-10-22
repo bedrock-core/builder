@@ -204,7 +204,7 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
     sourcemap: options.debug ? 'external' : false,
     keepNames: options.debug ?? false,
     logLevel: 'silent',
-    external: ['@minecraft/*', ...(options.external ?? [])],
+    external: ['@minecraft/server', '@minecraft/server-*', '@minecraft/debug-utilities', ...(options.external ?? [])],
     ...(options.tsconfig ? { tsconfig: path.resolve(root, options.tsconfig) } : {}),
     plugins: [...trackedPlugins, resolver],
   });

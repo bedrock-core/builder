@@ -1,11 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { runBuild } from '../src/run.ts';
+import { runNodeFilter, publishNodeData } from '../src/regolith.ts';
+import { observeSourceWrites } from '../src/source-writes.ts';
+import { inspectPacks } from '@bedrock-core/builder-plugin';
 import { watchBuild } from '../src/watch.ts';
 import { projectFor } from '../test-support/project.js';
 import { manifestFor } from '../test-support/manifest.js';
@@ -67,7 +70,7 @@ test('unmodified CommonJS filters receive Regolith folders, settings, arguments 
 
   project.config.bedrockCore.plugins.example.dataPath = './packs/data';
   project.config.bedrockCore.plugins.example.nodeArguments = ['--no-warnings'];
-  project.config.bedrockCore.plugins.consume = { script: './filters/consume.mjs' };
+  project.config.bedrockCore.plugins.consume = { script: './filters/consume.mjs', dataPath: './packs/data' };
   step.settings = settings;
   step.arguments = argumentsList;
   project.config.bedrockCore.profiles.default.steps.push({
@@ -163,8 +166,8 @@ test('explicit BP and RP mappings select a pair in a multi-pack project', async 
   project.config.bedrockCore.profiles.default.export.extra = './dist/extra';
   await writeFile(path.join(project.project, 'filters/main.cjs'), `require('node:fs').writeFileSync('BP/mapped.json', '{}');`);
   await project.save();
-  await assert.rejects(runBuild({ configPath: project.configPath, logger: {} }), /explicit packs.BP mapping/);
-  project.config.bedrockCore.plugins.example.packs = { BP: 'gameplay', RP: 'visuals' };
+  await assert.rejects(runBuild({ configPath: project.configPath, logger: {} }), /explicit folders.BP mapping/);
+  project.config.bedrockCore.plugins.example.folders = { BP: 'gameplay', RP: 'visuals' };
   await project.save();
   const result = await runBuild({ configPath: project.configPath, logger: {} });
 
@@ -173,82 +176,55 @@ test('explicit BP and RP mappings select a pair in a multi-pack project', async 
   assert.equal(await readFile(path.join(result.outputPaths.extra, 'keep.json'), 'utf8'), '{"keep":true}');
 });
 
-test('targets run once per matching manifest type with arbitrary names and shared data', async (t) => {
+test('explicit script steps select one pack set each and share data by source', async (t) => {
   const project = await fixture(t);
 
-  await addPack(project, 'bp_assets', 'resources');
-  await addPack(project, 'rp_logic', 'data');
+  await addPack(project, 'other_assets', 'resources');
   await writeFile(path.join(project.project, 'filters/main.cjs'), `
     const fs = require('node:fs');
-    const role = fs.existsSync('BP/manifest.json') ? 'BP' : 'RP';
-    const opposite = role === 'BP' ? 'RP' : 'BP';
     const visit = fs.existsSync('data/visits.json') ? JSON.parse(fs.readFileSync('data/visits.json', 'utf8')).count + 1 : 1;
     fs.writeFileSync('data/visits.json', JSON.stringify({ count: visit }));
-    fs.writeFileSync(role + '/handled.json', JSON.stringify({ id: process.env.PACK_ID, type: process.env.PACK_TYPE, role, visit, opposite: fs.readdirSync(opposite) }));
+    fs.writeFileSync('RP/handled.json', JSON.stringify({ visit, opposite: fs.readdirSync('BP') }));
   `);
+  project.config.bedrockCore.profiles.default.steps = ['visuals', 'other_assets'].map(id => ({ plugin: 'example', after: 'prepare', folders: { RP: id } }));
+  await project.save();
+  const result = await runBuild({ configPath: project.configPath, logger: {} });
 
-  for (const [targets, expected] of [
-    ['resource', ['visuals', 'bp_assets']],
-    ['behavior', ['gameplay', 'rp_logic']],
-    ['both', ['gameplay', 'visuals', 'bp_assets', 'rp_logic']],
-  ]) {
-    project.config.bedrockCore.plugins.example.targets = targets;
-    await project.save();
-    const result = await runBuild({ configPath: project.configPath, logger: {} });
-
-    for (const [id, directory] of Object.entries(result.outputPaths)) {
-      const file = path.join(directory, 'handled.json');
-      const visit = expected.indexOf(id);
-
-      if (visit === -1) {
-        assert.equal(existsSync(file), false);
-        continue;
-      }
-
-      const type = ['gameplay', 'rp_logic'].includes(id) ? 'behavior' : 'resource';
-
-      assert.deepEqual(JSON.parse(await readFile(file, 'utf8')), {
-        id, type, role: type === 'behavior' ? 'BP' : 'RP', visit: visit + 1, opposite: [],
-      });
-      assert.equal(existsSync(path.join(project.project, 'packs', id, 'handled.json')), false);
-    }
-
-    assert.equal(existsSync(path.join(project.project, 'data/visits.json')), false);
-    assert.equal(await readFile(path.join(result.outputPaths.bp_assets, 'asset.json'), 'utf8'), '{"id":"bp_assets"}');
-    assert.equal(await readFile(path.join(result.outputPaths.rp_logic, 'asset.json'), 'utf8'), '{"id":"rp_logic"}');
+  for (const [index, id] of ['visuals', 'other_assets'].entries()) {
+    assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPaths[id], 'handled.json'), 'utf8')), { visit: index + 1, opposite: [] });
   }
+
+  assert.equal(existsSync(path.join(result.outputPaths.gameplay, 'handled.json')), false);
+  assert.equal(existsSync(path.join(project.project, 'data/visits.json')), false);
 });
 
-test('a failure on a later targeted pack preserves every previous export', async (t) => {
+test('a failure in a later script pack set preserves every previous export', async (t) => {
   const project = await fixture(t);
 
   await addPack(project, 'extra', 'resources');
-  project.config.bedrockCore.plugins.example.targets = 'resource';
+  project.config.bedrockCore.profiles.default.steps = ['visuals', 'extra'].map(id => ({ plugin: 'example', after: 'prepare', folders: { RP: id }, settings: { id } }));
   await project.save();
   const previous = await runBuild({ configPath: project.configPath, logger: {} });
 
   await writeFile(path.join(project.project, 'filters/main.cjs'), `
     require('node:fs').writeFileSync('RP/asset.json', '{"changed":true}');
-    if (process.env.PACK_ID === 'extra') { process.exit(23); }
+    if (JSON.parse(process.argv[2]).id === 'extra') process.exit(23);
   `);
   await assert.rejects(runBuild({ configPath: project.configPath, logger: {} }), /exit code 23/);
   assert.equal(await readFile(path.join(previous.outputPaths.visuals, 'asset.json'), 'utf8'), '{"value":1}');
   assert.equal(await readFile(path.join(previous.outputPaths.extra, 'asset.json'), 'utf8'), '{"id":"extra"}');
-  assert.equal(await readFile(path.join(project.project, 'packs/visuals/asset.json'), 'utf8'), '{"value":1}');
-  assert.equal(await readFile(path.join(project.project, 'packs/extra/asset.json'), 'utf8'), '{"id":"extra"}');
 });
 
-test('a targeted script skips execution when no pack matches', async (t) => {
+test('folder mappings validate manifest kinds and missing pack IDs before execution', async (t) => {
   const project = await fixture(t);
-  const logs = [];
 
-  delete project.config.packs.visuals;
-  delete project.config.bedrockCore.profiles.default.export.visuals;
-  project.config.bedrockCore.plugins.example.targets = 'resource';
-  await writeFile(path.join(project.project, 'filters/main.cjs'), 'throw new Error("filter must not execute");');
-  await project.save();
-  await runBuild({ configPath: project.configPath, logger: { info: line => logs.push(line) } });
-  assert.ok(logs.some(line => line.includes('skipped (No resource packs)')));
+  await writeFile(path.join(project.project, 'filters/main.cjs'), 'throw new Error("must not execute");');
+
+  for (const [folders, error] of [[{ BP: 'visuals' }, /requires a behavior pack/], [{ RP: 'gameplay' }, /requires a resource pack/], [{ RP: 'missing' }, /pack is not configured/]]) {
+    project.config.bedrockCore.plugins.example.folders = folders;
+    await project.save();
+    await assert.rejects(runBuild({ configPath: project.configPath, logger: {} }), error);
+  }
 });
 
 test('nonzero exits, invalid JSON and symlink outputs preserve authored files and previous exports', async (t) => {
@@ -269,7 +245,7 @@ test('nonzero exits, invalid JSON and symlink outputs preserve authored files an
   }
 });
 
-test('invalid definitions, settings and conflicting data roots fail before filter execution', async (t) => {
+test('invalid definitions, settings and data paths fail before filter execution', async (t) => {
   const project = await fixture(t);
   const step = project.config.bedrockCore.profiles.default.steps[0];
 
@@ -281,26 +257,15 @@ test('invalid definitions, settings and conflicting data roots fail before filte
 
   for (const [definition, error] of [
     [{ script: 7 }, /Invalid project configuration/],
-    [{ script: './filters/main.cjs', packs: { BP: 'missing' } }, /pack is not configured/],
-    [{ script: './filters/main.cjs', packs: { BP: 'gameplay', RP: 'gameplay' } }, /different packs/],
-    [{ script: './filters/main.cjs', dataPath: '../outside' }, /dataPath must be inside/],
+    [{ script: './filters/main.cjs', folders: { BP: 'missing' } }, /pack is not configured/],
+    [{ script: './filters/main.cjs', folders: { BP: 'gameplay', RP: 'gameplay' } }, /requires a resource pack/],
+    [{ script: './filters/main.cjs', dataPath: '../outside' }, /dataPath must be a dedicated directory inside/],
     [{ script: './filters/main.cjs', dataPath: './missing' }, /dataPath does not exist/],
   ]) {
     project.config.bedrockCore.plugins.example = definition;
     await project.save();
     await assert.rejects(runBuild({ configPath: project.configPath, logger: {} }), error);
   }
-
-  await mkdir(path.join(project.project, 'first-data'));
-  await mkdir(path.join(project.project, 'second-data'));
-  await writeFile(path.join(project.project, 'filters/main.cjs'), '');
-  project.config.bedrockCore.plugins.example = { script: './filters/main.cjs', dataPath: './first-data' };
-  project.config.bedrockCore.plugins.second = { script: './filters/main.cjs', dataPath: './second-data' };
-  project.config.bedrockCore.profiles.default.steps.push({
-    plugin: 'second', before: 'export',
-  });
-  await project.save();
-  await assert.rejects(runBuild({ configPath: project.configPath, logger: {} }), /share the same dataPath/);
 });
 
 test('cancellation terminates the filter before temporary workspace cleanup', { timeout: 5000 }, async (t) => {
@@ -419,4 +384,237 @@ test('watch reloads external Node filter helpers without output loops', { timeou
   await delay(200);
   assert.equal(results.length, 2);
   assert.deepEqual(errors, []);
+});
+
+test('different data sources are isolated while normalized paths share their working copy', async (t) => {
+  const project = await fixture(t);
+
+  for (const id of ['first', 'second']) {
+    await mkdir(path.join(project.project, id));
+    await writeFile(path.join(project.project, id, 'input.json'), JSON.stringify({ id }));
+  }
+
+  await writeFile(path.join(project.project, 'filters/main.cjs'), `
+    const fs = require('node:fs');
+    const settings = JSON.parse(process.argv[2]);
+    const input = JSON.parse(fs.readFileSync('data/input.json', 'utf8'));
+    const count = fs.existsSync('data/count.json') ? JSON.parse(fs.readFileSync('data/count.json', 'utf8')).count + 1 : 1;
+    fs.writeFileSync('data/count.json', JSON.stringify({ count }));
+    fs.writeFileSync('RP/' + settings.output + '.json', JSON.stringify({ id: input.id, count }));
+  `);
+  project.config.bedrockCore.profiles.default.steps = [
+    { plugin: 'example', after: 'prepare', dataPath: './first', settings: { output: 'first' } },
+    { plugin: 'example', after: 'prepare', dataPath: './second', settings: { output: 'second' } },
+    { plugin: 'example', after: 'prepare', dataPath: './first/../first', settings: { output: 'again' } },
+  ];
+  await project.save();
+
+  for (let build = 0; build < 2; build++) {
+    const result = await runBuild({ configPath: project.configPath, logger: {} });
+
+    for (const [file, id, count] of [['first', 'first', 1], ['second', 'second', 1], ['again', 'first', 2]]) {
+      assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPaths.visuals, file + '.json'), 'utf8')), { id, count });
+    }
+
+    assert.equal(existsSync(path.join(project.project, 'first/count.json')), false);
+    assert.equal(existsSync(path.join(project.project, 'second/count.json')), false);
+  }
+});
+
+test('data-only steps use empty pack folders and reject unbound output', async (t) => {
+  const project = await fixture(t);
+
+  project.config.bedrockCore.plugins.example.folders = {};
+  project.config.bedrockCore.plugins.consume = { script: './filters/consume.cjs', folders: { RP: 'visuals' } };
+  project.config.bedrockCore.profiles.default.steps.push({ plugin: 'consume', before: 'export' });
+  await writeFile(path.join(project.project, 'filters/main.cjs'), `
+    const fs = require('node:fs');
+    if (fs.readdirSync('BP').length || fs.readdirSync('RP').length) throw new Error('Unexpected mapped pack');
+    fs.writeFileSync('data/intermediate.json', '{"generated":true}');
+  `);
+  await writeFile(path.join(project.project, 'filters/consume.cjs'), `require('node:fs').copyFileSync('data/intermediate.json', 'RP/generated.json');`);
+  await project.save();
+  const result = await runBuild({ configPath: project.configPath, logger: {} });
+
+  assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPaths.visuals, 'generated.json'), 'utf8')), { generated: true });
+  await writeFile(path.join(project.project, 'filters/main.cjs'), `require('node:fs').writeFileSync('BP/unbound.json', '{}');`);
+  await assert.rejects(runBuild({ configPath: project.configPath, logger: {} }), /without a configured pack mapping/);
+});
+
+async function persistentFixture(t, options) {
+  const project = await fixture(t, options);
+
+  await mkdir(path.join(project.project, 'state'));
+  await writeFile(path.join(project.project, 'state/counter.json'), '{"count":1}');
+  project.config.bedrockCore.plugins.example.dataPath = './state';
+  project.config.bedrockCore.plugins.example.persistData = true;
+  await writeFile(path.join(project.project, 'filters/main.cjs'), `
+    const fs = require('node:fs');
+    const value = JSON.parse(fs.readFileSync('data/counter.json', 'utf8'));
+    value.count++;
+    fs.writeFileSync('data/counter.json', JSON.stringify(value));
+    fs.writeFileSync('RP/counter.json', JSON.stringify(value));
+  `);
+  await project.save();
+
+  return project;
+}
+
+test('opted-in data persists across builds and failed validation leaves source and exports unchanged', async (t) => {
+  const project = await persistentFixture(t);
+  const first = await runBuild({ configPath: project.configPath, logger: {} });
+  const source = path.join(project.project, 'state/counter.json');
+  const output = path.join(first.outputPaths.visuals, 'counter.json');
+
+  assert.equal(await readFile(source, 'utf8'), '{"count":2}');
+  assert.equal(await readFile(output, 'utf8'), '{"count":2}');
+  await runBuild({ configPath: project.configPath, logger: {} });
+  assert.equal(await readFile(source, 'utf8'), '{"count":3}');
+  const script = path.join(project.project, 'filters/main.cjs');
+
+  await writeFile(script, await readFile(script, 'utf8') + `require('node:fs').writeFileSync('RP/invalid.json', '{');`);
+  await assert.rejects(runBuild({ configPath: project.configPath, logger: {} }), /JSON|parse|syntax/i);
+  assert.equal(await readFile(source, 'utf8'), '{"count":3}');
+  assert.equal(await readFile(output, 'utf8'), '{"count":3}');
+  assert.ok(!(await readdir(project.project)).some(name => name.includes('.builder-data-')));
+});
+
+test('failed pack publication rolls back every persistent data source', async (t) => {
+  const project = await persistentFixture(t);
+
+  await mkdir(path.join(project.project, 'other-state'));
+  await writeFile(path.join(project.project, 'other-state/counter.json'), '{"count":10}');
+  project.config.bedrockCore.profiles.default.steps.push({ plugin: 'example', before: 'export', dataPath: './other-state', folders: { BP: 'gameplay' }, settings: {} });
+  await writeFile(path.join(project.project, 'filters/main.cjs'), `
+    const fs = require('node:fs');
+    const value = JSON.parse(fs.readFileSync('data/counter.json', 'utf8'));
+    value.count++;
+    fs.writeFileSync('data/counter.json', JSON.stringify(value));
+  `);
+  await project.save();
+  const first = await runBuild({ configPath: project.configPath, logger: {} });
+  const destination = path.join(first.outputPaths.visuals, 'manifest.json');
+
+  await writeFile(destination, 'not a manifest');
+  await assert.rejects(runBuild({ configPath: project.configPath, logger: {} }), /Export destination does not identify a pack/);
+  assert.equal(await readFile(path.join(project.project, 'state/counter.json'), 'utf8'), '{"count":2}');
+  assert.equal(await readFile(path.join(project.project, 'other-state/counter.json'), 'utf8'), '{"count":11}');
+  assert.equal(await readFile(destination, 'utf8'), 'not a manifest');
+  assert.ok(!(await readdir(project.project)).some(name => name.includes('.builder-data-')));
+});
+
+test('persistence detects concurrent source changes and rejects protected or overlapping data roots', async (t) => {
+  const project = await persistentFixture(t);
+  const source = path.join(project.project, 'state/counter.json');
+  const script = path.join(project.project, 'filters/main.cjs');
+
+  await writeFile(script, await readFile(script, 'utf8') + `require('node:fs').writeFileSync(require('node:path').join(process.env.ROOT_DIR, 'state/counter.json'), '{"count":99}');`);
+  await assert.rejects(runBuild({ configPath: project.configPath, logger: {} }), /Node data changed during the build/);
+  assert.equal(await readFile(source, 'utf8'), '{"count":99}');
+  await writeFile(script, '');
+  project.config.bedrockCore.plugins.example.dataPath = './packs/gameplay';
+  await project.save();
+  await assert.rejects(runBuild({ configPath: project.configPath, logger: {} }), /dedicated source directory outside packs/);
+  project.config.bedrockCore.plugins.example.dataPath = './state';
+  await mkdir(path.join(project.project, 'state/nested'));
+  project.config.bedrockCore.profiles.default.steps.push({ plugin: 'example', before: 'export', dataPath: './state/nested' });
+  await project.save();
+  await assert.rejects(runBuild({ configPath: project.configPath, logger: {} }), /Persistent Node data sources must not overlap/);
+});
+
+test('cancelling a script preserves persistent data and the previous export', async (t) => {
+  const project = await persistentFixture(t);
+  const result = await runBuild({ configPath: project.configPath, logger: {} });
+  const script = path.join(project.project, 'filters/main.cjs');
+
+  await writeFile(script, await readFile(script, 'utf8') + `console.log('ready'); setInterval(() => {}, 1000);`);
+  const controller = new AbortController();
+
+  await assert.rejects(runBuild({ configPath: project.configPath, signal: controller.signal, logger: { info(line) {
+    if (line === 'ready') {
+      controller.abort(new Error('cancelled persistent script'));
+    }
+  } } }), /cancelled persistent script/);
+  assert.equal(await readFile(path.join(project.project, 'state/counter.json'), 'utf8'), '{"count":2}');
+  assert.equal(await readFile(path.join(result.outputPaths.visuals, 'counter.json'), 'utf8'), '{"count":2}');
+});
+
+test('watch ignores its persistent data publication and rebuilds for authored data edits', { timeout: 15000 }, async (t) => {
+  const project = await persistentFixture(t, { cleanup: false });
+  const controller = new AbortController();
+  const results = [];
+  const errors = [];
+
+  project.config.bedrockCore.profiles.default.watch = { debounceMs: 30 };
+  await project.save();
+  const watching = watchBuild({ configPath: project.configPath, signal: controller.signal, logger: {}, onBuild(result) {
+    results.push(result);
+  }, onError(error) {
+    errors.push(error);
+  } });
+
+  t.after(async () => {
+    controller.abort();
+
+    try {
+      await watching;
+    } finally {
+      await project.dispose();
+    }
+  });
+
+  async function waitFor(count) {
+    const deadline = Date.now() + 10000;
+
+    while (results.length < count) {
+      assert.ok(Date.now() < deadline, errors.map(String).join(', '));
+      await delay(20);
+    }
+  }
+
+  await waitFor(1);
+  await delay(400);
+  assert.equal(results.length, 1);
+  await writeFile(path.join(project.project, 'state/counter.json'), '{"count":10}');
+  await waitFor(2);
+  await delay(400);
+  assert.equal(results.length, 2);
+  assert.equal(await readFile(path.join(results.at(-1).outputPaths.visuals, 'counter.json'), 'utf8'), '{"count":11}');
+  assert.deepEqual(errors, []);
+});
+
+test('data edited during publication remains observable and rollback preserves the edit and backup', async (t) => {
+  const project = await persistentFixture(t);
+  const staged = path.join(project.root, 'staged');
+  const generated = path.join(project.root, 'generated');
+
+  await cp(project.project, staged, { recursive: true });
+  await mkdir(generated);
+  const packs = { gameplay: path.join(staged, 'packs/gameplay'), visuals: path.join(staged, 'packs/visuals') };
+  const context = {
+    projectRoot: project.project, stagedRoot: staged, generatedDir: generated, packs,
+    outputPaths: { gameplay: path.join(project.root, 'out/gameplay'), visuals: path.join(project.root, 'out/visuals') },
+    logger: {}, registerDependency() {},
+    async inspectPack(id) { return (await inspectPacks(packs)).find(pack => pack.id === id); },
+  };
+
+  await runNodeFilter(context, project.config.bedrockCore.plugins.example);
+  const observed = [];
+  const stop = observeSourceWrites(project.project, writes => async () => {
+    observed.push(...await Promise.all(writes.map(write => write.matches())));
+  });
+
+  t.after(stop);
+  const source = path.join(project.project, 'state/counter.json');
+
+  await assert.rejects(publishNodeData(context, async () => {
+    await writeFile(source, '{"count":99}');
+    throw new Error('publication failed');
+  }), /Node data rollback failed; backups retained/);
+  assert.equal(await readFile(source, 'utf8'), '{"count":99}');
+  const backups = (await readdir(project.project)).filter(name => name.startsWith('state.builder-data-backup-'));
+
+  assert.equal(backups.length, 1);
+  assert.equal(await readFile(path.join(project.project, backups[0], 'counter.json'), 'utf8'), '{"count":1}');
+  assert.deepEqual(observed, [false]);
 });

@@ -3,7 +3,7 @@ import { Ajv } from 'ajv';
 import type { builtinPlugins } from './builtins.ts';
 export type { JsonFormatting } from '@bedrock-core/builder-plugin';
 import type { JsonFormatting } from '@bedrock-core/builder-plugin';
-import type { PackSelector } from '@bedrock-core/builder-plugin';
+import type { PackLinkOverrides } from '@bedrock-core/builder-plugin';
 
 /** Built-in transformation names, in execution order. */
 export type StageName = keyof typeof builtinPlugins;
@@ -11,27 +11,34 @@ export type StageName = keyof typeof builtinPlugins;
 export type Settings = Record<string, unknown>;
 /** Omitted or `auto` detects inputs; `false` disables; `true` or options forces participation. */
 export type StageSelection = 'auto' | boolean | Settings;
-/** Legacy pack classification or explicit IDs intersected with any-of manifest module types. */
-export type PluginTargets = 'resource' | 'behavior' | 'both' | PackSelector;
-/** Standalone Node script run in a temporary BP/RP/data workspace. */
+/** Conventional Regolith folders mapped to configured pack IDs. */
+export interface ScriptFolders { BP?: string; RP?: string }
+/** Standalone Node script run once in a temporary BP/RP/data workspace. */
 export interface NodePluginDefinition {
-  /** Entry file relative to `filterDir`, or an absolute file path. */
+  /** Entry file relative to filterDir, or an absolute file path. */
   script: string;
-  /** Select each matching pack. Mutually exclusive with `packs`. */
-  targets?: PluginTargets;
-  /** Script's definition directory relative to config.json; defaults to the project root. */
+  /** Definition directory relative to config.json; defaults to projectRoot. */
   filterDir?: string;
-  /** Authored data directory relative to config.json; defaults to existing `data`, or empty data. */
+  /** Configured pack IDs exposed under conventional folder names. Omission infers an unambiguous set. */
+  folders?: ScriptFolders;
+  /** Authored data directory copied into a shared working copy keyed by its source path. */
   dataPath?: string;
-  /** Configured pack IDs to expose together as BP and RP in one invocation. */
-  packs?: { BP?: string; RP?: string };
-  /** Node flags placed before the entry file, for example an installed loader. */
+  /** Write this data source back only when publication succeeds; requires an explicit dataPath. */
+  persistData?: boolean;
+  /** Node flags placed before the entry file. */
   nodeArguments?: string[];
 }
-/** A module exporting `run(context, settings)`, or a standalone Node script definition. */
-export type PluginDefinition = { module: string; targets?: PluginTargets; scope?: 'pack' | 'project' } | NodePluginDefinition;
+/** Native module with host-owned owner restrictions and dependency overrides. */
+export interface ModulePluginDefinition {
+  module: string;
+  packs?: string[];
+  links?: PackLinkOverrides;
+  scope?: 'pack' | 'project';
+}
+/** A native module or standalone Node script definition. */
+export type PluginDefinition = ModulePluginDefinition | NodePluginDefinition;
 /** Named plugin invocation at exactly one boundary; equal-boundary steps retain array order. */
-export type PluginStep = { plugin: string; settings?: Settings; arguments?: string[]; mode?: 'auto' | 'always' } & (
+export type PluginStep = { plugin: string; settings?: Settings; arguments?: string[]; mode?: 'auto' | 'always'; packs?: string[]; links?: PackLinkOverrides; folders?: ScriptFolders; dataPath?: string; persistData?: boolean } & (
   { before: StageName | 'export'; after?: never } | { after: StageName | 'prepare'; before?: never }
 );
 /** Stage selection, ordered plugin hooks and export destinations for one named build. */

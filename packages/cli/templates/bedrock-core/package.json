@@ -11,7 +11,11 @@
     "loopback": "CheckNetIsolation.exe LoopbackExempt -a -p=S-1-15-2-1958404141-86561845-1752920682-3514627264-368642714-62675701-733520436",
     "loopback:preview": "CheckNetIsolation.exe LoopbackExempt -a -p=S-1-15-2-424268864-5579737-879501358-346833251-474568803-887069379-4040235476",
     "plan": "bc-builder plan config.json",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:mc": "bc-builder build config.json build-test && bc-bds run --packs build/test --tag example --expect-registered 1",
+    "build:optimized": "bc-builder build config.json build && bc-bds optimize --packs build --out dist",
+    "bds:fetch": "bc-bds fetch",
+    "bds:where": "bc-bds where"
   },
   "dependencies": {
     "@bedrock-core/catalog": "^0.1.1",
@@ -35,7 +39,8 @@
     "eslint-plugin-minecraft-linting": "^2.0.12",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.60.1",
-    "@bedrock-core/builder": "0.1.0-alpha.0"
+    "@bedrock-core/builder": "0.1.0",
+    "@bedrock-core/bds-runner": "^0.2.0"
   },
   "packageManager": "yarn@4.18.0",
   "engines": {

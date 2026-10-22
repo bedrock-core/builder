@@ -57,12 +57,28 @@ for (const preset of ['script', 'resource']) {
     assert.ok(Object.keys(pkg.dependencies).every(name => !name.startsWith('@bedrock-core/')));
     const result = await runBuild({ configPath: path.join(root, 'config.json'), profile: 'build', logger: {} });
 
-    assert.equal(result.packs.length, preset === 'script' ? 2 : 1);
-    assert.equal((await JSON.parse(await readFile(path.join(result.outputPaths.resourcePack, 'manifest.json'), 'utf8'))).header.version, pkg.version);
+    assert.equal(result.packs.length, 1);
+    const packId = preset === 'script' ? 'behaviorPack' : 'resourcePack';
+
+    assert.equal((await JSON.parse(await readFile(path.join(result.outputPaths[packId], 'manifest.json'), 'utf8'))).header.version, pkg.version);
+    assert.match(pkg.scripts['build:optimized'], /--packs build --out dist/);
+    assert.ok(pkg.devDependencies['@bedrock-core/bds-runner']);
 
     if (preset === 'script') {
       assert.equal(pkg.scripts.typecheck, 'tsc --noEmit');
       assert.match(await readFile(path.join(result.outputPaths.behaviorPack, 'scripts/main.js'), 'utf8'), /Human Name/);
+      const tested = await runBuild({ configPath: path.join(root, 'config.json'), profile: 'build-test', logger: {} });
+      const manifest = JSON.parse(await readFile(path.join(tested.outputPaths.behaviorPack, 'manifest.json'), 'utf8'));
+
+      assert.equal(manifest.modules.find(module => module.type === 'script').entry, 'scripts/gametest.js');
+      assert.ok(manifest.dependencies.some(dependency => dependency.module_name === '@minecraft/server-gametest'));
+      assert.ok(!manifest.dependencies.some(dependency => dependency.pack || dependency.uuid));
+      assert.ok(pkg.scripts['test:mc']);
+      await assert.rejects(access(path.join(root, 'packs/RP')));
+    } else {
+      assert.equal((await JSON.parse(await readFile(path.join(result.outputPaths.resourcePack, 'manifest.json'), 'utf8'))).metadata.product_type, undefined);
+      assert.equal(pkg.scripts['test:mc'], undefined);
+      await assert.rejects(access(path.join(root, 'packs/BP')));
     }
   });
 }
@@ -83,7 +99,12 @@ test('generated starter validates all builder profiles and escaped metadata', as
   assert.equal(pkg.scripts['build:test'], 'bc-builder build config.json build-test');
   assert.equal(pkg.scripts.watch, 'bc-builder watch config.json default');
   assert.equal(pkg.scripts['watch:test'], 'bc-builder watch config.json test');
-  assert.equal(pkg.dependencies['@bedrock-core/navigation'], pkg.dependencies['@bedrock-core/ui']);
+  assert.match(pkg.dependencies['@bedrock-core/navigation'], /^\d+\.\d+\.\d+$/);
+  assert.match(pkg.dependencies['@bedrock-core/ui'], /^\d+\.\d+\.\d+$/);
+  assert.match(pkg.scripts['test:mc'], /--packs build\/test --tag example --expect-registered 1/);
+  const bds = JSON.parse(await readFile(path.join(root, 'bds-runner.json'), 'utf8'));
+
+  assert.equal(bds.version, '1.26.51.1');
   const home = await readFile(path.join(root, 'packs/BP/scripts/UI/screens/home.screen.tsx'), 'utf8');
   const plan = await readFile(path.join(root, 'packs/BP/scripts/UI/screens/plan.tsx'), 'utf8');
 
@@ -182,7 +203,7 @@ test('published template keeps pack-safe Yarn config and ignores npm lockfiles',
   const builderPackage = JSON.parse(await readFile(path.resolve(packageDir, '..', '..', 'package.json'), 'utf8'));
 
   assert.match(templatePackage.dependencies['@bedrock-core/ui'], /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
-  assert.equal(templatePackage.devDependencies['@bedrock-core/builder'], builderPackage.version);
+  assert.equal(templatePackage.devDependencies['@bedrock-core/builder'], builderPackage.version.split('-')[0]);
   await assert.rejects(access(path.join(templateDir, '.yarnrc.yml')));
 });
 
@@ -209,6 +230,7 @@ test('template behavior manifests use the current render-pack version', async ()
     const dependency = manifest.dependencies.find(({ uuid }) => uuid === '761ecd37-ad1c-4a64-862a-d6cc38767426');
 
     assert.equal(dependency?.version, renderVersion);
+    assert.equal(dependency?.description, undefined);
   }
 });
 

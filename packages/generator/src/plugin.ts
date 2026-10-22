@@ -120,8 +120,18 @@ export async function run(context: BuildContext, settings: GeneratorSettings): P
     await context.registerArtifact(`generator:${pack[0]}:${relative}`, document.path);
   }
 
-  for (const template of result.templates) {
-    await unlink(template);
+  const authoringInputs = new Set([...result.templates, ...result.inputs.filter(input => /\.(?:ts|tsx|mts|cts)$/.test(input))]);
+
+  for (const input of authoringInputs) {
+    if (!Object.values(context.packs).some(directory => within(directory, input))) {
+      continue;
+    }
+
+    if (context.excludeFromExport) {
+      context.excludeFromExport(input);
+    } else if (result.templates.includes(input)) {
+      await unlink(input);
+    }
   }
 
   return {

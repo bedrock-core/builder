@@ -139,6 +139,16 @@ export async function validatePackContent(options: ContentValidationOptions): Pr
     const document = JSON.parse(await readFile(file, 'utf8')) as SchemaDocument;
     const references = new Set<string>();
 
+    if (!options.schemaRoot && metadata.version === '1.26.50'
+      && file === path.join(root, 'schemas/rp/textures/terrain_texture.schema.json')) {
+      // Vanilla terrain atlases use single texture paths as well as arrays.
+      // https://github.com/Mojang/bedrock-samples/blob/main/resource_pack/textures/terrain_texture.json
+      const properties = document.properties as Record<string, SchemaDocument>;
+      const entry = properties.texture_data.additionalProperties as { properties: Record<string, SchemaDocument> };
+
+      entry.properties.textures = { anyOf: [{ type: 'string' }, entry.properties.textures] };
+    }
+
     function normalize(value: unknown): void {
       if (Array.isArray(value)) {
         value.forEach(normalize);

@@ -124,6 +124,37 @@ test('Minecraft imports remain external and staged tsconfig aliases resolve', as
   assert.match(output, /@minecraft\/server/);
   assert.doesNotMatch(output, /@local\/helper/);
 });
+test('bundles Minecraft npm helpers while retaining native engine imports', async (t) => {
+  const { root, configPath } = await fixture(t);
+  const modules = {
+    'vanilla-data': ['MinecraftEntityTypes', '{ Pig: "minecraft:pig" }'],
+    'math': ['helperValue', '3'],
+    'common': ['commonValue', '4'],
+  };
+
+  for (const [name, [symbol, value]] of Object.entries(modules)) {
+    const directory = path.join(root, 'node_modules/@minecraft', name);
+
+    await mkdir(directory, { recursive: true });
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ name: `@minecraft/${name}`, type: 'module', exports: './index.js' }));
+    await writeFile(path.join(directory, 'index.js'), `export const ${symbol} = ${value};`);
+  }
+
+  await writeFile(path.join(root, 'packs/BP/scripts/main.ts'), `
+    import { world } from '@minecraft/server';
+    import { MinecraftEntityTypes } from '@minecraft/vanilla-data';
+    import { helperValue } from '@minecraft/math';
+    import { commonValue } from '@minecraft/common';
+    world.sendMessage(MinecraftEntityTypes.Pig + String(helperValue + commonValue));
+  `);
+  const built = await runBuild({ configPath, logger: {} });
+  const output = await readFile(path.join(built.outputPaths.behaviorPack, 'scripts/main.js'), 'utf8');
+
+  assert.match(output, /from ["']@minecraft\/server["']/);
+  assert.doesNotMatch(output, /from ["']@minecraft\/(?:vanilla-data|math|common)["']/);
+  assert.match(output, /minecraft:pig/);
+});
+
 test('pack-local TypeScript compiles without exporting entry or unused source', async (t) => {
   const { root, config, configPath } = await fixture(t);
   const input = path.join(root, 'packs/BP/scripts/main.ts');

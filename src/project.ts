@@ -5,8 +5,10 @@ import type { ProjectConfig } from './config.ts';
 import { isManifestVersion } from '@bedrock-core/builder-manifest';
 
 /** Resolve shared display and package metadata without importing project code. */
-export async function resolveProject(config: ProjectConfig, root: string): Promise<ProjectMetadata> {
-  let pkg: { name?: string; version?: string } = {};
+export async function resolveProject(config: ProjectConfig, root: string, dependency: (file: string) => void = () => {}): Promise<ProjectMetadata> {
+  let pkg: { name?: string; version?: string; license?: unknown; homepage?: unknown; url?: unknown } = {};
+
+  dependency(path.join(root, 'package.json'));
 
   try {
     pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
@@ -22,6 +24,43 @@ export async function resolveProject(config: ProjectConfig, root: string): Promi
     throw new Error('package.json must contain a valid package name and semantic version when provided');
   }
 
+  let license = typeof pkg.license === 'string' && pkg.license.trim() ? pkg.license.trim() : undefined;
+  const requestedLicense = license?.match(/^SEE LICENSE IN (.+)$/i)?.[1];
+  const licenseFiles = requestedLicense
+    ? [requestedLicense]
+    : ['LICENSE', 'LICENSE.txt', 'LICENSE.md', 'LICENCE', 'LICENCE.txt', 'LICENCE.md', 'COPYING'];
+
+  if (!license || requestedLicense) {
+    for (const name of licenseFiles) {
+      const file = path.resolve(root, name);
+
+      if (path.dirname(file) !== path.resolve(root)) {
+        throw new Error('The package license file must be in the project root');
+      }
+
+      dependency(file);
+
+      try {
+        const content = (await readFile(file, 'utf8')).trim();
+
+        if (content) {
+          license = content;
+          break;
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          throw error;
+        }
+      }
+    }
+  }
+
+  if (requestedLicense && license?.match(/^SEE LICENSE IN /i)) {
+    throw new Error(`The package license file is missing or empty: ${requestedLicense}`);
+  }
+
+  const url = [pkg.homepage, pkg.url].find((value): value is string => typeof value === 'string' && !!value.trim());
+
   return Object.freeze({
     namespace: config.namespace,
     name: config.name,
@@ -30,6 +69,8 @@ export async function resolveProject(config: ProjectConfig, root: string): Promi
     targetVersion: config.targetVersion,
     ...(pkg.name ? { packageName: pkg.name } : {}),
     ...(pkg.version ? { version: pkg.version } : {}),
+    ...(license ? { license } : {}),
+    ...(url ? { url: url.trim() } : {}),
   });
 }
 

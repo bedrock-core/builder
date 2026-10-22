@@ -2,7 +2,7 @@
   "name": "@bedrock-core/builder",
   "version": "0.1.0-alpha.0",
   "type": "module",
-  "description": "Composable build planning for TypeScript Bedrock projects",
+  "description": "Build one or many Minecraft Bedrock packs from a JavaScript or TypeScript project",
   "exports": {
     ".": "./src/plan.ts",
     "./config": "./src/config.ts",
@@ -91,8 +91,7 @@
     "dist/**",
     "./README.md",
     "./LICENSE",
-    "schemas/**",
-    "docs/**"
+    "schemas/**"
   ],
   "publishConfig": {
     "bin": {

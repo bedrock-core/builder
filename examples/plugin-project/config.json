@@ -11,7 +11,10 @@
     "formatVersion": "1.0.0",
     "plugins": {
       "items": {
-        "module": "./build/items.ts"
+        "module": "./build/items.ts",
+        "packs": [
+          "behaviorPack"
+        ]
       }
     },
     "profiles": {
