@@ -16,9 +16,9 @@ export class UiEvaluator {
   }
 
   /**
-   * Evaluate one operation and deserialize its result. Calls must be sequential.
+   * Evaluate one operation and receive its structured result. Calls must be sequential.
    * @param message Export discovery, screen compilation or complete-set linking request.
-   * @returns The worker's JSON result, typed by the caller.
+   * @returns The worker's portable result, typed by the caller.
    * @throws If another request is pending, evaluation fails or cancellation occurs.
    */
   async request<T>(message: UiRequest): Promise<T> {
@@ -47,17 +47,13 @@ export class UiEvaluator {
           this.signal?.removeEventListener('abort', abort);
         };
 
-        const receive = (response: { value?: string; error?: Error }) => {
+        const receive = (response: { value?: unknown; error?: Error }) => {
           cleanup();
 
           if (response.error) {
             reject(response.error);
           } else {
-            try {
-              resolve(JSON.parse(response.value!) as T);
-            } catch (error) {
-              reject(error);
-            }
+            resolve(response.value as T);
           }
         };
 

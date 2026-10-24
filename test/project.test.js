@@ -146,7 +146,7 @@ test('i18n adds typed shared metadata and routes client strings to the local res
   const project = await fixture(t);
 
   await mkdir(path.join(project.project, 'packs/gameplay/i18n'));
-  await writeFile(path.join(project.project, 'packs/gameplay/i18n/en_US.ts'), 'export default { greeting: "Hello", meta: { name: "Localized Name" } } as const;');
+  await writeFile(path.join(project.project, 'packs/gameplay/i18n/en_US.ts'), 'export default { greeting: "Hello", pack: { name: "Localized Name" } } as const;');
   await mkdir(path.join(project.project, 'packs/visuals/texts'), { recursive: true });
   await writeFile(path.join(project.project, 'packs/visuals/texts/cs_CZ.lang'), 'pack.name=Resource Display\npack.description=Resource Description\n');
   await mkdir(path.join(project.project, 'packs/textures'));
@@ -161,16 +161,21 @@ test('i18n adds typed shared metadata and routes client strings to the local res
   assert.match(resources, /stable_identity.greeting=Hello/);
   assert.match(behavior, /pack.name=Localized Name/);
   assert.match(resources, /pack.name=Localized Name/);
-  assert.match(resources, /stable_identity.meta.creator=Creator/);
+  assert.match(resources, /stable_identity.pack.name=Localized Name/);
+  assert.match(resources, /stable_identity.pack.description=Shared description/);
+  assert.match(resources, /stable_identity.pack.creator=Creator/);
+  assert.doesNotMatch(resources, /stable_identity\.meta\./);
   assert.doesNotMatch(behavior, /stable_identity.greeting/);
   const resourceLocale = await readFile(path.join(result.outputPaths.visuals, 'texts/cs_CZ.lang'), 'utf8');
 
   assert.match(resourceLocale, /pack.name=Resource Display/);
-  assert.doesNotMatch(resourceLocale, /pack.name=Localized Name/);
+  assert.doesNotMatch(resourceLocale, /^pack\.name=Localized Name$/m);
   await assert.rejects(access(path.join(result.outputPaths.textures, 'texts/en_US.lang')), { code: 'ENOENT' });
   const declaration = await readFile(path.join(project.project, '.bedrock-core/generated/i18n/gameplay/i18n.generated.d.ts'), 'utf8');
 
-  assert.match(declaration, /readonly meta.*readonly creator: string/);
+  assert.match(declaration, /readonly pack.*readonly name: string.*readonly description: string/);
+  assert.match(declaration, /readonly pack.*readonly creator: string/);
+  assert.doesNotMatch(declaration, /readonly meta:/);
 });
 
 test('standalone translations reject conflicting authored and generated keys before changing files', async (t) => {

@@ -38,12 +38,12 @@ test('default exports emit compatible positional language entries, runtime templ
     extra: { en_US: { 'manual.bp': 'Behavior', 'manual.equals': 'a=b', 'manual.line': 'Back to ' } },
     locales: {
       cs_CZ: {
-        'meta.name': 'Obchod', 'meta.description': 'Prodává předměty', 'shop.title': 'Obchod',
+        'pack.name': 'Obchod', 'pack.description': 'Prodává předměty', 'shop.title': 'Obchod',
         'shop.bought': czech.shop.bought, 'shop.intro': 'Vítejte: Obchod.',
         'shop.stock_one': czech.shop.stock_one, 'shop.stock_other': czech.shop.stock_other,
         'shop.stock_few': czech.shop.stock_few,
       },
-      en_US: { 'meta.name': 'Shop', 'meta.description': 'Sells items', 'shop.title': 'Shop',
+      en_US: { 'pack.name': 'Shop', 'pack.description': 'Sells items', 'shop.title': 'Shop',
         'shop.bought': english.shop.bought, 'shop.intro': 'Welcome to Shop.',
         'shop.stock_one': english.shop.stock_one, 'shop.stock_other': english.shop.stock_other },
     },
@@ -68,18 +68,18 @@ test('resources support relative TS/JSON imports, Node modules and asynchronous 
     import { name } from '../../../shared/name.ts';
     import data from '../../../shared/label.json';
     import path from 'node:path';
-    export default await Promise.resolve({ meta: { name }, shop: { title: path.basename(data.label) } });
+    export default await Promise.resolve({ pack: { name }, shop: { title: path.basename(data.label) } });
   `);
   const first = await compileI18n(compileOptions(project));
 
-  assert.equal(first.bundle.locales.en_US['meta.name'], 'First');
+  assert.equal(first.bundle.locales.en_US['pack.name'], 'First');
   assert.equal(first.bundle.locales.en_US['shop.title'], 'Store');
   assert.ok(first.inputs.includes(helper));
   assert.ok(first.inputs.includes(data));
   await put(project.project, 'shared/name.ts', 'export const name = "Second" as const;');
   const second = await compileI18n(compileOptions(project));
 
-  assert.equal(second.bundle.locales.en_US['meta.name'], 'Second');
+  assert.equal(second.bundle.locales.en_US['pack.name'], 'Second');
 });
 
 test('strict parity failures leave all outputs intact; loose parity fills missing keys and drops extras', async (t) => {

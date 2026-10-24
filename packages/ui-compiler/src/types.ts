@@ -39,10 +39,11 @@ export interface ScreenData {
   addon: string;
   namespace: string;
   document: Document;
-  face: { document: Document };
   facesNamespace: string;
   faces: Record<string, unknown>;
   hasBackdrop: boolean;
+  /** Reserved server-form values, including markers and embedded slots. */
+  entryCount?: number;
   lang?: Record<string, Record<string, string>>;
   testMetadata?: unknown;
   host?: { kind: 'entity' | 'block'; type: string };
@@ -51,7 +52,6 @@ export interface ScreenData {
   looks?: unknown[];
   hasText?: boolean;
   title?: string;
-  entries?: unknown[];
   snapshot?: { shape: string; baked: readonly string[]; vis: readonly number[] };
   table?: {
     values: readonly string[];
@@ -99,8 +99,8 @@ export interface UiLibrary {
   ui: Record<string, unknown>;
   jsx: Record<string, unknown>;
   compiler: {
-    compileScreen(screen: unknown, spec: object): ScreenData;
-    compileFormScreen(screen: unknown, spec: object): ScreenData;
+    compileScreen(screen: unknown, spec: object): ScreenData & { face?: unknown; entries?: unknown };
+    compileFormScreen(screen: unknown, spec: object): ScreenData & { face?: unknown; entries?: unknown };
     buildUiPack(screens: ScreenData[], namespace: string): Pick<LinkedUi, 'screens' | 'hooks' | 'documents'>;
   };
   runtime: Record<string, unknown> & {

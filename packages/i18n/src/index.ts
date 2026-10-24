@@ -183,8 +183,10 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
         const table = ownRaw.get(locale) ?? new Map(ownRaw.get(defaultLocale));
 
         for (const [key, value] of Object.entries(options.metadata)) {
-          if (!table.has(`meta.${key}`)) {
-            table.set(`meta.${key}`, value);
+          const resourceKey = `pack.${key}`;
+
+          if (!table.has(resourceKey)) {
+            table.set(resourceKey, value);
           }
         }
 
@@ -502,7 +504,7 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
         const packAliases = pack.aliases === undefined ? new Map(aliases) : new Map<string, string>();
 
         for (const [field, key] of Object.entries(pack.aliases ?? {})) {
-          const value = entries.get(`${namespace}.meta.${field}`);
+          const value = entries.get(`${namespace}.pack.${field}`);
 
           if (value !== undefined) {
             packAliases.set(key, value);

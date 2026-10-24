@@ -56,7 +56,7 @@ export interface I18nOptions extends I18nSettings {
   section?: string;
   /** Final declaration directory when emitting declarations to temporary staging. */
   declarationDir?: string;
-  /** Default meta fields; authored locale values override these defaults. */
+  /** Defaults for pack.name, pack.description and pack.creator; authored locale values override them. */
   metadata?: { name: string; description: string; creator: string };
   /** Path-resolution root; standalone callers normally supply the owning pack directory. */
   root: string;

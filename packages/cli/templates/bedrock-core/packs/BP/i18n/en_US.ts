@@ -4,8 +4,8 @@
  * every key and interpolation variable. This default locale's shape is the
  * contract: add es_ES.ts (etc.) with exactly these paths to translate.
  *
- * `meta.name`, `meta.description` and `meta.creator` default to config.json.
- * Add a meta branch here or in another locale to override those display fields.
+ * `pack.name`, `pack.description` and `pack.creator` default to config.json.
+ * Add a pack branch here or in another locale to translate these display fields.
  */
 export default {
   example: {

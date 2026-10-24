@@ -1,7 +1,7 @@
 import { shopName } from '../../../shared/labels.ts';
 
 export default {
-  meta: {
+  pack: {
     name: shopName,
     description: 'An example with typed translation resources.',
   },

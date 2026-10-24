@@ -82,11 +82,19 @@ port.on('message', async (request: UiRequest) => {
           compiled.kind = host === 'form-modal' ? 'modal' : 'action';
         }
 
-        value = compiled;
+        // Linking and registration consume emitted data, not the compiler's source trees.
+        const portable = { ...compiled,
+          ...(Array.isArray(compiled.entries) ? { entryCount: compiled.entries.length } : {}),
+        };
+
+        delete portable.entries;
+        delete portable.face;
+
+        value = JSON.parse(JSON.stringify(portable)) as unknown;
       }
     }
 
-    port.postMessage({ value: JSON.stringify(value) });
+    port.postMessage({ value });
   } catch (error) {
     port.postMessage({ error: error instanceof Error ? error : new Error(String(error)) });
   }

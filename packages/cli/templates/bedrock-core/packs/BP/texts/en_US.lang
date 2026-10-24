@@ -1,1 +1,1 @@
-## Display metadata defaults to config.json; locale meta.* fields can override it.
+## Display metadata defaults to config.json; locale pack.name and pack.description fields can override it.

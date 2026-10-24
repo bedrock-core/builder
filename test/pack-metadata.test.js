@@ -45,17 +45,17 @@ test('a sole behavior owner localizes both manifest displays without duplicate d
     es_ES: { name: 'Nombre', description: 'Descripcion' },
   };
 
-  for (const [locale, meta] of Object.entries(locales)) {
-    await put(project.project, `packs/gameplay/i18n/${locale}.ts`, `export default ${JSON.stringify({ meta })} as const;`);
+  for (const [locale, display] of Object.entries(locales)) {
+    await put(project.project, `packs/gameplay/i18n/${locale}.ts`, `export default ${JSON.stringify({ pack: display })} as const;`);
   }
 
   const first = await runBuild(project.options);
   const snapshot = {};
 
   for (const pack of ['gameplay', 'visuals']) {
-    for (const [locale, meta] of Object.entries(locales)) {
+    for (const [locale, display] of Object.entries(locales)) {
       snapshot[`${pack}:${locale}`] = await language(first, pack, locale);
-      assertDisplay(snapshot[`${pack}:${locale}`], meta.name, meta.description);
+      assertDisplay(snapshot[`${pack}:${locale}`], display.name, display.description);
     }
 
     const catalog = JSON.parse(await readFile(path.join(first.outputPaths[pack], 'texts/languages.json'), 'utf8'));
@@ -77,7 +77,7 @@ test('a sole behavior owner localizes both manifest displays without duplicate d
 test('authored pack-specific display names and descriptions override shared translations without duplicate keys', async (t) => {
   const project = await fixture(t);
 
-  await put(project.project, 'packs/gameplay/i18n/en_US.ts', 'export default { meta: { name: "Localized", description: "Translated" } } as const;');
+  await put(project.project, 'packs/gameplay/i18n/en_US.ts', 'export default { pack: { name: "Localized", description: "Translated" } } as const;');
   await put(project.project, 'packs/gameplay/texts/en_US.lang', 'pack.name=Behavior Display\npack.description=Behavior Description\n');
   await put(project.project, 'packs/visuals/texts/en_US.lang', 'pack.name=Resource Display\npack.description=Resource Description\n');
   const result = await runBuild(project.options);
@@ -99,7 +99,7 @@ test('a shared resource pack retains its own manifest display instead of inherit
   await put(project.project, 'packs/secondary/scripts/main.ts', 'export const value = 2;');
 
   for (const id of ['gameplay', 'secondary']) {
-    await put(project.project, `packs/${id}/i18n/en_US.ts`, 'export default { meta: { name: "Behavior Name", description: "Behavior Description" } } as const;');
+    await put(project.project, `packs/${id}/i18n/en_US.ts`, 'export default { pack: { name: "Behavior Name", description: "Behavior Description" } } as const;');
   }
 
   await put(project.project, 'config.json', JSON.stringify(project.config));
@@ -114,7 +114,7 @@ test('resource-owned locale modules emit their manifest aliases only in their ow
   const project = await fixture(t);
 
   for (const id of ['gameplay', 'visuals']) {
-    await put(project.project, `packs/${id}/i18n/en_US.ts`, 'export default { meta: { name: "Localized Name", description: "Localized Description" } } as const;');
+    await put(project.project, `packs/${id}/i18n/en_US.ts`, 'export default { pack: { name: "Localized Name", description: "Localized Description" } } as const;');
   }
 
   const result = await runBuild(project.options);
@@ -122,7 +122,10 @@ test('resource-owned locale modules emit their manifest aliases only in their ow
 
   assertDisplay(resource, 'Localized Name', 'Localized Description');
   assert.match(resource, /generated-i18n:begin:visuals>[\s\S]*pack.name=Localized Name/);
-  assert.doesNotMatch(resource, /generated-i18n:begin:gameplay>[^]*?pack.name=[^]*?generated-i18n:end:gameplay>/);
+  const ownerSection = resource.split('generated-i18n:begin:gameplay>')[1]?.split('generated-i18n:end:gameplay>')[0] ?? '';
+
+  assert.equal(parseLang(ownerSection)['pack.name'], undefined);
+  assert.equal(parseLang(ownerSection)['pack.description'], undefined);
 });
 
 test('manifest-only builds register the fallback language while preserving authored locale catalogs', async (t) => {

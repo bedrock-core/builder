@@ -25,8 +25,8 @@ function HomePage(): JSX.Element {
   return (
     <Panel width={300} flexDirection={'column'} padding={spacing.md} gap={spacing.md}>
       {/* A key() string as a child is auto-detected and resolved CLIENT-side. */}
-      <Text>{i18n.key($ => $.meta.name)}</Text>
-      <Text>{i18n.key($ => $.meta.description)}</Text>
+      <Text>{i18n.key($ => $.pack.name)}</Text>
+      <Text>{i18n.key($ => $.pack.description)}</Text>
 
       <Card>
         <Text>{'Preferences'}</Text>

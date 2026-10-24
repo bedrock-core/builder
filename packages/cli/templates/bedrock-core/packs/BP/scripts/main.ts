@@ -26,10 +26,10 @@ const { config } = core.register({
   manifest: {
     creator: '{{CREATOR_ID}}',
     pack: '{{PACK_ID}}',
-    packName: i18n.key($ => $.meta.name),
-    creatorName: i18n.key($ => $.meta.creator),
+    packName: i18n.key($ => $.pack.name),
+    creatorName: i18n.key($ => $.pack.creator),
     version: '1.0.0',
-    description: i18n.key($ => $.meta.description),
+    description: i18n.key($ => $.pack.description),
   },
   catalog: registerCatalog(),
   config: registerConfig(configDef),

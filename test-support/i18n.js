@@ -3,7 +3,7 @@ import path from 'node:path';
 import { projectFor } from './project.js';
 
 export const english = {
-  meta: { name: 'Shop', description: 'Sells items' },
+  pack: { name: 'Shop', description: 'Sells items' },
   shop: {
     title: 'Shop',
     bought: 'Bought {{item}} for {{price}}; {{item}}.',
@@ -14,7 +14,7 @@ export const english = {
 };
 
 export const czech = {
-  meta: { name: 'Obchod', description: 'Prodává předměty' },
+  pack: { name: 'Obchod', description: 'Prodává předměty' },
   shop: {
     title: 'Obchod',
     bought: 'Za {{price}} koupen {{item}}; {{item}}.',

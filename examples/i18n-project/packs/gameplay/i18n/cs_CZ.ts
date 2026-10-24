@@ -1,5 +1,5 @@
 export default {
-  meta: {
+  pack: {
     name: 'Obchod',
     description: 'Příklad s typovanými překlady.',
   },
