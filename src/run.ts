@@ -14,6 +14,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { validateConfig } from './config.ts';
+import { isStagingExcluded, stagingExclusions } from './staging.ts';
 import { planBuild, type PlannedPlugin } from './plan.ts';
 import { resolveProject, generateProject } from './project.ts';
 import { runNodeFilter, publishNodeData } from './regolith.ts';
@@ -165,6 +166,7 @@ export async function runBuild({
     modules.set(step.module, modulePath);
   }
 
+  const exclusions = stagingExclusions(project, config, file);
   const ignored = new Set(['.git', 'node_modules', '.bedrock-core']);
   const normalized = (file: string) => process.platform === 'win32' ? file.toLowerCase() : file;
   const isOutput = (file: string) => outputs.some(output =>
@@ -176,7 +178,7 @@ export async function runBuild({
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       const source = path.join(directory, entry.name);
 
-      if (skipIgnored && (isOutput(source) || ignored.has(entry.name))) {
+      if (skipIgnored && (isOutput(source) || ignored.has(entry.name) || isStagingExcluded(source, exclusions))) {
         continue;
       }
 
@@ -212,7 +214,7 @@ export async function runBuild({
       await cp(project, staged, {
         recursive: true,
         filter: source =>
-          !isOutput(source) && !ignored.has(path.basename(source)),
+          !isOutput(source) && !ignored.has(path.basename(source)) && !isStagingExcluded(source, exclusions),
       });
       const generated = path.join(workspace, 'generated');
 

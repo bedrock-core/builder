@@ -78,6 +78,8 @@ export interface ProjectConfig {
   bedrockCore: {
     formatVersion: '1.0.0';
     plugins?: Record<string, PluginDefinition>;
+    /** Literal project-relative paths omitted from staging and watch mode. */
+    staging?: { exclude?: string[] };
     profiles: Record<string, BuildProfile>;
   };
   [key: string]: unknown;

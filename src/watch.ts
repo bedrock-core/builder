@@ -2,6 +2,7 @@ import { watch, type FSWatcher } from 'node:fs';
 import { lstat, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { validateConfig, type ProjectConfig } from './config.ts';
+import { isStagingExcluded, stagingExclusions } from './staging.ts';
 import { resolveExportPaths } from './export.ts';
 import { runBuild } from './run.ts';
 import { inputLocations } from './file-cache.ts';
@@ -44,6 +45,7 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
   let externalTargets = new Map<string, Set<string>>();
   let outputRoots = new Set<string>();
   let extraPaths: string[] = [];
+  let exclusions: string[] = [];
   let dependencies: string[] = [];
   let dependencyLocations: ReadonlySet<string> = new Set();
   let debounceMs = 100;
@@ -78,6 +80,10 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
   }
 
   function ignored(file: string): boolean {
+    if (isStagingExcluded(file, exclusions)) {
+      return true;
+    }
+
     const parts = path.relative(project, file).split(path.sep);
 
     if (parts.some(part => ['.git', 'node_modules', '.bedrock-core'].includes(part) || part.includes('.builder-data-'))) {
@@ -202,6 +208,8 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
 
         const roots = new Set(exportRoots(config));
 
+        exclusions = stagingExclusions(project, config, configPath);
+
         const generator = settings.stages?.generator;
 
         if (generator && typeof generator === 'object' && generator.types !== false && typeof generator.typesDir === 'string' && generator.typesDir) {
@@ -314,6 +322,8 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
   try {
     const config = validateConfig(JSON.parse(await readFile(configPath, 'utf8')));
     const settings = config.bedrockCore.profiles[profile];
+
+    exclusions = stagingExclusions(project, config, configPath);
 
     for (const directory of exportRoots(config)) {
       outputRoots.add(directory);

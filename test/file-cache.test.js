@@ -149,3 +149,28 @@ test('large compilation values keep the cache index small and unchanged entries 
   assert.equal(await readFile(file, 'utf8'), content);
   assert.equal((await readdir(path.join(options.directory, 'entries'))).length, 24);
 });
+
+test('mutating a cache hit does not change persisted values in a later build', async (t) => {
+  const options = await fixture(t);
+  const first = await createFileCache(options);
+
+  await first.reuse('unit', { inputs: [], run: () => ({ value: { nested: [{ count: 1 }] } }) });
+  await first.save();
+  const second = await createFileCache(options);
+  const hit = await second.reuse('unit', {
+    inputs: [],
+    run() { throw new Error('Expected cache hit'); },
+  });
+
+  hit.value.nested[0].count = 999;
+  hit.value.nested.push({ count: 2 });
+  await second.save();
+  const third = await createFileCache(options);
+  const untouched = await third.reuse('unit', {
+    inputs: [],
+    run() { throw new Error('Expected persisted cache hit'); },
+  });
+
+  assert.equal(untouched.cached, true);
+  assert.deepEqual(untouched.value, { nested: [{ count: 1 }] });
+});

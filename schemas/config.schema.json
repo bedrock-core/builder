@@ -119,6 +119,20 @@
           "additionalProperties": {
             "$ref": "#/definitions/profile"
           }
+        },
+        "staging": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "exclude": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/definitions/nonempty"
+              },
+              "description": "Literal project-relative files or directories omitted from staging and watch mode. Configuration files and complete pack sources cannot be excluded."
+            }
+          }
         }
       }
     }

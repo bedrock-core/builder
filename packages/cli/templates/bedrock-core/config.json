@@ -73,6 +73,12 @@
           "resourcePack": "./build/test/RP"
         }
       }
+    },
+    "staging": {
+      "exclude": [
+        "build",
+        "dist"
+      ]
     }
   }
 }

@@ -361,7 +361,7 @@ export async function createFileCache(options: FileCacheOptions): Promise<FileCa
         await report(inputs);
         results.push({ id, status: 'cached' });
 
-        return { value: JSON.parse(json(candidate.value)) as T, cached: true, inputs, files };
+        return { value: candidate.value as T, cached: true, inputs, files };
       }
 
       const output = await compilation.run();
