@@ -22,6 +22,14 @@
           "resourcePack": "./build/{{PROJECT_NAME}}_rp"
         }
       },
+      "build-optimized": {
+        "debug": false,
+        "pretty": false,
+        "export": {
+          "behaviorPack": "./build/production/{{PROJECT_NAME}}_bp",
+          "resourcePack": "./build/production/{{PROJECT_NAME}}_rp"
+        }
+      },
       "default": {
         "debug": true,
         "pretty": {

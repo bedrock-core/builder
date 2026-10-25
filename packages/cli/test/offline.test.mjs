@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile, access, mkdtemp, rm, writeFile, realpath } from 'node:fs/promises';
+import { readFile, access, mkdtemp, rm, writeFile, realpath, readdir } from 'node:fs/promises';
 import { test } from 'node:test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -61,7 +61,7 @@ for (const preset of ['script', 'resource']) {
     const packId = preset === 'script' ? 'behaviorPack' : 'resourcePack';
 
     assert.equal((await JSON.parse(await readFile(path.join(result.outputPaths[packId], 'manifest.json'), 'utf8'))).header.version, pkg.version);
-    assert.match(pkg.scripts['build:optimized'], /--packs build --out dist/);
+    assert.match(pkg.scripts['build:optimized'], /--packs build\/production --out dist/);
     assert.ok(pkg.devDependencies['@bedrock-core/bds-runner']);
 
     if (preset === 'script') {
@@ -80,6 +80,15 @@ for (const preset of ['script', 'resource']) {
       assert.equal(pkg.scripts['test:mc'], undefined);
       await assert.rejects(access(path.join(root, 'packs/BP')));
     }
+
+    const production = await runBuild({ configPath: path.join(root, 'config.json'), profile: 'build-optimized', logger: {} });
+    const input = path.join(root, 'build/production');
+
+    assert.equal(path.dirname(production.outputPaths[packId]), input);
+    assert.deepEqual(await readdir(input), [path.basename(production.outputPaths[packId])]);
+    const manifest = JSON.parse(await readFile(path.join(production.outputPaths[packId], 'manifest.json'), 'utf8'));
+
+    assert.ok(!manifest.dependencies?.some(dependency => dependency.module_name === '@minecraft/server-gametest'));
   });
 }
 
@@ -118,7 +127,7 @@ test('generated starter validates all builder profiles and escaped metadata', as
   assert.match(registration, /pack: 'quoted_scaffold'/);
   assert.match(registration, /version: '1\.0\.0'/);
 
-  for (const profile of ['build', 'default', 'test', 'build-test']) {
+  for (const profile of ['build', 'build-optimized', 'default', 'test', 'build-test']) {
     const stages = planBuild(config, profile).filter(step => step.kind === 'stage').map(step => step.stage);
 
     assert.deepEqual(stages, ['prepare', 'manifest', 'generator', 'guides', 'i18n', 'ui-compiler', 'bundler', 'validate', 'export']);

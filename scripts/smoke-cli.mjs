@@ -199,8 +199,15 @@ try {
 
     if (preset !== 'full') {
       script('build');
-      script('build:optimized');
-      assert.ok(readdirSync(join(project, 'dist'), { recursive: true }).some(file => String(file).endsWith('manifest.json')));
+      assert.equal(pkg.scripts['build:optimized'], 'bc-builder build config.json build-optimized && bc-bds optimize --packs build/production --out dist');
+      const require = createRequire(join(project, 'package.json'));
+      const { runBuild } = await import(pathToFileURL(require.resolve('@bedrock-core/builder/runner')));
+      // Pack conversion runs on Windows; Linux verifies the isolated production input.
+      const production = await runBuild({ configPath: join(project, 'config.json'), profile: 'build-optimized', logger: {} });
+      const input = join(project, 'build/production');
+
+      assert.deepEqual(readdirSync(input).sort(), Object.values(production.outputPaths).map(directory => directory.split(/[\\/]/).at(-1)).sort());
+      assert.ok(Object.values(production.outputPaths).every(directory => existsSync(join(directory, 'manifest.json'))));
       assert.deepEqual(Object.keys(pkg.dependencies).filter(name => name.startsWith('@bedrock-core/')), []);
       let game;
 
