@@ -1,6 +1,6 @@
 {
   "name": "@bedrock-core/builder-generator",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0",
   "type": "module",
   "description": "Standalone typed TS/JS content generation for @bedrock-core projects",
   "exports": {

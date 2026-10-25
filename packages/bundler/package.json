@@ -1,6 +1,6 @@
 {
   "name": "@bedrock-core/builder-bundler",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0",
   "type": "module",
   "description": "Standalone TS/JS script bundling for @bedrock-core projects",
   "exports": {

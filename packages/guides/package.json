@@ -1,6 +1,6 @@
 {
   "name": "@bedrock-core/builder-guides",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0",
   "type": "module",
   "description": "Standalone typed Markdown and MDX guide compilation for @bedrock-core",
   "exports": {

@@ -1,5 +1,38 @@
 # @bedrock-core/cli
 
+## 0.12.0
+
+### Minor Changes
+
+- 09203ce: Scaffold full, plain script and resource-only projects with `bc-builder` commands,
+  named packs and build, watch and GameTest profiles. Define display metadata and
+  the build namespace in configuration, inherit manifest defaults and declare runtime
+  registration explicitly in each script pack. Full starters keep
+  translations and guides in the owning behavior pack and link resource output through native
+  dependencies. Pin the UI toolkit and its render-pack dependency together, including
+  the modules resource-pack description in both behavior manifests.
+- 9ff3921: Require an explicit build namespace and keep runtime creator, pack and version
+  declarations in each script pack's registration. The generated project module
+  provides shared display and package metadata for authored content.
+- 9ff3921: Compile guides from each owner pack, with separate generated manifests, typed imports
+  and language contributions routed to declared local resource dependencies. Reserve
+  guide inputs from template generation and omit them from published packs. Preserve
+  independent language sections and reject conflicting keys in shared destinations.
+  Keep CLI guide samples inside the behavior pack and resolve builder guide paths
+  relative to their owner. Standalone compilation resolves paths from the supplied root.
+- 59ca6b9: Include pinned BDS runner configuration and commands for headless tests and pack optimization. Provide a behavior-only scripting starter with GameTests and a resource-only starter with optimization commands.
+  
+  Write optimized distribution packs to dist/ and omit addon product metadata from resource-only starters.
+
+### Patch Changes
+
+- 5922b1b: Expose the builder executable as `bc-builder` and use it in generated project scripts.
+- c0ffcd9: Exclude configured project paths from staging and watch mode, and reuse validated cache values without an additional JSON round trip.
+- 07b101b: Pin starter projects to the matching runtime libraries and shared UI resource pack.
+- 2a9f1e8: Use `pack.name`, `pack.description` and `pack.creator` for localized pack display text, generated metadata defaults and starter templates.
+- 878fe82: Scaffold Home and Plan in one static stack with local forward and Back links.
+- 878fe82: Generate the full starter with a typed static stack, local page links and a published native-form alias. Pin the navigation dependency alongside the UI package.
+
 ## 0.11.1
 
 ### Patch Changes
