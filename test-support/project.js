@@ -1,10 +1,10 @@
-import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile, rm, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { manifestFor } from './manifest.js';
 
 export async function projectFor(t, { cleanup = true } = {}) {
-  const root = await mkdtemp(path.join(tmpdir(), 'builder-flow-'));
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'builder-flow-')));
   const dispose = () => rm(root, { recursive: true, force: true });
 
   if (cleanup) {

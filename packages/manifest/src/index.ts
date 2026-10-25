@@ -257,17 +257,22 @@ export function validateManifest(id: string, value: unknown): Manifest {
  */
 export async function resolveManifest(file: string, options: ManifestResolveOptions = {}): Promise<ResolvedManifest> {
   options.signal?.throwIfAborted();
-  const root = options.root === undefined ? undefined : await realpath(options.root);
+  const requestedRoot = options.root === undefined ? undefined : path.resolve(options.root);
+  const root = requestedRoot === undefined ? undefined : await realpath(requestedRoot);
   const inputs = new Set<string>();
 
   async function resolve(source: string, ancestors: readonly string[]): Promise<JsonObject> {
     options.signal?.throwIfAborted();
     const absolute = path.resolve(source);
 
-    if (root !== undefined) {
-      const relative = path.relative(root, absolute);
+    if (root !== undefined && requestedRoot !== undefined) {
+      const within = [root, requestedRoot].some((base) => {
+        const relative = path.relative(base, absolute);
 
-      if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+        return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+      });
+
+      if (!within) {
         throw new Error(`Manifest path must stay inside the project: ${absolute}`);
       }
     }

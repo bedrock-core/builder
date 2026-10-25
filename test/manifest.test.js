@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { manifestFor } from '../test-support/manifest.js';
@@ -207,4 +207,20 @@ test('a failed manifest chain writes and sweeps no pack', async (t) => {
   }, { manifestPath: ['packs/gameplay/manifest.test.json', 'packs/visuals/manifest.test.json'] }), /ENOENT/);
   assert.equal(await readFile(path.join(pack, 'manifest.json'), 'utf8'), authored);
   assert.ok((await readdir(pack)).includes('manifest.test.json'));
+});
+
+test('manifest inheritance accepts an aliased project root and rejects physical escapes', async (t) => {
+  const project = await projectFor(t);
+  const alias = path.join(project.root, 'project-alias');
+  const outside = path.join(project.root, 'outside');
+
+  await mkdir(outside);
+  await writeFile(path.join(outside, 'manifest.json'), JSON.stringify(manifestFor('resources')));
+  await symlink(project.project, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  await symlink(outside, path.join(project.project, 'escaped'), process.platform === 'win32' ? 'junction' : 'dir');
+  const result = await resolveManifest(path.join(alias, 'packs/gameplay/manifest.test.json'), { root: alias });
+
+  assert.equal(result.manifest.header.name, 'Test pack');
+  assert.equal(result.inputs.length, 2);
+  await assert.rejects(resolveManifest(path.join(alias, 'escaped/manifest.json'), { root: alias }), /stay inside the project/);
 });
