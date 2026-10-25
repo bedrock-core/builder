@@ -1,7 +1,7 @@
 import { manifestFor } from '../test-support/manifest.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, writeFile, rm, readdir } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rm, readdir, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runBuild } from '../src/run.ts';
@@ -202,4 +202,36 @@ test('a destination lock blocks overlapping writes', async (t) => {
   await mkdir(lock);
   await assert.rejects(runBuild(project.options), { code: 'EEXIST' });
   assert.equal((await readdir(project.root)).includes('dist.builder-lock'), true);
+});
+
+test('artifact ownership accepts canonical workspaces beneath an aliased temporary directory', async (t) => {
+  const project = await fixture(t, 'export async function run() {}');
+  const root = await mkdtemp(path.join(tmpdir(), 'builder-temp-alias-'));
+
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const directory = path.join(root, 'canonical');
+  const alias = path.join(root, 'alias');
+
+  await mkdir(directory);
+  await symlink(directory, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  const previous = new Map(['TMP', 'TEMP', 'TMPDIR'].map(key => [key, process.env[key]]));
+
+  try {
+    for (const key of previous.keys()) {
+      process.env[key] = alias;
+    }
+
+    const result = await runBuild(project.options);
+
+    assert.ok(result.artifacts.some(artifact => artifact.id === 'project:metadata'));
+    assert.equal(await readFile(path.join(result.outputPaths.behaviorPack, 'source.json'), 'utf8'), '{"source":true}');
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
 });

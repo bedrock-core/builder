@@ -208,7 +208,7 @@ export async function runBuild({
     let validation: ContentValidationResult;
 
     try {
-      workspace = await mkdtemp(path.join(tmpdir(), 'bedrock-core-build-'));
+      workspace = await realpath(await mkdtemp(path.join(tmpdir(), 'bedrock-core-build-')));
       const staged = path.join(workspace, 'project');
 
       await cp(project, staged, {
