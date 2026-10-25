@@ -1,6 +1,6 @@
 {
   "name": "@bedrock-core/builder-i18n",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0",
   "type": "module",
   "description": "Compile typed translation resources into Bedrock language files and runtime bundles",
   "exports": {
