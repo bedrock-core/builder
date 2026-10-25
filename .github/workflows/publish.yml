@@ -71,7 +71,7 @@ jobs:
         run: node scripts/smoke-cli.mjs "$BEDROCK_CLI_TARBALL" "$RUNNER_TEMP/cli-smoke"
       - uses: changesets/action@v2
         with:
-          publish-script: yarn publish-release --scope "$RELEASE_SCOPE" && yarn tag-release --scope "$RELEASE_SCOPE"
+          publish-script: yarn publish:ci
       - name: Keep CLI smoke evidence
         if: always() && inputs.scope == 'cli'
         uses: actions/upload-artifact@v7
