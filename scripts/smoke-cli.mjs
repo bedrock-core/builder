@@ -188,7 +188,10 @@ try {
     } else {
       assert.match(pkg.packageManager, /^pnpm@/);
       assert.ok(!existsSync(join(project, '.yarnrc.yml')));
-      assert.match(readFileSync(join(project, 'pnpm-workspace.yaml'), 'utf8'), /^nodeLinker:\s*hoisted$/m);
+      const workspace = readFileSync(join(project, 'pnpm-workspace.yaml'), 'utf8');
+
+      assert.match(workspace, /^nodeLinker:\s*hoisted$/m);
+      assert.match(workspace, /^allowBuilds:\n {2}esbuild: true$/m);
       assert.ok(existsSync(join(project, 'pnpm-lock.yaml')));
       run('pnpm', ['install', '--frozen-lockfile'], project);
     }

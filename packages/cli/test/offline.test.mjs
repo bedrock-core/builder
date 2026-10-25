@@ -326,7 +326,7 @@ test('pnpm scaffolds use a conventional hoisted node_modules layout', async (t) 
 
   await configurePackageManager('pnpm', dir);
 
-  assert.equal(await readFile(path.join(dir, 'pnpm-workspace.yaml'), 'utf8'), 'nodeLinker: hoisted\n');
+  assert.equal(await readFile(path.join(dir, 'pnpm-workspace.yaml'), 'utf8'), 'nodeLinker: hoisted\nallowBuilds:\n  esbuild: true\n');
   await assert.rejects(access(path.join(dir, '.yarnrc.yml')));
 });
 

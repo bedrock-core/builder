@@ -180,7 +180,7 @@ export async function configurePackageManager(packageManager: PackageManager, ta
   }
 
   if (packageManager === 'pnpm') {
-    await fs.writeFile(path.join(targetDir, 'pnpm-workspace.yaml'), 'nodeLinker: hoisted\n');
+    await fs.writeFile(path.join(targetDir, 'pnpm-workspace.yaml'), 'nodeLinker: hoisted\nallowBuilds:\n  esbuild: true\n');
   }
 }
 
