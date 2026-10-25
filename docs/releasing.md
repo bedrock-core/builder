@@ -1,73 +1,76 @@
-# @bedrock-core release packages
+# Releasing
 
-The repository prepares `@bedrock-core/builder` and independently installable
-packages: `builder-plugin`, `builder-manifest`, `builder-bundler`, `builder-generator`,
-`builder-guides`, `builder-i18n`, `builder-ui` and `builder-validation`, all under the
-`@bedrock-core` scope.
-It also prepares `@bedrock-core/cli`, the addon scaffold command. Its template
-pins the builder version and an exact UI/render-pack pair; `yarn sync:cli` updates
-those inputs from this checkout and the adjacent UI repository.
-The builder depends on these packages to supply its automatic stages. Install a
-standalone package when a tool needs only that function; its README lists build-time
-dependencies and any runtime requirements of generated output.
+Builder packages and the scaffold CLI publish separately. Stable versions use
+the npm `latest` tag; prereleases use `next`. Both local npm authentication and
+GitHub Actions trusted publishing use the npm CLI to publish verified tarballs.
 
-The repository remains local and all package manifests are private. `yarn release`
-runs the local checks and prepares archives without publishing anything.
+## Version and verify
 
-Source development runs typed TypeScript directly on Node 22.18 or newer. Published
-packages expose JavaScript and declarations because Node does not strip TypeScript
-inside `node_modules`. Yarn's `publishConfig` exports select the release files;
-checkout exports select the authored sources. Worker entry points support both forms.
-
-Each package lists its export paths explicitly. Built-in transformations expose `./plugin`
-using the shared plugin contract. Helpers and workers stay inside their owning packages;
-implementation files are unavailable through unlisted package subpath imports.
-
-## Record and apply package versions
-
-Use Changesets to describe caller-visible changes and select the affected packages:
-
-```sh
-yarn changeset
-yarn changeset:status
-```
-
-The builder and its `builder-*` packages form a fixed version group. The CLI keeps
-its own version. The root builder package participates through the `.` workspace.
-Private packages are versioned for local archives; Changesets does not tag them.
-
-Apply the queued versions and changelogs when preparing a release, then synchronize
-the CLI template's builder and UI/render-pack pins:
+Apply queued Changesets, update the lockfile, and commit the resulting versions
+and changelogs before publishing:
 
 ```sh
 yarn version:packages
-yarn sync:cli
 yarn install
+yarn release
+yarn publish-release --scope builder --dry-run
 ```
 
-Review the versioned manifests, template pins and changelogs together. Versioning
-does not publish packages. Use the checked archive publication flow below for
-registry releases.
+`yarn release` runs offline checks, creates archives and verifies their installed
+APIs. Publication also compares each archive with its verification receipt and a
+fresh pack of the current source. Builder packages publish in dependency order.
 
-## Check and pack
+## Publish Builder packages
+
+Authenticate with npm locally, then publish and tag the Builder package group:
 
 ```sh
-yarn install --immutable
-yarn check
-yarn acceptance
-yarn pack-release
-yarn test:packages
+npm login --registry https://registry.npmjs.org
+yarn publish-release --scope builder
+yarn tag-release --scope builder
 ```
 
-The acceptance fixture builds a behavior pack and two resource packs with generated
-items, loot, translations and guides. It checks unchanged builds, script edits and
-imported-data edits. It uses a temporary project and leaves authored fixtures intact.
-Package checks install the actual tarballs in a clean consumer, exercise APIs, a worker,
-the CLI and strict declarations, and reject cache files and unresolved workspace protocols.
-Archives are written to `.bedrock-core/release/tarballs/` with an index.
+Push the release commit and annotated tags to the repository. The CLI is excluded
+from this package group. An existing registry version is accepted only when its
+archive integrity matches the checked tarball.
 
-The CI matrix checks Windows and Linux on Node 22.18 and 24. Native acceptance is a
-separate command because it needs a Bedrock Dedicated Server installation:
+## Publish the CLI
+
+Publish its runtime dependencies and matching shared UI resource pack first.
+After applying the owning repositories' versions, synchronize the starter:
+
+```sh
+yarn sync:cli
+yarn release
+```
+
+The Linux CLI workflow tests the packed CLI with npm, Yarn and pnpm. It creates
+full, script-only and resource-only projects against registry dependencies.
+Its report and the exact tested tarball are required for CLI publication:
+
+```sh
+yarn publish-release --scope cli
+yarn tag-release --scope cli
+```
+
+Set `BEDROCK_CLI_TARBALL` and `BEDROCK_CLI_SMOKE_SUMMARY` to the tested artifact
+and passing report. File-backed Builder smoke tests do not satisfy this gate.
+
+## GitHub Actions
+
+Pushes to main maintain the Changesets version PR. A manual Release run selects
+either Builder or CLI publication after that PR has merged. Configure npm trusted
+publishing for the repository and `.github/workflows/publish.yml` before using
+the workflow's publish job. Version PR creation does not publish packages.
+
+## Package contents and native acceptance
+
+Source development runs TypeScript on Node 22.18 or newer. Published packages
+expose JavaScript and declarations through explicit exports; workers support
+both forms. Archives and integrity receipts live under
+`.bedrock-core/release/tarballs/`.
+
+Native Builder acceptance uses an isolated BDS world and port 19773:
 
 ```powershell
 $env:BUILDER_BDS_RUNNER = 'C:/tools/bds-runner/bin/bc-bds.mjs'
@@ -75,26 +78,5 @@ $env:BC_BDS_PATH = 'C:/tools/bedrock-server'
 yarn acceptance:native
 ```
 
-The native runner uses `.bedrock-core/acceptance/bds/`, port 19773 and a fresh isolated
-world. Two GameTests verify engine registration of the generated item and runtime access
-to generated loot, guide and translation imports. Server acceptance does not test rendered
-JSON UI or client interaction. Keep client validation separate from this gate.
-
-## Registry publication
-
-The preview archive version is `0.1.0-alpha.0`. Registry publication is disabled while
-any package is private. To enable a future public release, set all package manifests
-to public, configure their repository metadata, authenticate through Yarn, and run:
-
-```sh
-yarn npm login --scope bedrock-core
-yarn release
-yarn publish-release
-```
-
-The publication script uses public access and the `next` tag, publishes dependencies
-before the builder and verifies each
-registry tarball's integrity against the checked archive. Repeating a partial release
-skips only identical published versions; a different registry archive fails. Version
-changes must be applied through Changesets before preparing new archives.
-Never change the source, metadata or built files between package verification and publication.
+Its two GameTests cover generated engine content and runtime imports.
+It does not establish rendered JSON UI or client interaction.

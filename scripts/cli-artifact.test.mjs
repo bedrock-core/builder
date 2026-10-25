@@ -16,13 +16,9 @@ test('CLI artifact verification accepts only the exact archive with all successf
 
   writeFileSync(file, 'tested archive');
   const report = {
-    version: '0.11.1', passed: true,
+    version: '0.11.1', passed: true, registryOnly: true,
     sha256: createHash('sha256').update('tested archive').digest('hex'),
-    projects: [
-      { manager: 'npm', passed: true },
-      { manager: 'yarn', passed: true },
-      { manager: 'pnpm', passed: true },
-    ],
+    projects: ['npm', 'yarn', 'pnpm'].flatMap(manager => ['full', 'script', 'resource'].map(preset => ({ manager, preset, passed: true }))),
   };
   const save = value => writeFileSync(reportFile, JSON.stringify(value));
 
@@ -33,6 +29,8 @@ test('CLI artifact verification accepts only the exact archive with all successf
 
   for (const invalid of [
     { ...report, passed: false },
+    { ...report, registryOnly: false },
+    { ...report, projects: report.projects.filter(project => project.preset !== 'resource') },
     { ...report, projects: report.projects.slice(0, 1) },
     { ...report, projects: [{ manager: 'npm', passed: true }, { manager: 'yarn', passed: false }, { manager: 'pnpm', passed: true }] },
     { ...report, projects: undefined },

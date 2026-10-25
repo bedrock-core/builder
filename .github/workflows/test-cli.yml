@@ -1,6 +1,6 @@
 name: Test CLI
 
-# Runtime packages and the matching render pack must be available publicly.
+# Runtime packages and the matching render pack must be available publicly. All three project presets install from the registry.
 on:
   workflow_dispatch:
 
@@ -13,7 +13,7 @@ jobs:
   smoke:
     name: Test packed CLI with npm, Yarn, pnpm and Bedrock
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: builder
@@ -63,7 +63,7 @@ jobs:
           test -s "$BEDROCK_CLI_SMOKE_SUMMARY"
           test -s "$RUNNER_TEMP/cli-source-sha.txt"
           test "$(find "$RUNNER_TEMP/cli-smoke" -name summary.json -type f | wc -l)" -ge 1
-          test "$(find "$RUNNER_TEMP/cli-smoke" -name '*-gametest.json' -type f | wc -l)" -eq 3
+          test "$(find "$RUNNER_TEMP/cli-smoke" -name '*-gametest.json' -type f | wc -l)" -eq 6
           test "$(find "$BC_BDS_HOME/logs" -type f | wc -l)" -ge 3
 
       - name: Keep tested candidate and smoke results

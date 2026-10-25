@@ -48,8 +48,11 @@
         "default": "./dist/src/entries.js"
       }
     },
-    "access": "public",
-    "tag": "next"
+    "access": "public"
   },
-  "private": true
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bedrock-core/builder.git",
+    "directory": "packages/bundler"
+  }
 }

@@ -16,9 +16,10 @@ export function verifiedCliTarball(version, env = process.env) {
   const sha256 = createHash('sha256').update(readFileSync(file)).digest('hex');
 
   if (report.passed !== true || report.version !== version || report.sha256 !== sha256
+    || report.registryOnly !== true
     || !Array.isArray(report.projects)
-    || !['npm', 'yarn', 'pnpm'].every(manager => report.projects.some(project => project.manager === manager && project.passed === true))) {
-    throw new Error('The CLI tarball does not match a passing npm/yarn/pnpm smoke report for this version.');
+    || !['npm', 'yarn', 'pnpm'].every(manager => ['full', 'script', 'resource'].every(preset => report.projects.some(project => project.manager === manager && project.preset === preset && project.passed === true)))) {
+    throw new Error('The CLI tarball does not match a passing registry-only npm/yarn/pnpm smoke report for every project preset.');
   }
 
   return resolve(file);

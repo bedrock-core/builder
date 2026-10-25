@@ -1,41 +1,41 @@
 {
-  "format_version": 3,
-  "header": {
-    "name": "pack.name",
-    "description": "pack.description",
-    "uuid": "{{BP_HEADER_UUID}}",
-    "pack_scope": "world"
-  },
-  "modules": [
-    {
-      "type": "data",
-      "uuid": "{{BP_DATA_UUID}}"
-    },
-    {
-      "type": "script",
-      "language": "javascript",
-      "uuid": "{{BP_SCRIPT_UUID}}",
-      "entry": "scripts/main.js"
-    }
-  ],
-  "dependencies": [
-    {
-      "pack": "resourcePack"
-    },
-    {
-      "uuid": "761ecd37-ad1c-4a64-862a-d6cc38767426",
-      "version": "1.12.1"
-    },
-    {
-      "module_name": "@minecraft/server",
-      "version": "2.10.0"
-    },
-    {
-      "module_name": "@minecraft/server-ui",
-      "version": "2.2.0"
-    }
-  ],
-  "metadata": {
-    "product_type": "addon"
-  }
+	"format_version": 3,
+	"header": {
+		"name": "pack.name",
+		"description": "pack.description",
+		"uuid": "{{BP_HEADER_UUID}}",
+		"pack_scope": "world"
+	},
+	"modules": [
+		{
+			"type": "data",
+			"uuid": "{{BP_DATA_UUID}}"
+		},
+		{
+			"type": "script",
+			"language": "javascript",
+			"uuid": "{{BP_SCRIPT_UUID}}",
+			"entry": "scripts/main.js"
+		}
+	],
+	"dependencies": [
+		{
+			"pack": "resourcePack"
+		},
+		{
+			"uuid": "761ecd37-ad1c-4a64-862a-d6cc38767426",
+			"version": "1.13.0"
+		},
+		{
+			"module_name": "@minecraft/server",
+			"version": "2.10.0"
+		},
+		{
+			"module_name": "@minecraft/server-ui",
+			"version": "2.2.0"
+		}
+	],
+	"metadata": {
+		"product_type": "addon"
+	}
 }

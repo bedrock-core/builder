@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { verifiedCliTarball } from './cli-artifact.mjs';
@@ -71,11 +71,31 @@ function run(command, args, cwd, capture = false, timeout = 600_000) {
 }
 
 const json = file => JSON.parse(readFileSync(file, 'utf8'));
-const archiveDir = resolve(process.argv[4] ?? fileURLToPath(new URL('../.bedrock-core/release/tarballs/', import.meta.url)));
-const archives = existsSync(join(archiveDir, 'index.json'))
+const archiveDir = process.argv[4] ? resolve(process.argv[4]) : undefined;
+const archives = archiveDir && existsSync(join(archiveDir, 'index.json'))
   ? Object.fromEntries(json(join(archiveDir, 'index.json')).filter(pkg => pkg.name.startsWith('@bedrock-core/builder')).map(pkg => [pkg.name, `file:${join(archiveDir, pkg.file)}`]))
   : {};
-const summary = { tarball, sha256: createHash('sha256').update(readFileSync(tarball)).digest('hex'), root, projects: [] };
+const summary = { tarball, sha256: createHash('sha256').update(readFileSync(tarball)).digest('hex'), root, registryOnly: Object.keys(archives).length === 0, projects: [] };
+
+function nativeTest(project, name) {
+  const resultFile = join(root, name + '-gametest.json');
+  const runner = join(project, 'node_modules/@bedrock-core/bds-runner');
+  const metadata = json(join(runner, 'package.json'));
+  const bin = typeof metadata.bin === 'string' ? metadata.bin : metadata.bin['bc-bds'];
+
+  assert.equal(typeof bin, 'string');
+  run(process.execPath, [join(runner, bin), 'run',
+    '--packs', './build/test', '--tag', 'example', '--expect-registered', '1',
+    '--idle', '10', '--timeout', '120', '--quiet', '--json', resultFile], project);
+  const game = json(resultFile);
+
+  assert.equal(game.verdicts.length, 1);
+  assert.equal(game.verdicts[0].outcome, 'pass');
+  assert.deepEqual(game.scriptErrors, []);
+  assert.equal(game.infraError, null);
+
+  return game;
+}
 
 console.log(`smoke: evidence directory ${root}`);
 
@@ -113,11 +133,11 @@ try {
   const author = 'O\'Brien';
   const description = 'An addon with "quotes", a \\ path, and literal $&.';
 
-  for (const manager of ['npm', 'yarn', 'pnpm']) {
-    isolateHome(manager);
-    const name = `${manager}-smoke`;
+  for (const [manager, preset] of ['npm', 'yarn', 'pnpm'].flatMap(manager => ['full', 'script', 'resource'].map(preset => [manager, preset]))) {
+    isolateHome(manager + '-' + preset);
+    const name = manager + '-' + preset + '-smoke';
 
-    run(process.execPath, [cli, name, '--author', author, '--description', description, '--package-manager', 'none'], root, false, 600_000);
+    run(process.execPath, [cli, name, '--author', author, '--description', description, '--package-manager', 'none', '--preset', preset], root, false, 600_000);
     const project = join(root, name);
     const packageFile = join(project, 'package.json');
     const pkg = json(packageFile);
@@ -151,19 +171,6 @@ try {
     const head = spawnSync('git', ['rev-parse', '--verify', 'HEAD'], { cwd: project, env, encoding: 'utf8' });
 
     assert.notEqual(head.status, 0, 'The CLI must leave the initial commit to the user');
-    const version = pkg.dependencies['@bedrock-core/ui'];
-
-    assert.match(version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/, 'Pin the UI release paired with the render asset');
-    const asset = join(project, `core-ui-${version}.mcpack`);
-
-    assert.ok(existsSync(asset), 'The CLI must download the matching render asset');
-    const renderPack = JSON.parse(run('unzip', ['-p', asset, 'manifest.json'], project, true));
-
-    for (const file of ['manifest.json', 'manifest.test.json']) {
-      const dependency = json(join(project, 'packs/BP', file)).dependencies.find(dep => dep.uuid === renderPack.header.uuid);
-
-      assert.equal(dependency?.version, renderPack.header.version, `${file} must require the downloaded render pack`);
-    }
 
     if (manager === 'npm') {
       assert.equal(pkg.packageManager, undefined);
@@ -189,6 +196,45 @@ try {
     const script = name => manager === 'npm'
       ? run('npm', ['run', name], project)
       : run(manager, [name], project);
+
+    if (preset !== 'full') {
+      script('build');
+      script('build:optimized');
+      assert.ok(readdirSync(join(project, 'dist'), { recursive: true }).some(file => String(file).endsWith('manifest.json')));
+      assert.deepEqual(Object.keys(pkg.dependencies).filter(name => name.startsWith('@bedrock-core/')), []);
+      let game;
+
+      if (preset === 'script') {
+        assert.ok(!existsSync(join(project, 'packs/RP')));
+        script('build:test');
+        script('typecheck');
+        game = nativeTest(project, name);
+      } else {
+        assert.ok(!existsSync(join(project, 'packs/BP')));
+        assert.deepEqual(pkg.dependencies, {});
+        const manifest = json(join(project, 'build', name + '_rp', 'manifest.json'));
+
+        assert.equal(manifest.metadata?.product_type, undefined);
+      }
+
+      script('lint');
+      summary.projects.push({ manager, preset, project, gametest: game, passed: true });
+      continue;
+    }
+
+    const version = pkg.dependencies['@bedrock-core/ui'];
+
+    assert.match(version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/, 'Pin the UI release paired with the render asset');
+    const asset = join(project, `core-ui-${version}.mcpack`);
+
+    assert.ok(existsSync(asset), 'The CLI must download the matching render asset');
+    const renderPack = JSON.parse(run('unzip', ['-p', asset, 'manifest.json'], project, true));
+
+    for (const file of ['manifest.json', 'manifest.test.json']) {
+      const dependency = json(join(project, 'packs/BP', file)).dependencies.find(dep => dep.uuid === renderPack.header.uuid);
+
+      assert.equal(dependency?.version, renderPack.header.version, `${file} must require the downloaded render pack`);
+    }
 
     script('build');
     const releaseBp = join(project, 'build', `${name}_bp`);
@@ -239,17 +285,7 @@ try {
     assert.equal(json(join(project, 'config.json')).description, description);
     assert.deepEqual(json(join(project, 'config.json')).authors, [author]);
 
-    const resultFile = join(root, `${name}-gametest.json`);
-
-    run('npm', ['exec', '--yes', '--package=@bedrock-core/bds-runner@0.1.0', '--', 'bc-bds', 'run',
-      '--packs', './build/test/BP', '--tag', 'example', '--expect-registered', '1',
-      '--bds-version', '1.26.51.1', '--idle', '10', '--timeout', '120', '--quiet', '--json', resultFile], project);
-    const game = json(resultFile);
-
-    assert.equal(game.verdicts.length, 1);
-    assert.equal(game.verdicts[0].outcome, 'pass');
-    assert.deepEqual(game.scriptErrors, []);
-    assert.equal(game.infraError, null);
+    const game = nativeTest(project, name);
 
     const before = readdirSync(project).sort();
     const refusal = spawnSync(process.execPath, [cli, name, '--author', author, '--description', 'overwrite', '--package-manager', 'none'], {
@@ -259,7 +295,7 @@ try {
     assert.equal(refusal.status, 1, 'Existing projects must not be overwritten');
     assert.deepEqual(readdirSync(project).sort(), before);
     assert.equal(json(join(project, 'config.json')).description, description);
-    summary.projects.push({ manager, project, uiVersion: version, renderVersion: renderPack.header.version, gametest: game, passed: true });
+    summary.projects.push({ manager, preset, project, uiVersion: version, renderVersion: renderPack.header.version, gametest: game, passed: true });
   }
 
   summary.passed = true;

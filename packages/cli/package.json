@@ -20,8 +20,11 @@
 			"url": "https://drav.dev"
 		}
 	],
-	"repository": "github:bedrock-core/builder",
-	"private": true,
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/bedrock-core/builder.git",
+		"directory": "packages/cli"
+	},
 	"engines": {
 		"node": ">=22.18"
 	},

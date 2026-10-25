@@ -6,7 +6,8 @@ https://bedrock-core.drav.dev/docs/builder
 
 ## Contributing
 
-Open an issue or pull request in this repository.
+Open an issue or pull request in this repository. Package maintainers use the
+[release process](docs/releasing.md).
 
 ## License
 
