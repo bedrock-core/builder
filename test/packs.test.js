@@ -1,7 +1,7 @@
 import { manifestFor } from '../test-support/manifest.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, writeFile, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile, readFile, readdir, rm, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { validateConfig } from '../src/config.ts';
@@ -29,7 +29,7 @@ test('schema accepts arbitrary pack names and requires named paths', () => {
 
 for (const packId of ['resourcePack', 'behaviorPack']) {
   test(`${packId}-only projects export without a second pack or data directory`, async (t) => {
-    const root = await mkdtemp(path.join(tmpdir(), 'builder-pack-'));
+    const root = await realpath(await mkdtemp(path.join(tmpdir(), 'builder-pack-')));
 
     t.after(() => rm(root, { recursive: true, force: true }));
     const pack = path.join(root, 'pack');
@@ -48,7 +48,7 @@ for (const packId of ['resourcePack', 'behaviorPack']) {
 }
 
 test('bundler skips resource packs without requiring a behavior pack', async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), 'builder-pack-'));
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'builder-pack-')));
 
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(path.join(root, 'RP'));
@@ -65,7 +65,7 @@ test('bundler skips resource packs without requiring a behavior pack', async (t)
 });
 
 test('multiple packs use manifest classification rather than configured names', async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), 'builder-pack-'));
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'builder-pack-')));
 
   t.after(() => rm(root, { recursive: true, force: true }));
   const packs = { gameplay: './one', scripts: './two', visuals: './three', theme: './four' };
@@ -98,7 +98,7 @@ test('multiple packs use manifest classification rather than configured names', 
 });
 
 test('final plugin manifest changes are validated before replacing an export', async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), 'builder-manifest-hook-'));
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'builder-manifest-hook-')));
 
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(path.join(root, 'pack'));
@@ -113,7 +113,7 @@ test('final plugin manifest changes are validated before replacing an export', a
   const previous = await readFile(path.join(root, 'dist/gameplay/manifest.json'), 'utf8');
 
   await writeFile(path.join(root, 'modify.ts'), `
-    import { readFile, writeFile } from 'node:fs/promises';
+    import { readFile, writeFile, realpath } from 'node:fs/promises';
     import path from 'node:path';
     export async function run(context, settings) {
       const file = path.join(context.packs.gameplay, 'manifest.json');

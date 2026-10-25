@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, writeFile, readFile, rm, readdir } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile, readFile, rm, readdir, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -10,7 +10,7 @@ import { validateConfig } from '../src/config.ts';
 import { projectFor } from '../test-support/project.js';
 
 async function fixture(t) {
-  const root = await mkdtemp(path.join(tmpdir(), 'builder-generator-'));
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'builder-generator-')));
 
   t.after(() => rm(root, { recursive: true, force: true }));
 
@@ -295,7 +295,7 @@ test('a generator can consume an earlier hook artifact and feed the bundler thro
   await writeFile(path.join(project, 'packs/gameplay/settings.ts'), `import value from '@bedrock-core/generated/input'; export default { value: value.count * 2 };`);
   await writeFile(path.join(project, 'packs/gameplay/scripts/main.ts'), `import settings from '@bedrock-core/generated/settings'; export const value = settings.value;`);
   await writeFile(path.join(project, 'generate.ts'), `
-    import { writeFile } from 'node:fs/promises';
+    import { writeFile, realpath } from 'node:fs/promises';
     import path from 'node:path';
     export async function run(context) {
       const file = path.join(context.generatedDir, 'input.json');

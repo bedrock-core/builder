@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile, access, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { readFile, access, mkdtemp, rm, writeFile, realpath } from 'node:fs/promises';
 import { test } from 'node:test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,7 +21,7 @@ const packageDir = path.resolve(here, '..');
 const templateDir = path.join(packageDir, 'templates', 'bedrock-core');
 
 async function scaffold(t, options = {}) {
-  const root = await mkdtemp(path.join(tmpdir(), 'bedrock-cli-scaffold-'));
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'bedrock-cli-scaffold-')));
   const previous = process.cwd();
 
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -283,7 +283,7 @@ test('project generation continues when Git is unavailable', async () => {
 });
 
 test('non-Yarn scaffolds do not retain Yarn-only project metadata', async (t) => {
-  const dir = await mkdtemp(path.join(tmpdir(), 'bedrock-cli-manager-'));
+  const dir = await realpath(await mkdtemp(path.join(tmpdir(), 'bedrock-cli-manager-')));
 
   t.after(() => rm(dir, { recursive: true, force: true }));
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'test', packageManager: 'yarn@4.18.0' }));
@@ -298,7 +298,7 @@ test('non-Yarn scaffolds do not retain Yarn-only project metadata', async (t) =>
 });
 
 test('Yarn scaffolds have their own project boundary without truncating an existing lock', async (t) => {
-  const dir = await mkdtemp(path.join(tmpdir(), 'bedrock-cli-yarn-'));
+  const dir = await realpath(await mkdtemp(path.join(tmpdir(), 'bedrock-cli-yarn-')));
 
   t.after(() => rm(dir, { recursive: true, force: true }));
   await configurePackageManager('yarn', dir);
@@ -309,7 +309,7 @@ test('Yarn scaffolds have their own project boundary without truncating an exist
 });
 
 test('pnpm scaffolds use a conventional hoisted node_modules layout', async (t) => {
-  const dir = await mkdtemp(path.join(tmpdir(), 'bedrock-cli-pnpm-'));
+  const dir = await realpath(await mkdtemp(path.join(tmpdir(), 'bedrock-cli-pnpm-')));
 
   t.after(() => rm(dir, { recursive: true, force: true }));
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'test', packageManager: 'yarn@4.18.0' }));
@@ -322,7 +322,7 @@ test('pnpm scaffolds use a conventional hoisted node_modules layout', async (t) 
 });
 
 test('skipping installation leaves a manager-neutral manifest', async (t) => {
-  const dir = await mkdtemp(path.join(tmpdir(), 'bedrock-cli-skip-'));
+  const dir = await realpath(await mkdtemp(path.join(tmpdir(), 'bedrock-cli-skip-')));
 
   t.after(() => rm(dir, { recursive: true, force: true }));
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'test', packageManager: 'yarn@4.18.0' }));

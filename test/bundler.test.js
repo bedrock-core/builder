@@ -1,7 +1,7 @@
 import { manifestFor } from '../test-support/manifest.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm, readdir } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, readdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
@@ -9,7 +9,7 @@ import { bundleScripts } from '../packages/bundler/src/index.ts';
 import { runBuild } from '../src/run.ts';
 
 async function fixture(t) {
-  const root = await mkdtemp(path.join(tmpdir(), 'builder-bundler-'));
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'builder-bundler-')));
 
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(path.join(root, 'packs/BP/scripts'), { recursive: true });
@@ -79,7 +79,7 @@ test('runner bundles a generated artifact and project npm dependency without oth
   );
   await writeFile(
     path.join(root, 'generate.ts'),
-    `import { writeFile } from 'node:fs/promises'; import path from 'node:path'; export async function run(ctx) { const file = path.join(ctx.generatedDir, 'items.json'); await writeFile(file, '{"value":9}'); await ctx.registerArtifact('items', file); }`,
+    `import { writeFile, realpath } from 'node:fs/promises'; import path from 'node:path'; export async function run(ctx) { const file = path.join(ctx.generatedDir, 'items.json'); await writeFile(file, '{"value":9}'); await ctx.registerArtifact('items', file); }`,
   );
   config.bedrockCore.plugins = { items: { module: './generate.ts' } };
   const profile = config.bedrockCore.profiles.default;
@@ -226,7 +226,7 @@ test('registered TypeScript inputs remain available for validation and are omitt
     export const result = value;
   `);
   await writeFile(path.join(root, 'produce.ts'), `
-    import { writeFile } from 'node:fs/promises';
+    import { writeFile, realpath } from 'node:fs/promises';
     import path from 'node:path';
     export async function run(context) {
       const file = path.join(context.packs.behaviorPack, 'scripts/generated.ts');
@@ -286,7 +286,7 @@ test('a producer registers its import name once and consumers need no alias conf
     export const result = data.value;
   `);
   await writeFile(path.join(root, 'produce.ts'), `
-    import { writeFile } from 'node:fs/promises';
+    import { writeFile, realpath } from 'node:fs/promises';
     import path from 'node:path';
     export async function run(context) {
       const file = path.join(context.generatedDir, 'custom.json');
@@ -316,7 +316,7 @@ test('duplicate producer import names fail before replacing a successful export'
   const source = await readFile(output, 'utf8');
 
   await writeFile(path.join(root, 'produce.ts'), `
-    import { writeFile } from 'node:fs/promises';
+    import { writeFile, realpath } from 'node:fs/promises';
     import path from 'node:path';
     export async function run(context) {
       const file = path.join(context.generatedDir, 'custom.json');
@@ -340,7 +340,7 @@ test('a manifest plugin selects a test entry before bundling without changing th
   await writeFile(path.join(root, 'packs/BP/scripts/main.ts'), 'export const mode = "production";');
   await writeFile(path.join(root, 'packs/BP/scripts/tests.ts'), 'export const mode = "tests";');
   await writeFile(path.join(root, 'manifest-plugin.ts'), `
-    import { readFile, writeFile } from 'node:fs/promises';
+    import { readFile, writeFile, realpath } from 'node:fs/promises';
     import path from 'node:path';
     export async function run(context) {
       const file = path.join(context.packs.behaviorPack, 'manifest.json');

@@ -1,13 +1,13 @@
 import { manifestFor } from '../test-support/manifest.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, writeFile, rm, readdir, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rm, readdir, symlink, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runBuild } from '../src/run.ts';
 
 async function fixture(t, plugin, steps = [{ plugin: 'custom', after: 'prepare' }]) {
-  const root = await mkdtemp(path.join(tmpdir(), 'builder-test-'));
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'builder-test-')));
 
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(path.join(root, 'packs/BP'), { recursive: true });
@@ -52,7 +52,7 @@ test('TS producer and consumer share generated JSON without touching source', as
   const project = await fixture(
     t,
     `
-    import { writeFile, readFile } from 'node:fs/promises';
+    import { writeFile, readFile, realpath } from 'node:fs/promises';
     import path from 'node:path';
     export async function run(ctx, settings: { consume?: boolean }) {
       if (!settings.consume) {
@@ -86,7 +86,7 @@ test('TS producer and consumer share generated JSON without touching source', as
 test('targeted modules receive one current pack and record distinct artifact owners', async (t) => {
   const project = await fixture(t, `
     export const requirements = { modules: ['resources'] };
-    import { writeFile } from 'node:fs/promises';
+    import { writeFile, realpath } from 'node:fs/promises';
     import path from 'node:path';
     const seen = [];
     export async function run(ctx, settings) {
@@ -206,7 +206,7 @@ test('a destination lock blocks overlapping writes', async (t) => {
 
 test('artifact ownership accepts canonical workspaces beneath an aliased temporary directory', async (t) => {
   const project = await fixture(t, 'export async function run() {}');
-  const root = await mkdtemp(path.join(tmpdir(), 'builder-temp-alias-'));
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'builder-temp-alias-')));
 
   t.after(() => rm(root, { recursive: true, force: true }));
   const directory = path.join(root, 'canonical');
