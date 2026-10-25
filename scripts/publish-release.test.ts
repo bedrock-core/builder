@@ -171,3 +171,41 @@ test('rejects unknown scopes and refuses prereleases on latest', async (t) => {
   await assert.rejects(publishRelease(f.root, publishOptions(['--tag', 'latest']), f.io), /non-latest/);
   assert.equal(f.published.length, 0);
 });
+
+test('waits for registry processing without publishing an archive twice', async (t) => {
+  const f = await fixture(t);
+  const fetch = f.io.fetch;
+  const waits: number[] = [];
+  let reads = 0;
+
+  f.io.wait = async (milliseconds): Promise<void> => {
+    waits.push(milliseconds);
+  };
+
+  f.io.fetch = async (url): Promise<Response> => {
+    if (f.published.length && ++reads <= 2) {
+      return new Response('', { status: 404 });
+    }
+
+    return fetch(url);
+  };
+
+  await publishRelease(f.root, publishOptions(['--scope', 'cli']), f.io);
+  assert.equal(f.published.length, 1);
+  assert.equal(reads, 3);
+  assert.deepEqual(waits, [10_000, 10_000]);
+});
+
+test('registry processing has a bounded wait and never republishes on timeout', async (t) => {
+  const f = await fixture(t);
+  let waits = 0;
+
+  f.io.wait = async (): Promise<void> => {
+    waits++;
+  };
+
+  f.io.fetch = async (): Promise<Response> => new Response('', { status: 404 });
+  await assert.rejects(publishRelease(f.root, publishOptions(['--scope', 'cli']), f.io), /Cannot verify published.*404/);
+  assert.equal(f.published.length, 1);
+  assert.equal(waits, 30);
+});

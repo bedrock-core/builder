@@ -4,6 +4,7 @@ import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { setTimeout as delay } from 'node:timers/promises';
 import { verifiedCliTarball } from './cli-artifact.mjs';
 import { yarn } from './yarn.ts';
 export interface ReleasePackage {
@@ -29,6 +30,7 @@ export interface PublishServices {
   fetch: (url: string) => Promise<Response>;
   log: (message: string) => void;
   cliArtifact: (version: string) => string;
+  wait?: (milliseconds: number) => Promise<void>;
 }
 const repository = fileURLToPath(new URL('../', import.meta.url));
 const integrity = (bytes: Uint8Array): string => 'sha512-' + createHash('sha512').update(bytes).digest('base64');
@@ -207,7 +209,19 @@ export async function publishRelease(root: string, options: PublishOptions, serv
     }
 
     io.publish(['publish', path.join(directory, pkg.file), '--registry', 'https://registry.npmjs.org', '--access', 'public', '--tag', tag]);
-    const response = await io.fetch(registry);
+    let response: Response;
+
+    // npm can acknowledge publication while its registry metadata is still processing.
+    for (let attempt = 0; ; attempt++) {
+      response = await io.fetch(registry + '?verification=' + Date.now());
+
+      if (response.ok || attempt === 30 || ![404, 429, 500, 502, 503, 504].includes(response.status)) {
+        break;
+      }
+
+      io.log('Waiting for registry metadata: ' + pkg.name + '@' + pkg.version);
+      await (io.wait ?? delay)(10_000);
+    }
 
     if (!response.ok) {
       throw new Error('Cannot verify published ' + pkg.name + ': HTTP ' + response.status);
