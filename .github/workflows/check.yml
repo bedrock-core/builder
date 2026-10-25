@@ -22,3 +22,5 @@ jobs:
       - run: yarn acceptance
       - run: yarn pack-release
       - run: yarn test:packages
+      - name: Verify release preparation leaves source clean
+        run: node -e "const {execFileSync}=require('node:child_process'); const changed=execFileSync('git',['status','--porcelain=v1'],{encoding:'utf8'}).trim(); if(changed){console.error(changed);process.exit(1)}"

@@ -12,8 +12,10 @@ const verification = JSON.parse(await readFile(path.join(directory, 'verified.js
 };
 
 if (!options.dryRun) {
-  if (execFileSync('git', ['status', '--porcelain=v1'], { cwd: root, encoding: 'utf8' }).trim()) {
-    throw new Error('Commit the release source before creating package tags');
+  const changed = execFileSync('git', ['status', '--porcelain=v1'], { cwd: root, encoding: 'utf8' }).trim();
+
+  if (changed) {
+    throw new Error('Commit the release source before creating package tags:\n' + changed);
   }
 
   for (const pkg of packages) {
