@@ -91,7 +91,7 @@ test('targeted invocations retain the full graph and project scope invokes once 
   const { root, directories } = await fixture(t);
 
   await writeFile(path.join(root, 'plugin.ts'), `
-    import { writeFile } from 'node:fs/promises';
+    import { mkdir, writeFile } from 'node:fs/promises';
     import path from 'node:path';
     export const requirements = { modules: ['data', 'script', 'resources'] };
     export async function run(context, settings) {
@@ -99,6 +99,12 @@ test('targeted invocations retain the full graph and project scope invokes once 
       if (settings.extension) {
         context.registerBundleExtension({ id: 'selected:extension', version: '1' });
         const input = path.join(context.allPacks.resources, 'inputs');
+        await mkdir(input, { recursive: true });
+        await writeFile(path.join(input, 'hidden.ts'), 'export const input = true;');
+        const metadata = path.join(context.allPacks.resources, 'metadata.json');
+        await writeFile(metadata, '{"keep":true}');
+        context.excludeFromExport(path.join(metadata, 'index.cts'));
+        context.excludeFromExport(path.join(context.allPacks.resources, 'missing', 'child.ts'));
         context.excludeFromExport(input);
         if (!context.inputDirectories.includes(input)) throw new Error('Stale input directory metadata');
       }
@@ -135,6 +141,8 @@ test('targeted invocations retain the full graph and project scope invokes once 
 
   assert.deepEqual(selected.outputs, ['resources', 'extras']);
   assert.deepEqual(selected.extensions, [['resources', 'extras']]);
+  assert.deepEqual(JSON.parse(await readFile(path.join(root, 'dist/resources/metadata.json'), 'utf8')), { keep: true });
+  await assert.rejects(readFile(path.join(root, 'dist/resources/inputs/hidden.ts')), { code: 'ENOENT' });
 
   for (const id of Object.keys(directories)) {
     const current = JSON.parse(await readFile(path.join(root, `dist/${id}/scoped.json`), 'utf8'));

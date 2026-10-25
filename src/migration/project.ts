@@ -6,9 +6,9 @@ import { migrateRegolithConfig } from '../migrate.ts';
 import { readManifest } from '../manifest.ts';
 import { inspectPack } from '../packs.ts';
 import { resolveExportPaths } from '../export.ts';
-import { stages } from '../plan.ts';
+import { localFilterKind } from './local-filter.ts';
 import { validateConfig } from '../config.ts';
-import type { FilterKind, MigrationOptions, MigrationResult } from './types.ts';
+import type { MigrationOptions, MigrationResult } from './types.ts';
 import { isRecord, pointer } from './types.ts';
 
 /** Configuration preview tied to an authored config path and its original text. */
@@ -84,15 +84,10 @@ export async function migrateRegolithProject(configPath = 'config.json', options
       }
 
       try {
-        const script = await realpath(path.resolve(project, definition.script));
+        const kind = await localFilterKind(path.resolve(project, definition.script), path.join(repository, '..', 'regolith-filters'));
 
-        for (const stage of ['core', ...stages] as FilterKind[]) {
-          const expected = await realpath(path.join(repository, '..', 'regolith-filters', stage, 'main.ts'));
-
-          if (path.relative(expected, script) === '') {
-            Object.defineProperty(inferred.filters, id, { value: stage, enumerable: true });
-            break;
-          }
+        if (kind) {
+          Object.defineProperty(inferred.filters, id, { value: kind, enumerable: true });
         }
       } catch {
         // Unverified modules remain custom filters; the converter reports them.

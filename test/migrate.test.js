@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { migrateRegolithConfig, migrateRegolithProject, writeMigration } from '../src/migrate.ts';
+import { localFilterKind } from '../src/migration/local-filter.ts';
 import { validateConfig } from '../src/config.ts';
 import { runBuild } from '../src/run.ts';
 import { projectFor } from '../test-support/project.js';
@@ -300,15 +301,22 @@ test('local wrapper recognition uses canonical paths and does not execute lookal
   const project = await projectWithRegolith(t);
   const config = project.legacy;
 
-  config.regolith.filterDefinitions.bundler = {
-    runWith: 'nodejs', script: fileURLToPath(new URL('../../regolith-filters/bundler/main.ts', import.meta.url)),
-  };
+  const wrappers = path.join(project.root, 'verified-filters');
+  const wrapper = path.join(wrappers, 'bundler/main.ts');
+
+  await mkdir(path.dirname(wrapper), { recursive: true });
+  await writeFile(wrapper, 'throw new Error("must never execute");');
+  config.regolith.filterDefinitions.bundler = { runWith: 'nodejs', script: wrapper };
+  const kind = await localFilterKind(wrapper, wrappers);
+
+  assert.equal(kind, 'bundler');
   await writeFile(project.configPath, JSON.stringify(config));
-  assert.equal((await migrateRegolithProject(project.configPath)).ready, true);
+  assert.equal((await migrateRegolithProject(project.configPath, { filters: { bundler: kind } })).ready, true);
   const fake = path.join(project.project, 'regolith-filters/bundler/main.ts');
 
   await mkdir(path.dirname(fake), { recursive: true });
   await writeFile(fake, 'throw new Error("must never execute");');
+  assert.equal(await localFilterKind(fake, wrappers), undefined);
   config.regolith.filterDefinitions.bundler.script = fake;
   await writeFile(project.configPath, JSON.stringify(config));
   assert.ok(codes(await migrateRegolithProject(project.configPath)).includes('custom-filter'));

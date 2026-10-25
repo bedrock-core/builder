@@ -524,7 +524,13 @@ export async function runBuild({
           await validateArtifacts?.(context);
 
           for (const file of exportExclusions) {
-            await rm(file, { recursive: true, force: true });
+            try {
+              await rm(file, { recursive: true, force: true });
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== 'ENOTDIR') {
+                throw error;
+              }
+            }
           }
 
           await validatePackManifests(stagedPacks);
