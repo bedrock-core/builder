@@ -86,6 +86,7 @@ const RootStack = createStackNavigator({
     Profile: `${project.namespace}:profile_form`,
   },
 });
+
 type RootStackType = typeof RootStack;
 declare module '@bedrock-core/navigation' {
   interface RootNavigator extends RootStackType {}
