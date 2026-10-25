@@ -44,7 +44,7 @@ try {
     dependencies: { '@bedrock-core/builder': files['@bedrock-core/builder'], 'typescript': '5.9.3' }, resolutions: files,
   }, null, 2));
   await writeFile(path.join(root, '.yarnrc.yml'), 'nodeLinker: node-modules\nenableGlobalCache: true\n');
-  yarn(['install'], root);
+  yarn(['install', '--no-immutable'], root);
   await cp(path.join(repository, 'fixtures/acceptance'), path.join(root, 'addon'), { recursive: true });
   await installUi(path.join(root, 'addon'));
   await writeFile(path.join(root, 'addon/packs/BP/scripts/acceptance.screen.tsx'), `
@@ -175,7 +175,7 @@ try {
         dependencies: { [pkg.name]: files[pkg.name] }, resolutions: files,
       }));
       await writeFile(path.join(standalone, '.yarnrc.yml'), 'nodeLinker: node-modules\nenableGlobalCache: true\n');
-      yarn(['install'], standalone);
+      yarn(['install', '--no-immutable'], standalone);
 
       if (pkg.name === '@bedrock-core/cli') {
         await writeFile(path.join(standalone, 'offline-network.mjs'), `
