@@ -119,7 +119,7 @@ export interface UiLibrary {
     buildScreenTree(screen: unknown): unknown;
     hostFor(tree: unknown): { id: string };
     setBuildLocales(locales: PackLocales): void;
-    charsetLang(): string[];
+    charsetLang?(): string[];
     protocolItemDefinitions?: (namespace: string) => LinkedUi['items'][string];
     LAYOUT_PROPERTY: string;
     MAX_LAYOUT: number;
