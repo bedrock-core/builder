@@ -27,6 +27,7 @@ import {
   type UiSettings,
 } from './internal.ts';
 import { writeTestMetadata } from './metadata.ts';
+import { prepareOreAssets } from './ore-assets.ts';
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 
@@ -35,6 +36,24 @@ async function implementation(files: string[], bundler = false): Promise<string>
   const version = await fingerprint([new URL(import.meta.url), ...sources]);
 
   return bundler ? version + await compilerFingerprint() : version;
+}
+
+async function hasInstalledPackage(root: string, names: string[]): Promise<boolean> {
+  let directory = root;
+
+  while (true) {
+    if (await hasFiles(directory, names.map(name => `node_modules/@bedrock-core/${name}/package.json`))) {
+      return true;
+    }
+
+    const parent = path.dirname(directory);
+
+    if (parent === directory) {
+      return false;
+    }
+
+    directory = parent;
+  }
 }
 
 /** Compile the owner's screens and link them into its selected local resource pack. */
@@ -90,16 +109,13 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
   let evaluator: UiEvaluator | undefined;
   let reused = 0;
   let compiledModules = 0;
+  let oreClient: string | undefined;
   const moduleSources = new Set(settings.screens ?? []);
   const shapedSources = new Set<string>();
 
-  for (const entry of scriptEntries) {
-    const source = await readFile(entry, 'utf8');
+  const declarationEntries = await hasInstalledPackage(context.projectRoot, ['server', 'server-runtime']) ? scriptEntries : [];
 
-    if (!/['"]@bedrock-core\/server(?:-runtime)?['"]/.test(source)) {
-      continue;
-    }
-
+  for (const entry of declarationEntries) {
     const relative = path.relative(context.stagedRoot, entry).replaceAll('\\', '/');
     const compiled = await context.reuse(`declaration:${relative}`, {
       inputs: [entry], key: compilerKey,
@@ -258,7 +274,7 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
               testMetadata: settings.testMetadata,
             });
 
-            if (settings.testMetadata && !screen.testMetadata) {
+            if (settings.testMetadata && screen.ore === undefined && !screen.testMetadata) {
               throw new Error('The installed @bedrock-core UI compiler does not support testMetadata');
             }
 
@@ -291,9 +307,21 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
 
     for (const pack of resources) {
       files.push(...await writeUiResource(pack, linked, metadataEntries, namespace, settings));
+      const layouts = (linked.resources ?? []).filter(resource => /^hbui\/core-ore\/[A-Za-z0-9_-]+\.json$/.test(resource.file)).map(resource => resource.file);
+
+      if (linked.screens.some(screen => screen.ore !== undefined)) {
+        const prepared = await prepareOreAssets({
+          pack, layouts, projectRoot: context.projectRoot, stagedRoot: context.stagedRoot,
+          targetVersion: context.project?.targetVersion, settings: settings.experimentalOre,
+          registerDependency: file => context.registerDependency(file),
+        });
+
+        files.push(...prepared.files);
+        oreClient = prepared.version;
+      }
     }
 
-    for (const file of files) {
+    for (const file of new Set(files)) {
       const pack = routed.map(pack => [pack.id, pack.path] as const).find(([, directory]) => file.startsWith(`${directory}${path.sep}`))!;
 
       await context.registerArtifact(`ui:${pack[0]}:${path.relative(pack[1], file).replaceAll('\\', '/')}`, file);
@@ -359,8 +387,8 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
   }
 
   return {
-    cached: compiledModules === 0 && reused === entries.length,
-    reason: `${compiledModules} modules bundled; ${entries.length - reused} screens compiled, ${reused} reused`,
+    cached: compiledModules === 0 && reused === entries.length && oreClient === undefined,
+    reason: `${compiledModules} modules bundled; ${entries.length - reused} screens compiled, ${reused} reused${oreClient ? `; Ore assets for ${oreClient}` : ''}`,
   };
 }
 
@@ -406,24 +434,9 @@ export async function detect(context: BuildContext, settings: UiSettings = {}): 
           if (source.includes('@bedrock-core/generated/ui')) {
             needed = true;
             input = 'generated UI imports in manifest entries';
-          } else if (/['"]@bedrock-core\/server(?:-runtime)?['"]/.test(source)) {
-            let directory = context.projectRoot;
-
-            while (true) {
-              if (await hasFiles(directory, 'node_modules/@bedrock-core/ui/package.json')) {
-                needed = true;
-                input = 'addon declarations with the installed UI toolkit';
-                break;
-              }
-
-              const parent = path.dirname(directory);
-
-              if (directory === parent) {
-                break;
-              }
-
-              directory = parent;
-            }
+          } else if (source && await hasInstalledPackage(context.projectRoot, ['server', 'server-runtime'])) {
+            needed = await hasInstalledPackage(context.projectRoot, ['ui']);
+            input = 'addon declarations with the installed UI toolkit';
           }
         }
       }

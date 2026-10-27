@@ -4,6 +4,16 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "experimentalOre": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Asset preparation for Experimental_OreUI screens; ignored when the build has none.",
+      "properties": {
+        "clientRoot": { "type": "string", "pattern": "\\S", "description": "Windows Minecraft Content directory; defaults to a matching installed client." },
+        "resourceRoots": { "type": "array", "items": { "type": "string", "pattern": "\\S" }, "description": "Fallback resource-pack roots after the selected RP, in priority order. Paths resolve from the project." },
+        "dynamicTextures": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^textures/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+(?:\\.png)?$" }, "description": "Pack-local PNG textures available to live Ore images." }
+      }
+    },
     "debug": {
       "type": "boolean",
       "description": "Stage override for the profile debug setting."

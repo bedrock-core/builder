@@ -1,6 +1,6 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { pathToFileURL } from 'node:url';
-import type { UiEnvironment, UiLibrary, UiRequest } from './types.ts';
+import type { ScreenData, UiEnvironment, UiLibrary, UiRequest } from './types.ts';
 
 const environment = workerData as UiEnvironment;
 const library = await import(pathToFileURL(environment.library).href) as UiLibrary;
@@ -51,7 +51,18 @@ port.on('message', async (request: UiRequest) => {
 
         const spec = { name: request.name, namespace: request.namespace, testMetadata: request.testMetadata === true };
         const host = library.runtime.hostFor(library.runtime.buildScreenTree(component)).id;
-        const compiled = host === 'chest' ? library.compiler.compileScreen(component, spec) : library.compiler.compileFormScreen(component, spec);
+        let compiled: ScreenData & { face?: unknown; entries?: unknown };
+
+        if (host === 'experimental-ore-ui') {
+          if (!library.compiler.compileExperimentalOreScreen) {
+            throw new Error('The selected UI compiler does not support Experimental_OreUI.');
+          }
+
+          compiled = library.compiler.compileExperimentalOreScreen(component, spec);
+        } else {
+          compiled = host === 'chest' ? library.compiler.compileScreen(component, spec) : library.compiler.compileFormScreen(component, spec);
+        }
+
         let parameters = loaded.parameters;
 
         if (request.member && parameters !== undefined) {
@@ -78,7 +89,7 @@ port.on('message', async (request: UiRequest) => {
           }
         }
 
-        if (!compiled.host) {
+        if (!compiled.host && host !== 'experimental-ore-ui') {
           compiled.kind = host === 'form-modal' ? 'modal' : 'action';
         }
 

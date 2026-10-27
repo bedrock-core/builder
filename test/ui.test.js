@@ -245,37 +245,53 @@ test('module records, container hosts and multiple resource packs retain complet
   assert.equal((await json(path.join(result.outputPaths.logic, 'items/core-ui/test/fixture.json')))['minecraft:item'].description.identifier, 'test:fixture');
 });
 
-test('manifest declarations automatically include default app screens and screens shaped from their data', async (t) => {
-  const project = await fixture(t);
-  const server = path.join(project.root, 'node_modules/@bedrock-core/server-runtime');
-  const app = path.join(project.root, 'node_modules/fixture-app');
+for (const location of ['entry', 'imported module', 'GameTest entry']) {
+  test(`manifest declarations in ${location} include default and shaped app screens`, async (t) => {
+    const project = await fixture(t);
+    const server = path.join(project.root, 'node_modules/@bedrock-core/server-runtime');
+    const app = path.join(project.root, 'node_modules/fixture-app');
 
-  await mkdir(server, { recursive: true });
-  await mkdir(app, { recursive: true });
-  await writeFile(path.join(server, 'package.json'), '{"name":"@bedrock-core/server-runtime","type":"module","exports":"./index.js"}');
-  await writeFile(path.join(server, 'index.js'), 'export const core = { register() {} };');
-  await writeFile(path.join(app, 'package.json'), '{"name":"fixture-app","type":"module","exports":"./screens.tsx"}');
-  await writeFile(path.join(app, 'screens.tsx'), `
+    await mkdir(server, { recursive: true });
+    await mkdir(app, { recursive: true });
+    await writeFile(path.join(server, 'package.json'), '{"name":"@bedrock-core/server-runtime","type":"module","exports":"./index.js"}');
+    await writeFile(path.join(server, 'index.js'), 'export const core = { register() {} };');
+    await writeFile(path.join(app, 'package.json'), '{"name":"fixture-app","type":"module","exports":"./screens.tsx"}');
+    await writeFile(path.join(app, 'screens.tsx'), `
     import { Screen, Text } from '@bedrock-core/ui';
     export default { home: () => <Screen><Text>Home</Text></Screen> };
     export function shape(declared, manifest) {
       return { [declared.page]: () => <Screen><Text>{manifest.packName}</Text></Screen> };
     }
   `);
-  const entry = path.join(project.root, 'packs/BP/scripts/start.ts');
+    const entry = path.join(project.root, 'packs/BP/scripts/start.ts');
+    const registration = location === 'entry' ? entry : path.join(project.root, 'packs/BP/scripts/registration.ts');
 
-  await writeFile(entry, `import { core } from '@bedrock-core/server-runtime'; core.register({ manifest: { packName: 'First' }, feature: { app: 'fixture', compiled: 'fixture-app', page: 'declared' } });`);
-  const initial = await runBuild(project.options);
+    if (registration !== entry) {
+      await writeFile(entry, `import './registration';`);
+    }
 
-  assert.deepEqual(executed(initial), ['declared', 'home']);
-  assert.match(await readFile(path.join(initial.outputPaths.assets, 'ui/core-ui/screens/test/declared.json'), 'utf8'), /First/);
-  assert.deepEqual(executed(await runBuild(project.options)), []);
-  await writeFile(entry, `import { core } from '@bedrock-core/server-runtime'; core.register({ manifest: { packName: 'Second' }, feature: { app: 'fixture', compiled: 'fixture-app', page: 'declared' } });`);
-  const changed = await runBuild(project.options);
+    if (location === 'GameTest entry') {
+      const gametest = path.join(project.root, 'node_modules/@minecraft/server-gametest');
 
-  assert.deepEqual(executed(changed), ['declared']);
-  assert.match(await readFile(path.join(changed.outputPaths.assets, 'ui/core-ui/screens/test/declared.json'), 'utf8'), /Second/);
-});
+      await mkdir(gametest, { recursive: true });
+      await writeFile(path.join(gametest, 'package.json'), '{"name":"@minecraft/server-gametest","types":"index.d.ts"}');
+      await writeFile(path.join(gametest, 'index.d.ts'), 'export function register(namespace: string, name: string, test: () => void): void;');
+      await writeFile(entry, `import './registration'; import { register } from '@minecraft/server-gametest'; register('fixture', 'ready', () => {});`);
+    }
+
+    await writeFile(registration, `import { core } from '@bedrock-core/server-runtime'; core.register({ manifest: { packName: 'First' }, feature: { app: 'fixture', compiled: 'fixture-app', page: 'declared' } });`);
+    const initial = await runBuild(project.options);
+
+    assert.deepEqual(executed(initial), ['declared', 'home']);
+    assert.match(await readFile(path.join(initial.outputPaths.assets, 'ui/core-ui/screens/test/declared.json'), 'utf8'), /First/);
+    assert.deepEqual(executed(await runBuild(project.options)), []);
+    await writeFile(registration, `import { core } from '@bedrock-core/server-runtime'; core.register({ manifest: { packName: 'Second' }, feature: { app: 'fixture', compiled: 'fixture-app', page: 'declared' } });`);
+    const changed = await runBuild(project.options);
+
+    assert.deepEqual(executed(changed), ['declared']);
+    assert.match(await readFile(path.join(changed.outputPaths.assets, 'ui/core-ui/screens/test/declared.json'), 'utf8'), /Second/);
+  });
+}
 
 test('removing the last screen refreshes editor keys and removes generated UI from the exported pack', async (t) => {
   const project = await fixture(t);

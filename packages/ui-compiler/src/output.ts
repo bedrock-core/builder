@@ -51,8 +51,13 @@ export async function writeUiResource(pack: string, linked: LinkedUi, entries: S
   };
 
   for (const screen of linked.screens) {
-    await write(`${outputDir}/${screen.name}.json`, screen.document);
     mergeLang(lang, screen.lang);
+
+    if (screen.ore !== undefined) {
+      continue;
+    }
+
+    await write(`${outputDir}/${screen.name}.json`, screen.document);
 
     for (const [name, face] of Object.entries(screen.faces)) {
       if (faces[name] !== undefined && JSON.stringify(faces[name]) !== JSON.stringify(face)) {
@@ -61,6 +66,18 @@ export async function writeUiResource(pack: string, linked: LinkedUi, entries: S
 
       faces[name] = face;
     }
+  }
+
+  for (const resource of linked.resources ?? []) {
+    if (!resource.file.startsWith('hbui/') || resource.file.split('/').some(part => part === '..' || !part) || resource.file.includes('\\')) {
+      throw new Error(`Invalid experimental UI resource path: ${resource.file}`);
+    }
+
+    const file = path.join(pack, resource.file);
+
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, resource.text);
+    files.push(file);
   }
 
   await write(`${outputDir}/faces.json`, { namespace: linked.screens[0]?.facesNamespace ?? `${namespace}_faces`, ...faces });
@@ -147,13 +164,15 @@ export async function writeUiResource(pack: string, linked: LinkedUi, entries: S
 
   definitions.ui_defs = [...new Set([...names, ...files.filter(file => file.startsWith(path.join(pack, 'ui'))).map(file => path.relative(pack, file).replaceAll('\\', '/'))])];
   await write('ui/_ui_defs.json', definitions);
-  writeTestMetadata(pack, linked.screens.map(screen => ({
+  const jsonUiScreens = linked.screens.filter(screen => screen.ore === undefined);
+
+  writeTestMetadata(pack, jsonUiScreens.map(screen => ({
     file: `${outputDir}/${screen.name}.json`,
     source: entries.find(entry => entry.name === screen.name)!.source,
     metadata: screen.testMetadata,
   })), settings.testMetadata === true);
 
-  if (settings.testMetadata && linked.screens.length) {
+  if (settings.testMetadata && jsonUiScreens.length) {
     files.push(path.join(pack, 'bedrock-core/test-metadata.json'));
   }
 
@@ -174,6 +193,35 @@ export function uiRegistration(linked: Pick<LinkedUi, 'screens'>, entries: Scree
   const calls: string[] = [];
   const table: unknown[] = [];
   const keys: string[] = [];
+  const oreNodes: string[] = [];
+  const oreIndexes = new Map<string, number>();
+  const withExpression = (value: object, key: string, expression: string): string => '{'
+    + [...Object.entries(value).filter(([name, item]) => name !== key && item !== undefined).map(([name, item]) => JSON.stringify(name) + ':' + JSON.stringify(item)), JSON.stringify(key) + ':' + expression].join(',') + '}';
+
+  const descriptor = (metadata: object, screen: LinkedUi['screens'][number]): string => {
+    const snapshot = screen.snapshot;
+    const ore = snapshot && 'ore' in snapshot ? snapshot.ore : undefined;
+
+    if (typeof ore !== 'object' || ore === null || !('nodes' in ore) || !Array.isArray(ore.nodes)) {
+      return JSON.stringify({ ...metadata, title: screen.title, snapshot });
+    }
+
+    const indexes = ore.nodes.map((node: unknown) => {
+      const text = JSON.stringify(node);
+      let index = oreIndexes.get(text);
+
+      if (index === undefined) {
+        index = oreNodes.length;
+        oreIndexes.set(text, index);
+        oreNodes.push(text);
+      }
+
+      return index;
+    });
+    const scene = withExpression(ore, 'nodes', JSON.stringify(indexes) + '.map(index => CORE_ORE_NODES[index])');
+
+    return withExpression({ ...metadata, title: screen.title }, 'snapshot', withExpression(snapshot!, 'ore', scene));
+  };
 
   const reference = (name: string): string => {
     const existing = components.get(name);
@@ -213,7 +261,7 @@ export function uiRegistration(linked: Pick<LinkedUi, 'screens'>, entries: Scree
       if (screen.table) {
         table.push({ key, title: screen.title, values: screen.table.values, actions: screen.table.actions });
       } else {
-        calls.push(`registerCompiledScreen(${reference(screen.name)}, ${JSON.stringify({ ...metadata, title: screen.title, snapshot: screen.snapshot })});`);
+        calls.push(`registerCompiledScreen(${reference(screen.name)}, ${descriptor(metadata, screen)});`);
       }
     }
   }
@@ -221,6 +269,7 @@ export function uiRegistration(linked: Pick<LinkedUi, 'screens'>, entries: Scree
   return [
     `import { registerCompiledScreen, registerContainerLooks, registerScreenMetadata, registerStaticScreens } from '@bedrock-core/ui';`,
     ...imports,
+    ...oreNodes.length ? [`const CORE_ORE_NODES = [${oreNodes.join(',')}] as const;`] : [],
     `export const UI_NAMESPACE = ${JSON.stringify(namespace)};`,
     `export const UI_REFERENCE = ${JSON.stringify(table)} as const;`,
     'registerStaticScreens(UI_REFERENCE);',

@@ -19,6 +19,15 @@ export interface UiSettings {
   pretty?: false | { indent?: 'space' | 'tab'; size?: number };
   /** TypeScript module-resolution configuration. */
   tsconfig?: string;
+  /** Client and fallback resource roots used only when an Experimental_OreUI screen is compiled. */
+  experimentalOre?: {
+    /** Windows client Content directory. Relative paths resolve from the project; omitted selects matching installed assets. */
+    clientRoot?: string;
+    /** Additional resource-pack directories, searched after the selected output RP in listed order. */
+    resourceRoots?: string[];
+    /** Pack-local PNG paths that live image values may select at runtime. */
+    dynamicTextures?: string[];
+  };
 }
 
 /** Authored screen module and export selected for compilation. */
@@ -33,7 +42,8 @@ export interface ScreenEntry {
 
 /** Compiled screen data consumed by linking and resource/host writers. */
 export interface ScreenData {
-  kind?: 'action' | 'modal';
+  kind?: 'action' | 'modal' | 'custom';
+  ore?: unknown;
   parameters?: unknown;
   name: string;
   addon: string;
@@ -67,6 +77,7 @@ export interface UiDocument {
 
 /** Complete linked screen set with JSON UI, host protocol and language outputs. */
 export interface LinkedUi {
+  resources?: { file: string; text: string }[];
   screens: ScreenData[];
   hooks: UiDocument[];
   documents: UiDocument[];
@@ -101,7 +112,8 @@ export interface UiLibrary {
   compiler: {
     compileScreen(screen: unknown, spec: object): ScreenData & { face?: unknown; entries?: unknown };
     compileFormScreen(screen: unknown, spec: object): ScreenData & { face?: unknown; entries?: unknown };
-    buildUiPack(screens: ScreenData[], namespace: string): Pick<LinkedUi, 'screens' | 'hooks' | 'documents'>;
+    compileExperimentalOreScreen?(screen: unknown, spec: object): ScreenData;
+    buildUiPack(screens: ScreenData[], namespace: string): Pick<LinkedUi, 'screens' | 'hooks' | 'documents' | 'resources'>;
   };
   runtime: Record<string, unknown> & {
     buildScreenTree(screen: unknown): unknown;

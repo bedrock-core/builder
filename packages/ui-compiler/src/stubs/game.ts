@@ -58,7 +58,7 @@ const ANYTHING = [
 export const gameStubPlugin = (from: string, inputs?: Set<string>): Plugin => ({
   name: 'minecraft-stub',
   setup(pluginBuild) {
-    pluginBuild.onResolve({ filter: /^@minecraft\/server(-ui|-net|-admin)?$/ }, args => ({
+    pluginBuild.onResolve({ filter: /^@minecraft\/server(-ui|-net|-admin|-gametest)?$/ }, args => ({
       path: args.path,
       namespace: 'minecraft-stub',
     }));
