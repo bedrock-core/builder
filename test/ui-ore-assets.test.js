@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { Script } from 'node:vm';
@@ -35,7 +35,8 @@ async function client(root, entry = vanilla, version = '1.26.7021.0') {
 }
 
 async function fixture(run) {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'builder-ore-assets-'));
+  const temporaryRoot = await realpath(os.tmpdir());
+  const root = await mkdtemp(path.join(temporaryRoot, 'builder-ore-assets-'));
   const projectRoot = path.join(root, 'project'), stagedRoot = path.join(root, 'stage'), pack = path.join(stagedRoot, 'RP'), clientRoot = path.join(root, 'client'), resources = path.join(root, 'resources');
 
   try {
@@ -51,7 +52,7 @@ async function fixture(run) {
 
     await run({ root, projectRoot, stagedRoot, pack, clientRoot, resources, layout, inputs, options: { projectRoot, stagedRoot, pack, targetVersion: '1.26.70', layouts: [layout], settings: { clientRoot, resourceRoots: [resources] }, registerDependency: file => inputs.push(file) } });
   } finally {
-    assert(path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep));
+    assert(path.resolve(root).startsWith(temporaryRoot + path.sep));
     await rm(root, { recursive: true, force: true });
   }
 }
