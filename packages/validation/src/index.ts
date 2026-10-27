@@ -149,6 +149,53 @@ export async function validatePackContent(options: ContentValidationOptions): Pr
       entry.properties.textures = { anyOf: [{ type: 'string' }, entry.properties.textures] };
     }
 
+    if (!options.schemaRoot && metadata.version === '1.26.50') {
+      if (file === path.join(root, 'schemas/bp/entities/entity_minecraft_spell_effects.schema.json')) {
+        // Effects accept numeric seconds or the documented infinite duration.
+        // https://learn.microsoft.com/minecraft/creator/reference/content/entityreference/examples/entitycomponents/minecraftcomponent_spell_effects
+        const fields = document.properties as SchemaDocument;
+        const additions = fields.add_effects as SchemaDocument;
+        const item = additions.items as SchemaDocument;
+        const properties = item.properties as SchemaDocument;
+
+        properties.duration = { anyOf: [properties.duration, { const: 'infinite' }] };
+      }
+
+      if (['description.schema.json', 'description_2.schema.json'].some(name => file === path.join(root, 'schemas/rp/entity', name))) {
+        // Client entities can mix unconditional controllers and conditional entries.
+        const fields = document.properties as SchemaDocument;
+        const controllers = fields.render_controllers as SchemaDocument;
+        const alternatives = controllers.anyOf as SchemaDocument[];
+        const items = alternatives.filter(entry => entry.type === 'array').map(entry => entry.items);
+
+        alternatives.push({ type: 'array', items: { anyOf: items } });
+      }
+
+      if (file.startsWith(path.join(root, 'schemas/rp/models') + path.sep)) {
+        // Geometry vectors accept numeric coordinates and Molang expressions.
+        const vectors = new Set(['visible_bounds_offset', 'pivot', 'rotation', 'origin', 'size', 'uv', 'uv_size', 'translation', 'scale']);
+
+        const visit = (value: unknown, vector = false): void => {
+          if (Array.isArray(value)) {
+            value.forEach(entry => visit(entry, vector));
+          } else if (value && typeof value === 'object') {
+            const node = value as SchemaDocument;
+            const items = node.items as SchemaDocument | undefined;
+
+            if (vector && node.type === 'array' && items?.type === 'string') {
+              items.type = ['string', 'number'];
+            }
+
+            for (const [key, entry] of Object.entries(node)) {
+              visit(entry, vector || vectors.has(key));
+            }
+          }
+        };
+
+        visit(document);
+      }
+    }
+
     function normalize(value: unknown): void {
       if (Array.isArray(value)) {
         value.forEach(normalize);

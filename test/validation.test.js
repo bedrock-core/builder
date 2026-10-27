@@ -195,3 +195,49 @@ test('validation reuses unchanged files and checks only the edited document', as
   assert.equal(edited.compilations.filter(item => item.id.startsWith('validate/') && item.status === 'executed').length, 1);
   assert.equal(edited.compilations.filter(item => item.id.startsWith('validate/') && item.status === 'cached').length, 1);
 });
+
+test('official entity effects accept infinite duration and reject other strings', async (t) => {
+  const project = await fixture(t);
+  const file = path.join(project.packs[0].path, 'entities/display.json');
+  const entity = { 'format_version': '1.26.20', 'minecraft:entity': { description: { identifier: 'validation:display' }, components: { 'minecraft:spell_effects': { add_effects: [{ effect: 'invisibility', duration: 'infinite' }] } } } };
+
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, JSON.stringify(entity));
+  await validatePackContent(project);
+  entity['minecraft:entity'].components['minecraft:spell_effects'].add_effects[0].duration = 'invalid';
+  await writeFile(file, JSON.stringify(entity));
+  await assert.rejects(validatePackContent(project), ContentValidationError);
+});
+
+test('official client entities accept mixed render-controller entries without accepting array numbers', async (t) => {
+  const project = await fixture(t);
+  const resource = path.join(project.root, 'packs/RP');
+  const file = path.join(resource, 'entity/display.entity.json');
+  const entity = { 'format_version': '1.10.0', 'minecraft:client_entity': { description: { identifier: 'validation:display', render_controllers: ['controller.render.main', { 'controller.render.outline': 'q.property(\'validation:selected\') == 1' }] } } };
+  const options = { packs: [{ id: 'assets', path: resource, kind: 'resource' }] };
+
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, JSON.stringify(entity));
+  await validatePackContent(options);
+  entity['minecraft:client_entity'].description.render_controllers.push(42);
+  await writeFile(file, JSON.stringify(entity));
+  await assert.rejects(validatePackContent(options), ContentValidationError);
+});
+
+test('official geometry accepts numeric and expression vectors while rejecting object coordinates', async (t) => {
+  const project = await fixture(t);
+  const resource = path.join(project.root, 'packs/RP');
+  const file = path.join(resource, 'models/blocks/housing.geo.json');
+  const geometry = { 'format_version': '1.16.0', 'minecraft:geometry': [{ description: { identifier: 'geometry.validation', texture_width: 16, texture_height: 16, visible_bounds_offset: [0, 0.5, 0] }, bones: [{ name: 'housing', pivot: [8, 0, 8], cubes: [{ origin: [0, 0, 0], size: [16, 4, 16], uv: [0, 0] }] }] }] };
+  const options = { packs: [{ id: 'assets', path: resource, kind: 'resource' }] };
+
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, JSON.stringify(geometry));
+  await validatePackContent(options);
+  geometry['minecraft:geometry'][0].bones[0].pivot[0] = '0';
+  await writeFile(file, JSON.stringify(geometry));
+  await validatePackContent(options);
+  geometry['minecraft:geometry'][0].bones[0].pivot[0] = {};
+  await writeFile(file, JSON.stringify(geometry));
+  await assert.rejects(validatePackContent(options), ContentValidationError);
+});
