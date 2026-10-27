@@ -35,6 +35,7 @@ const STYLE = {
   strong: '§l',
   emphasis: '§o',
   inlineCode: '§7',
+  commandNamespace: '§8',
   delete: '§8',
   link: '§9',
   /** A link nothing can open — the web, or an anchor on the same page: a dimmer blue than one that works. */
@@ -184,11 +185,27 @@ export function compileInline(nodes: GuideNode[], ctx: InlineContext): InlineTex
           visitAll((node.children ?? []));
           pop();
           break;
-        case 'inlineCode':
+
+        case 'inlineCode': {
+          const value = node.value ?? '';
+          const command = /^\/([a-z0-9_.-]+:)(?=[a-z0-9_.-]+(?:\s|$))/i.exec(value);
+
           push(STYLE.inlineCode);
-          emitText(node.value ?? '');
+
+          if (command) {
+            emitText('/');
+            push(STYLE.commandNamespace);
+            emitText(command[1]!);
+            pop();
+            emitText(value.slice(command[0].length));
+          } else {
+            emitText(value);
+          }
+
           pop();
           break;
+        }
+
         case 'link':
           emitLink(node.url ?? '', (node.children ?? []));
           break;

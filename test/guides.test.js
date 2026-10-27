@@ -138,6 +138,28 @@ test('strict locale drift, parse failures and broken links preserve every existi
   assert.equal(await readFile(path.join(project.project, 'packs/visuals/texts/en_US.lang'), 'utf8'), language);
 });
 
+test('namespaced inline commands dim only the namespace and preserve command punctuation and arguments', () => {
+  const result = compileGuidePage({
+    source: 'Run `/bt_gc_graves:graves`, then `/demo.addon:send_item @s ~ ~ ~`.',
+    pageId: 'commands', prefix: 'flow_test.guides',
+  });
+  const strings = new Map(result.lang);
+  const text = strings.get('flow_test.guides.commands.b0');
+
+  assert.equal(text, 'Run §7/§8bt_gc_graves:§r§7graves§r, then §7/§8demo.addon:§r§7send_item @s ~ ~ ~§r.');
+  assert.equal(text.replace(/§./g, ''), 'Run /bt_gc_graves:graves, then /demo.addon:send_item @s ~ ~ ~.');
+});
+
+test('inline command colors restore outer styles without recoloring resource IDs or command arguments', () => {
+  const result = compileGuidePage({
+    source: '**Use `/demo:open` now**; `minecraft:stone` and `/give @s minecraft:stone` stay ordinary code.',
+    pageId: 'styles', prefix: 'flow_test.guides',
+  });
+  const text = new Map(result.lang).get('flow_test.guides.styles.b0');
+
+  assert.equal(text, '§lUse §7/§8demo:§r§l§7open§r§l now§r; §7minecraft:stone§r and §7/give @s minecraft:stone§r stay ordinary code.');
+});
+
 test('guide screen outputs are repeatable, remove owned stale pages and preserve authored files', async (t) => {
   const project = await guidesFor(t);
   const options = guidesOptions(project, { compileScreens: true });
