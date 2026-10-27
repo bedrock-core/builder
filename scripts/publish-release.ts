@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -30,6 +30,7 @@ export interface PublishServices {
   fetch: (url: string) => Promise<Response>;
   log: (message: string) => void;
   cliArtifact: (version: string) => string;
+  released?: (pkg: ReleasePackage) => boolean;
   wait?: (milliseconds: number) => Promise<void>;
 }
 const repository = fileURLToPath(new URL('../', import.meta.url));
@@ -67,6 +68,10 @@ export function selectRelease(packages: readonly ReleasePackage[], scope: Publis
   return selected;
 }
 
+export function hasReleaseTag(root: string, pkg: ReleasePackage): boolean {
+  return execFileSync('git', ['tag', '--list', pkg.name + '@' + pkg.version], { cwd: root, encoding: 'utf8' }).trim().length > 0;
+}
+
 function npm(args: string[], cwd: string): void {
   const windows = process.platform === 'win32';
   const executable = windows ? process.execPath : 'npm';
@@ -91,7 +96,9 @@ export async function publishRelease(root: string, options: PublishOptions, serv
     fetch: url => fetch(url),
     log: message => console.info(message),
     cliArtifact: version => verifiedCliTarball(version),
+    released: pkg => hasReleaseTag(root, pkg),
   };
+  const released = new Set(selected.filter(pkg => io.released?.(pkg)).map(pkg => pkg.name));
 
   if (!options.dryRun) {
     const pending = (await readdir(path.join(root, '.changeset'))).filter(file => file.endsWith('.md') && file !== 'README.md');
@@ -145,8 +152,12 @@ export async function publishRelease(root: string, options: PublishOptions, serv
 
   selected.forEach(visit);
 
-  // Check every selected archive and current source before publishing any package.
+  // Check every unreleased archive and current source before publishing any package.
   for (const pkg of ordered) {
+    if (released.has(pkg.name)) {
+      continue;
+    }
+
     const archive = path.join(directory, pkg.file);
     const checked = integrity(await readFile(archive));
 
@@ -174,6 +185,11 @@ export async function publishRelease(root: string, options: PublishOptions, serv
   }
 
   for (const pkg of ordered) {
+    if (released.has(pkg.name)) {
+      io.log('skipped released ' + pkg.name + '@' + pkg.version);
+      continue;
+    }
+
     const tag = options.tag ?? (pkg.version.includes('-') ? 'next' : 'latest');
 
     if (tag === 'latest' && pkg.version.includes('-')) {

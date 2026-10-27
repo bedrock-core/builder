@@ -1,6 +1,6 @@
 {
   "name": "@bedrock-core/builder",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Build one or many Minecraft Bedrock packs from a JavaScript or TypeScript project",
   "exports": {
@@ -49,7 +49,7 @@
     "changeset:status": "changeset status --verbose",
     "version:packages": "changeset version",
     "tag-release": "node scripts/tag-release.ts",
-    "test:release": "node --test scripts/publish-release.test.ts scripts/cli-artifact.test.mjs scripts/sync-cli-template.test.mjs",
+    "test:release": "node --test scripts/publish-release.test.ts scripts/cli-artifact.test.mjs scripts/sync-cli-template.test.mjs scripts/release-versions.test.ts",
     "publish:ci": "yarn publish-release --scope \"$RELEASE_SCOPE\" && yarn tag-release --scope \"$RELEASE_SCOPE\""
   },
   "engines": {

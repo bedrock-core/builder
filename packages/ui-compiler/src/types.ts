@@ -62,7 +62,14 @@ export interface ScreenData {
   looks?: unknown[];
   hasText?: boolean;
   title?: string;
-  snapshot?: { shape: string; baked: readonly string[]; vis: readonly number[] };
+  snapshot?: {
+    shape: string;
+    vis: readonly number[];
+    baked?: readonly string[];
+    texts?: readonly number[];
+    ore?: unknown;
+    data?: Readonly<Record<string, unknown>>;
+  };
   table?: {
     values: readonly string[];
     actions: readonly unknown[];

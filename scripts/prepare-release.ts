@@ -35,9 +35,17 @@ if (emitted.emitSkipped) {
 }
 
 const metadata = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')) as { workspaces: string[] };
-
-for (const workspace of new Set(['.', ...metadata.workspaces])) {
+const workspaces = await Promise.all([...new Set(['.', ...metadata.workspaces])].map(async (workspace) => {
   const directory = path.join(root, workspace);
+  const pkg = JSON.parse(await readFile(path.join(directory, 'package.json'), 'utf8')) as {
+    name: string; version: string; dependencies?: Record<string, string>;
+  };
+
+  return { workspace, directory, pkg };
+}));
+const versions = new Map(workspaces.map(({ pkg }) => [pkg.name, pkg.version]));
+
+for (const { workspace, directory, pkg } of workspaces) {
   const dist = path.join(directory, 'dist');
 
   await rm(dist, { recursive: true, force: true });
@@ -55,10 +63,21 @@ for (const workspace of new Set(['.', ...metadata.workspaces])) {
   }
 
   // Compiler fingerprints resolve metadata beside their release source directory.
-  const pkg = JSON.parse(await readFile(path.join(directory, 'package.json'), 'utf8')) as {
-    name: string; version: string; dependencies?: Record<string, string>;
-  };
-  const dependencies = Object.fromEntries(Object.entries(pkg.dependencies ?? {}).map(([name, version]) => [name, version.startsWith('workspace:') ? pkg.version : version]));
+  const dependencies = Object.fromEntries(Object.entries(pkg.dependencies ?? {}).map(([name, version]) => {
+    if (!version.startsWith('workspace:')) {
+      return [name, version];
+    }
+
+    const dependencyVersion = versions.get(name);
+
+    if (!dependencyVersion) {
+      throw new Error('Unknown workspace dependency: ' + name);
+    }
+
+    const range = version.slice('workspace:'.length);
+
+    return [name, range === '*' ? dependencyVersion : range === '^' || range === '~' ? range + dependencyVersion : range];
+  }));
 
   await writeFile(path.join(dist, 'package.json'), `${JSON.stringify({ name: pkg.name, version: pkg.version, type: 'module', dependencies }, null, 2)}\n`);
 

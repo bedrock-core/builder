@@ -2,11 +2,12 @@ import { appendFile, readFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { publishOptions, selectRelease, type ReleasePackage } from './publish-release.ts';
+import { hasReleaseTag, publishOptions, selectRelease, type ReleasePackage } from './publish-release.ts';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const options = publishOptions(process.argv.slice(2));
 const directory = path.join(root, '.bedrock-core/release/tarballs');
-const packages = selectRelease(JSON.parse(await readFile(path.join(directory, 'index.json'), 'utf8')) as ReleasePackage[], options.scope);
+const packages = selectRelease(JSON.parse(await readFile(path.join(directory, 'index.json'), 'utf8')) as ReleasePackage[], options.scope)
+  .filter(pkg => !hasReleaseTag(root, pkg));
 const verification = JSON.parse(await readFile(path.join(directory, 'verified.json'), 'utf8')) as {
   integrities: Record<string, string>;
 };

@@ -1,5 +1,15 @@
 # @bedrock-core/builder-ui
 
+## 0.2.0
+
+### Minor Changes
+
+- 5116709: Compile experimental Ore screens, register shared scene data and package version-matched client assets and input resources.
+
+### Patch Changes
+
+- 25c298b: Link runtimes that carry live container text in item names while retaining character-table translations when provided. Accept portable snapshots with compiler-detected text positions.
+
 ## 0.1.0
 
 ### Minor Changes

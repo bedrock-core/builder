@@ -1,5 +1,18 @@
 # @bedrock-core/builder
 
+## 0.1.1
+
+### Patch Changes
+
+- Version Builder stage and plugin packages independently with Changesets and preserve dependency-owned versions in release metadata.
+- Updated dependencies [aed8e9b]
+- Updated dependencies [5116709]
+- Updated dependencies [de16949]
+- Updated dependencies [25c298b]
+  - @bedrock-core/builder-validation@0.1.1
+  - @bedrock-core/builder-ui@0.2.0
+  - @bedrock-core/builder-guides@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes

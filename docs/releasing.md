@@ -4,6 +4,12 @@ Builder packages and the scaffold CLI publish separately. Stable versions use
 the npm `latest` tag; prereleases use `next`. Both local npm authentication and
 GitHub Actions trusted publishing use the npm CLI to publish verified tarballs.
 
+Each Builder stage and plugin has an independent Changesets version. A release
+updates packages selected by changesets and dependents that need updated dependency
+versions. Unaffected plugins keep their current versions.
+Publication and tagging skip versions with existing package release tags. Fetch
+all release tags before running these commands.
+
 ## Version and verify
 
 Apply queued Changesets, update the lockfile, and commit the resulting versions

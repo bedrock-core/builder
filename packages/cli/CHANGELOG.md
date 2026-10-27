@@ -1,5 +1,11 @@
 # @bedrock-core/cli
 
+## 0.12.1
+
+### Patch Changes
+
+- Generate projects with the coordinated Builder, UI, navigation and application versions and their matching shared resource pack.
+
 ## 0.12.0
 
 ### Minor Changes

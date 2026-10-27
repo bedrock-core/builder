@@ -1,5 +1,11 @@
 # @bedrock-core/builder-guides
 
+## 0.1.1
+
+### Patch Changes
+
+- de16949: Dim namespaces in inline custom commands while preserving their names, arguments and surrounding formatting.
+
 ## 0.1.0
 
 ### Minor Changes

@@ -21,8 +21,11 @@ try {
   for (const pkg of packages) {
     const contents = extractTgz(await readFile(path.join(directory, pkg.file)));
     const metadata = JSON.parse(contents.get('package/package.json')!.toString()) as { exports?: Record<string, unknown>; dependencies?: Record<string, string> };
+    const compiled = JSON.parse(contents.get('package/dist/package.json')!.toString()) as { version: string; dependencies?: Record<string, string> };
     const exports = metadata.exports ?? {};
 
+    assert.equal(compiled.version, pkg.version);
+    assert.deepEqual(compiled.dependencies, metadata.dependencies ?? {}, `${pkg.name} compiled metadata must match its published dependency versions`);
     assert.ok(Object.values(metadata.dependencies ?? {}).every(version => !version.startsWith('workspace:')));
     assert.ok(!JSON.stringify(exports).includes('/src/index.ts'));
     assert.ok(Object.keys(exports).every(entry => !entry.includes('*')), `${pkg.name} must list its export paths explicitly`);

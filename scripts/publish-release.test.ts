@@ -141,6 +141,27 @@ test('skips previously published matching archives', async (t) => {
   assert.equal(f.published.length, 0);
   assert.equal(f.requests.length, 2);
 });
+test('released dependencies are skipped without repacking or registry comparison', async (t) => {
+  const f = await fixture(t);
+
+  f.io.released = pkg => pkg.name === '@bedrock-core/builder-plugin';
+  await writeFile(path.join(f.directory, 'plugin.tgz'), 'different local archive line endings');
+  await publishRelease(f.root, publishOptions([]), f.io);
+  assert.deepEqual(f.packed, ['@bedrock-core/builder']);
+  assert.deepEqual(f.published.map(args => path.basename(args[1])), ['builder.tgz']);
+  assert.ok(f.requests.every(url => !url.includes(encodeURIComponent('@bedrock-core/builder-plugin'))));
+});
+
+test('completed releases make no pack, registry or publish calls', async (t) => {
+  const f = await fixture(t);
+
+  f.io.released = () => true;
+  await publishRelease(f.root, publishOptions([]), f.io);
+  assert.equal(f.packed.length, 0);
+  assert.equal(f.requests.length, 0);
+  assert.equal(f.published.length, 0);
+});
+
 test('refuses a registry version with different archive contents', async (t) => {
   const f = await fixture(t);
 

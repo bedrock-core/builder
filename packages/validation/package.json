@@ -1,6 +1,6 @@
 {
   "name": "@bedrock-core/builder-validation",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Standalone pack content validation against Mojang's Bedrock schema catalog",
   "exports": {

@@ -1,5 +1,11 @@
 # @bedrock-core/builder-validation
 
+## 0.1.1
+
+### Patch Changes
+
+- aed8e9b: Validate infinite spell effects, mixed client render-controller entries and numeric geometry vectors against the pinned schema catalog.
+
 ## 0.1.0
 
 ### Minor Changes
