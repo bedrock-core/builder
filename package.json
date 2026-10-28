@@ -47,7 +47,7 @@
     "publish-release": "node scripts/publish-release.ts",
     "changeset": "changeset",
     "changeset:status": "changeset status --verbose",
-    "version:packages": "changeset version",
+    "version:packages": "changeset version && node scripts/sync-cli-template.mjs --builder-only",
     "tag-release": "node scripts/tag-release.ts",
     "test:release": "node --test scripts/publish-release.test.ts scripts/cli-artifact.test.mjs scripts/sync-cli-template.test.mjs scripts/release-versions.test.ts",
     "publish:ci": "yarn publish-release --scope \"$RELEASE_SCOPE\" && yarn tag-release --scope \"$RELEASE_SCOPE\""

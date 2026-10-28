@@ -6,6 +6,18 @@ const repository = fileURLToPath(new URL('../', import.meta.url));
 const read = file => JSON.parse(readFileSync(file, 'utf8'));
 const save = (file, value) => writeFileSync(file, JSON.stringify(value, null, '\t') + '\n');
 
+/** Update the starter's Builder pin using this repository alone. */
+export function syncBuilderTemplate(root = repository) {
+  const file = resolve(root, 'packages/cli/templates/bedrock-core/package.json');
+  const pkg = read(file);
+  const builderVersion = read(resolve(root, 'package.json')).version.split('-')[0];
+
+  pkg.devDependencies['@bedrock-core/builder'] = builderVersion;
+  save(file, pkg);
+
+  return { builderVersion };
+}
+
 /** Align starter dependencies with the versioned owning checkouts. */
 export function syncCliTemplate(root = repository, uiRoot = resolve(root, '../ui')) {
   const template = resolve(root, 'packages/cli/templates/bedrock-core');
@@ -60,7 +72,9 @@ export function syncCliTemplate(root = repository, uiRoot = resolve(root, '../ui
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const result = syncCliTemplate(repository, resolve(repository, process.argv[2] ?? '../ui'));
+  const result = process.argv[2] === '--builder-only'
+    ? syncBuilderTemplate()
+    : syncCliTemplate(repository, resolve(repository, process.argv[2] ?? '../ui'));
 
   console.info('@bedrock-core: CLI template pins ' + JSON.stringify(result));
 }
