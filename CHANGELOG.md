@@ -1,5 +1,15 @@
 # @bedrock-core/builder
 
+## 0.1.2
+
+### Patch Changes
+
+- 3098e57: Register container text positions even when the screen has no appearance variants so runtime inventory allocation matches the compiled layout.
+  
+  Classify runtime text dependencies from JSX expressions and Core text factory calls in both compilation and runtime bundles, while retaining baked literal captions.
+- Updated dependencies [3098e57]
+  - @bedrock-core/builder-ui@0.2.1
+
 ## 0.1.1
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@bedrock-core/builder",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "Build one or many Minecraft Bedrock packs from a JavaScript or TypeScript project",
   "exports": {
