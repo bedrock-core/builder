@@ -254,8 +254,8 @@ export function uiRegistration(linked: Pick<LinkedUi, 'screens'>, entries: Scree
     calls.push(`registerScreenMetadata(${JSON.stringify(metadata)}${screen.host ? `, ${reference(screen.name)}` : ''});`);
 
     if (screen.host) {
-      if (screen.looks?.length) {
-        calls.push(`registerContainerLooks(${reference(screen.name)}, ${JSON.stringify(screen.looks)});`);
+      if (screen.looks?.length || screen.texts?.length) {
+        calls.push(`registerContainerLooks(${reference(screen.name)}, ${JSON.stringify(screen.looks ?? [])}, ${JSON.stringify(screen.texts ?? [])});`);
       }
     } else {
       if (screen.table) {

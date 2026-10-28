@@ -60,6 +60,8 @@ export interface ScreenData {
   layoutId?: number;
   allocation?: { size: number };
   looks?: unknown[];
+  /** Compiler-detected or declared live text positions for a container screen. */
+  texts?: readonly number[];
   hasText?: boolean;
   title?: string;
   snapshot?: {

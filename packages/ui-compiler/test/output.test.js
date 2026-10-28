@@ -134,3 +134,11 @@ test('live forms retain their component, compiled identity and parameter contrac
   assert.deepEqual(module.registrations.metadata, [[{ key: 'example:edit', kind: 'modal', parameters: screen.parameters }]]);
   assert.deepEqual(module.registrations.static, []);
 });
+
+test('container text channels register without appearance variants', async () => {
+  const screen = { name: 'grave', host: { kind: 'entity', type: 'example:grave' }, looks: [], texts: [0, 1] };
+  const { registrations } = await evaluate([screen], [{ name: 'grave', source: './grave.screen.tsx' }]);
+  const [[, component]] = registrations.metadata;
+
+  assert.deepEqual(registrations.looks, [[component, [], [0, 1]]]);
+});

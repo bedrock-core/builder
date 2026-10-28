@@ -6,6 +6,7 @@ import { readScriptEntries } from '@bedrock-core/builder-manifest';
 import { scriptCandidates, scriptSource } from '@bedrock-core/builder-bundler/entries';
 import { compilerFingerprint } from '@bedrock-core/builder-bundler/compile';
 import { desugarJsxConditionals } from './sugar.ts';
+import { markRuntimeText } from './text.ts';
 import {
   bundleUiLibrary,
   bundleUiModule,
@@ -98,7 +99,7 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
   };
   const aliases = Object.fromEntries(Object.entries(sourceSettings.aliases).map(([name, file]) => [name, path.relative(context.stagedRoot, file)]));
   const compilerKey = {
-    implementation: await implementation(['bundle.ts', 'sugar.ts', 'stubs/game.ts'], true),
+    implementation: await implementation(['bundle.ts', 'sugar.ts', 'text.ts', 'stubs/game.ts'], true),
     compiler: uiCompilerVersion,
     aliases,
     tsconfig: settings.tsconfig ?? null,
@@ -346,7 +347,7 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
 
   context.registerBundleExtension({
     id: '@bedrock-core/ui',
-    version: await implementation(['sugar.ts']),
+    version: await implementation(['sugar.ts', 'text.ts']),
     packs: Object.entries(context.packs).filter(([, directory]) => behaviors.includes(directory)).map(([id]) => id),
     jsxImportSource: '@bedrock-core/ui',
     resolveFromProject: ['@bedrock-core/'],
@@ -354,11 +355,13 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
     plugins: [{
       name: '@bedrock-core/ui-screens',
       setup(build) {
-        build.onLoad({ filter: /\.screen\.tsx$/, namespace: 'file' }, async args => ({
-          contents: desugarJsxConditionals(await readFile(args.path, 'utf8'), args.path),
-          loader: 'tsx',
-          watchFiles: [args.path],
-        }));
+        build.onLoad({ filter: /\.[cm]?[jt]sx?$/, namespace: 'file' }, async (args) => {
+          const source = await readFile(args.path, 'utf8');
+          const prepared = args.path.endsWith('.screen.tsx') ? desugarJsxConditionals(source, args.path) : source;
+          const extension = path.extname(args.path);
+
+          return { contents: markRuntimeText(prepared, args.path), loader: extension === '.tsx' ? 'tsx' : extension === '.jsx' ? 'jsx' : extension.endsWith('ts') ? 'ts' : 'js', watchFiles: [args.path] };
+        });
       },
     }],
   });

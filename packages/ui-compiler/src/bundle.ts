@@ -4,6 +4,7 @@ import path from 'node:path';
 import { CompilationDependencies } from '@bedrock-core/builder-bundler/dependencies';
 import { gameStubPlugin } from './stubs/game.ts';
 import { desugarJsxConditionals } from './sugar.ts';
+import { markRuntimeText } from './text.ts';
 
 /** esbuild version used by UI bundles and their cache records. */
 export const uiCompilerVersion = version;
@@ -193,10 +194,13 @@ async function bundle(options: UiBundleOptions, contents: string, declaration = 
   plugins.push(gameStubPlugin(options.dependencyRoot, dependencies.files), {
     name: '@bedrock-core/ui-inputs',
     setup(builder) {
-      builder.onLoad({ filter: /\.screen\.tsx$/ }, async args => ({
-        contents: desugarJsxConditionals(await sourceText(args.path), args.path),
-        loader: 'tsx',
-      }));
+      builder.onLoad({ filter: /\.[cm]?[jt]sx?$/ }, async (args) => {
+        const source = await sourceText(args.path);
+        const prepared = args.path.endsWith('.screen.tsx') ? desugarJsxConditionals(source, args.path) : source;
+        const extension = path.extname(args.path);
+
+        return { contents: markRuntimeText(prepared, args.path), loader: extension === '.tsx' ? 'tsx' : extension === '.jsx' ? 'jsx' : extension.endsWith('ts') ? 'ts' : 'js' };
+      });
       builder.onLoad({ filter: /\.(?:[cm]?[jt]sx?|json)$/ }, (args) => {
         const contents = sourceOverrides.get(normalizeSource(args.path));
 
