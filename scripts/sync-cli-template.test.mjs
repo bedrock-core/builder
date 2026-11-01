@@ -29,7 +29,7 @@ test('template synchronization follows each owning package and keeps Navigation 
     ['server/packages/i18n/package.json', '0.2.0'],
     ['server/package.json', '0.2.1'],
     ['bds-runner/package.json', '0.2.0'],
-  ]) { put(file, { version }); }
+  ]) { put(file, { version, ...file === 'ui/package.json' ? { peerDependencies: { 'eslint': '^10.3.0', 'eslint-plugin-react-hooks': '7.1.1' } } : {} }); }
 
   put('ui/packages/resource-pack/packs/RP/manifest.json', { header: { uuid: 'shared-ui', version: '1.13.0' } });
   put(template + '/package.json', { dependencies: {}, devDependencies: {} });
@@ -43,11 +43,26 @@ test('template synchronization follows each owning package and keeps Navigation 
 
   assert.equal(pkg.dependencies['@bedrock-core/navigation'], '0.14.0');
   assert.equal(pkg.dependencies['@bedrock-core/ui'], '0.13.0');
+  assert.equal(pkg.devDependencies.eslint, '^10.3.0');
+  assert.equal(pkg.devDependencies['eslint-plugin-react-hooks'], '7.1.1');
   assert.equal(pkg.dependencies['@bedrock-core/catalog'], '^0.2.0');
   assert.equal(pkg.dependencies['@bedrock-core/config'], '^0.4.0');
   assert.equal(pkg.dependencies['@bedrock-core/guides'], '^0.3.0');
   assert.equal(pkg.dependencies['@bedrock-core/server'], '^0.2.1');
   assert.equal(pkg.devDependencies['@bedrock-core/bds-runner'], '^0.2.0');
+
+  for (const name of ['manifest.json', 'manifest.test.json']) {
+    const manifest = JSON.parse(readFileSync(path.join(directory, template, 'packs/BP', name), 'utf8'));
+
+    assert.equal(manifest.dependencies[0].version, '1.13.0');
+  }
+
+  const ui = JSON.parse(readFileSync(path.join(directory, 'ui/package.json'), 'utf8'));
+
+  ui.version = '0.13.2';
+  put('ui/package.json', ui);
+  syncCliTemplate(root);
+  assert.equal(JSON.parse(readFileSync(path.join(directory, template, 'package.json'), 'utf8')).dependencies['@bedrock-core/ui'], '0.13.2');
 
   for (const name of ['manifest.json', 'manifest.test.json']) {
     const manifest = JSON.parse(readFileSync(path.join(directory, template, 'packs/BP', name), 'utf8'));

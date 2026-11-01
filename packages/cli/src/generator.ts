@@ -8,6 +8,7 @@ import { promptUser, type PackageManager, type ProjectConfig } from './prompts.t
 import { generateManifestUUIDs, replaceVariables } from './utils.ts';
 import https from 'node:https';
 import { applyPreset, type ProjectPreset } from './presets.ts';
+import { resourcePackReleaseVersion, UI_RESOURCE_PACK_UUID } from './resource-pack.ts';
 
 /** Optional preset, human display name and stable identifier overrides. */
 export interface ScaffoldOptions {
@@ -327,9 +328,8 @@ async function downloadFile(url: string, destination: string, redirects = 0): Pr
 }
 
 /**
- * Download the render pack attached to the release matching the template's
- * exact UI dependency. Releases are package-tagged in this monorepo, so the
- * repository-wide `latest` release is not a compatible selector.
+ * Download the exact asset selected by the template's shared-pack dependency.
+ * Library patches can reuse an artifact from an earlier compatible UI release.
  */
 async function downloadLatestMcpack(targetDir: string, spinner: Ora, uiVersion: string): Promise<string | undefined> {
   const releaseTag = `@bedrock-core/ui@${uiVersion}`;
@@ -366,6 +366,28 @@ async function readTemplateUiVersion(templateDir: string): Promise<string> {
   }
 
   return version;
+}
+
+async function readTemplatePackRelease(templateDir: string, uiVersion: string): Promise<string> {
+  const manifest: unknown = await fs.readJson(path.join(templateDir, 'packs/BP/manifest.json'));
+  const dependencies: unknown = isRecord(manifest) ? manifest.dependencies : undefined;
+  const dependency: unknown = Array.isArray(dependencies)
+    ? dependencies.find((entry: unknown) => isRecord(entry) && entry.uuid === UI_RESOURCE_PACK_UUID)
+    : undefined;
+
+  if (!isRecord(dependency) || typeof dependency.version !== 'string') {
+    throw new Error('The template must declare its shared resource pack version');
+  }
+
+  const release = resourcePackReleaseVersion(dependency.version);
+  const [major, minor, patch] = release.split(/[.+-]/).map(Number);
+  const [uiMajor, uiMinor, uiPatch] = uiVersion.split(/[.+-]/).map(Number);
+
+  if (major !== uiMajor || minor !== uiMinor || patch > uiPatch) {
+    throw new Error('The template resource pack must belong to the UI dependency major/minor and not a newer patch');
+  }
+
+  return release;
 }
 
 /**
@@ -481,6 +503,7 @@ export async function createProject(
   }
 
   const templateUiVersion = await readTemplateUiVersion(templateDir);
+  const templatePackRelease = await readTemplatePackRelease(templateDir, templateUiVersion);
 
   // Generate UUIDs for manifests
   const uuids = generateManifestUUIDs();
@@ -521,13 +544,13 @@ export async function createProject(
       console.warn(chalk.yellow('Git was not available; the project was created without a repository.'));
     }
 
-    // Try fetching the render pack matching the template UI version
+    // Fetch the asset selected by the shared-pack manifest dependency.
     let mcpackName: string | undefined;
 
     if (preset === 'full') {
       const dlSpinner = ora('Integrating matching core-ui build...').start();
 
-      mcpackName = await downloadLatestMcpack(config.targetDir, dlSpinner, templateUiVersion);
+      mcpackName = await downloadLatestMcpack(config.targetDir, dlSpinner, templatePackRelease);
     }
 
     try {
@@ -539,7 +562,7 @@ export async function createProject(
     }
 
     if (preset === 'full') {
-      displayNextSteps(config, mcpackName, templateUiVersion, gitInitialized);
+      displayNextSteps(config, mcpackName, templatePackRelease, gitInitialized);
     } else {
       console.info(`\nCreated ${preset} project. Run your package manager's install and build commands in ${config.projectName}.`);
     }

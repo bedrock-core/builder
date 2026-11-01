@@ -11,6 +11,7 @@ import { pathToFileURL } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { verifiedCliTarball } from './cli-artifact.mjs';
+import { resourcePackReleaseVersion, UI_RESOURCE_PACK_UUID } from '../packages/cli/src/resource-pack.ts';
 
 assert.equal(process.platform, 'linux', 'Run the artifact smoke test in Linux CI or a disposable container');
 assert.ok(process.argv[2], 'Usage: node scripts/smoke-cli.mjs <cli.tgz> [output-directory]');
@@ -234,8 +235,10 @@ try {
 
     const version = pkg.dependencies['@bedrock-core/ui'];
 
-    assert.match(version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/, 'Pin the UI release paired with the render asset');
-    const asset = join(project, `core-ui-${version}.mcpack`);
+    assert.match(version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/, 'Pin the UI library release');
+    const requiredPack = json(join(project, 'packs/BP/manifest.json')).dependencies.find(dep => dep.uuid === UI_RESOURCE_PACK_UUID);
+    const assetVersion = resourcePackReleaseVersion(requiredPack.version);
+    const asset = join(project, `core-ui-${assetVersion}.mcpack`);
 
     assert.ok(existsSync(asset), 'The CLI must download the matching render asset');
     const renderPack = JSON.parse(run('unzip', ['-p', asset, 'manifest.json'], project, true));

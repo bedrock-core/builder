@@ -15,6 +15,7 @@ import { validateConfig } from '../../../src/config.ts';
 import { resolveExportPaths } from '../../../src/export.ts';
 import { planBuild } from '../../../src/plan.ts';
 import { runBuild } from '../../../src/run.ts';
+import { resourcePackReleaseVersion, UI_RESOURCE_PACK_UUID } from '../src/resource-pack.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packageDir = path.resolve(here, '..');
@@ -49,6 +50,10 @@ for (const preset of ['script', 'resource']) {
     const root = await scaffold(t, { preset, displayName: 'Human Name', creatorId: 'stable', packId: 'identity' });
     const config = await JSON.parse(await readFile(path.join(root, 'config.json'), 'utf8'));
     const pkg = await JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+
+    assert.equal(pkg.devDependencies['eslint-plugin-react-hooks'], undefined);
+    assert.doesNotMatch(await readFile(path.join(root, 'eslint.config.mjs'), 'utf8'), /@bedrock-core\/ui\/eslint/);
+    await assert.rejects(access(path.join(root, 'eslint.base.mjs')));
 
     assert.equal(config.name, 'Human Name');
     assert.equal(config.namespace, 'stable_identity');
@@ -216,6 +221,19 @@ test('published template keeps pack-safe Yarn config and ignores npm lockfiles',
   await assert.rejects(access(path.join(templateDir, '.yarnrc.yml')));
 });
 
+test('full starter configures the public UI hook preset with matching tooling peers', async (t) => {
+  const root = await scaffold(t);
+  const pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+  const config = await readFile(path.join(root, 'eslint.config.mjs'), 'utf8');
+
+  assert.match(config, /from '@bedrock-core\/ui\/eslint'/);
+  assert.match(config, /coreHooks\.configs\.recommended/);
+  assert.doesNotMatch(config, /eslint\.base/);
+  assert.equal(pkg.devDependencies['eslint-plugin-react-hooks'], '7.1.1');
+  assert.equal(pkg.devDependencies.eslint, '^10.3.0');
+  await assert.rejects(access(path.join(root, 'eslint.base.mjs')));
+});
+
 test('starter structure is preserved as the reusable server fixture', async () => {
   const templateStructure = await readFile(path.join(
     templateDir,
@@ -229,17 +247,48 @@ test('starter structure is preserved as the reusable server fixture', async () =
   assert.match(tests, /structureName\('example:the_addon_loads'\)/);
 });
 
-test('template behavior manifests use the current render-pack version', async () => {
+test('template behavior manifests select one compatible asset independently of the UI patch', async () => {
   const templatePackage = JSON.parse(await readFile(path.join(templateDir, 'package.json'), 'utf8'));
-  const [major, ...remaining] = templatePackage.dependencies['@bedrock-core/ui'].split('.');
-  const renderVersion = [Number(major) + 1, ...remaining].join('.');
+  const [uiMajor, uiMinor, uiPatch] = templatePackage.dependencies['@bedrock-core/ui'].split('.').map(Number);
+  let selected;
 
   for (const file of ['manifest.json', 'manifest.test.json']) {
     const manifest = JSON.parse(await readFile(path.join(templateDir, 'packs', 'BP', file), 'utf8'));
-    const dependency = manifest.dependencies.find(({ uuid }) => uuid === '761ecd37-ad1c-4a64-862a-d6cc38767426');
+    const dependency = manifest.dependencies.find(({ uuid }) => uuid === UI_RESOURCE_PACK_UUID);
+    const [major, minor, patch] = resourcePackReleaseVersion(dependency.version).split('.').map(Number);
 
-    assert.equal(dependency?.version, renderVersion);
+    assert.equal(major, uiMajor);
+    assert.equal(minor, uiMinor);
+    assert.ok(patch <= uiPatch);
+
+    if (selected) {
+      assert.equal(dependency.version, selected);
+    }
+
+    selected = dependency.version;
     assert.equal(dependency?.description, undefined);
+  }
+});
+
+test('the CLI requests the asset selected by the pack dependency', async (t) => {
+  const output = t.mock.method(console, 'info', () => {});
+  const root = await scaffold(t);
+  const manifest = JSON.parse(await readFile(path.join(root, 'packs/BP/manifest.json'), 'utf8'));
+  const dependency = manifest.dependencies.find(entry => entry.uuid === UI_RESOURCE_PACK_UUID);
+  const version = resourcePackReleaseVersion(dependency.version);
+  const tag = encodeURIComponent('@bedrock-core/ui@' + version);
+  const expected = 'https://github.com/bedrock-core/ui/releases/download/' + tag + '/core-ui-' + version + '.mcpack';
+
+  assert.ok(https.get.mock.calls.some(call => call.arguments[0] === expected));
+  assert.ok(output.mock.calls.some(call => call.arguments.some(value => String(value).includes('/releases/tag/' + tag))));
+});
+
+test('asset release versions retain prerelease identity and reject invalid manifests', () => {
+  assert.equal(resourcePackReleaseVersion('1.14.0'), '0.14.0');
+  assert.equal(resourcePackReleaseVersion('2.3.4-rc.1+abc'), '1.3.4-rc.1+abc');
+
+  for (const invalid of ['latest', '0.14.0', '1.14', '1.14.0/other']) {
+    assert.throws(() => resourcePackReleaseVersion(invalid), /exact version/);
   }
 });
 

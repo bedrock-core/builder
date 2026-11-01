@@ -21,7 +21,8 @@ export function syncBuilderTemplate(root = repository) {
 /** Align starter dependencies with the versioned owning checkouts. */
 export function syncCliTemplate(root = repository, uiRoot = resolve(root, '../ui')) {
   const template = resolve(root, 'packages/cli/templates/bedrock-core');
-  const uiVersion = read(resolve(uiRoot, 'package.json')).version;
+  const ui = read(resolve(uiRoot, 'package.json'));
+  const uiVersion = ui.version;
   const builderVersion = read(resolve(root, 'package.json')).version.split('-')[0];
   const render = read(resolve(uiRoot, 'packages/resource-pack/packs/RP/manifest.json'));
   const navigationVersion = read(resolve(uiRoot, 'packages/navigation/package.json')).version;
@@ -44,6 +45,17 @@ export function syncCliTemplate(root = repository, uiRoot = resolve(root, '../ui
   }
 
   pkg.dependencies['@bedrock-core/ui'] = uiVersion;
+
+  for (const name of ['eslint', 'eslint-plugin-react-hooks']) {
+    const version = ui.peerDependencies?.[name];
+
+    if (typeof version !== 'string') {
+      throw new Error('The UI package must declare its ' + name + ' lint peer');
+    }
+
+    pkg.devDependencies[name] = version;
+  }
+
   pkg.dependencies['@bedrock-core/navigation'] = navigationVersion;
   pkg.devDependencies['@bedrock-core/builder'] = builderVersion;
   pkg.devDependencies['@bedrock-core/bds-runner'] = '^' + read(resolve(root, '../bds-runner/package.json')).version;

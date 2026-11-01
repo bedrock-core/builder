@@ -15,6 +15,14 @@ export async function applyPreset(root: string, preset: ProjectPreset): Promise<
   const packageFile = path.join(root, 'package.json');
   const pkg = await fs.readJson(packageFile);
 
+  const eslintFile = path.join(root, 'eslint.config.mjs');
+  const eslint = await fs.readFile(eslintFile, 'utf8');
+
+  await fs.writeFile(eslintFile, eslint
+    .replace(/^import coreHooks from '@bedrock-core\/ui\/eslint';\r?\n/m, '')
+    .replace(/^\s*coreHooks\.configs\.recommended,\r?\n/m, ''));
+  delete pkg.devDependencies['eslint-plugin-react-hooks'];
+
   for (const directory of ['packs/BP/guides', 'packs/BP/i18n', 'packs/BP/scripts/UI', 'packs/BP/blocks', 'packs/BP/entities']) {
     await fs.remove(path.join(root, directory));
   }

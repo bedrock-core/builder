@@ -2,6 +2,7 @@ import js from '@eslint/js';
 import json from '@eslint/json';
 import stylistic from '@stylistic/eslint-plugin';
 import { defineConfig } from 'eslint/config';
+import coreHooks from '@bedrock-core/ui/eslint';
 import minecraftLinting from 'eslint-plugin-minecraft-linting';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -70,6 +71,7 @@ export default defineConfig([
     extends: [
       js.configs.recommended,
       ...tseslint.configs.recommended,
+      coreHooks.configs.recommended,
     ],
     plugins: {
       '@minecraft': minecraftLinting,
