@@ -1,14 +1,21 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import ts from 'typescript';
+import { API } from 'typescript-native/sync';
 import { simplifyDeclarations, formatDeclarations } from '../packages/generator/src/declarations.ts';
 
 function simplify(text) {
-  return formatDeclarations(simplifyDeclarations(text, ['Document']));
+  const api = new API();
+
+  try {
+    return formatDeclarations(simplifyDeclarations(api, text, ['Document']));
+  } finally {
+    api.close();
+  }
 }
 
-test('small single-use primitives, records, arrays and interfaces inline with field documentation', () => {
-  const result = simplify(`
+test('small single-use primitives, records, arrays and interfaces inline with field documentation', async () => {
+  const result = await simplify(`
     /** Available values. */
     export type Values = string[];
     export type Lookup = Record<string, number>;
@@ -29,11 +36,11 @@ test('small single-use primitives, records, arrays and interfaces inline with fi
   assert.match(result, /lookup: Record<string, number>;/);
   assert.match(result, /Project options\.[\s\S]*?A small configuration\.[\s\S]*?options: \{/);
   assert.match(result, /^ {2}options: \{\n {4}enabled\?: boolean;\n {4}count: number;\n {2}\};/m);
-  assert.match(result, /mode: \('solid' \| 'transparent'\);/);
+  assert.match(result, /mode: "solid" \| "transparent";/);
 });
 
-test('duplicate aliases and interfaces share a canonical shape and retain distinct property descriptions', () => {
-  const result = simplify(`
+test('duplicate aliases and interfaces share a canonical shape and retain distinct property descriptions', async () => {
+  const result = await simplify(`
     /** Initial state map. */
     export type States1 = ({ [k: string]: number } | { [k: string]: boolean } | { [k: string]: string });
     /** Contains members named after each state. */
@@ -46,12 +53,12 @@ test('duplicate aliases and interfaces share a canonical shape and retain distin
   assert.match(result, /export type States1 =/);
   assert.doesNotMatch(result, /\bStates2\b|\bPosition2\b/);
   assert.match(result, /export interface Position1/);
-  assert.match(result, /Contains members named after each state\.[\s\S]*?second: States1;/);
-  assert.match(result, /^ {2}\[k: string\]: number;/m);
+  assert.match(result, /^ {2}\/\*\*\n {3}\* Contains members named after each state\.\n {3}\*\/\n {2}second: States1;/m);
+  assert.match(result, /\{\s*\[k: string\]: number;?\s*\}/);
 });
 
-test('alias chains collapse while complex, recursive, generic and inherited declarations retain their names', () => {
-  const result = simplify(`
+test('alias chains collapse while complex, recursive, generic and inherited declarations retain their names', async () => {
+  const result = await simplify(`
     export type Element = number;
     export type Items = Element[];
     export type Rows = Items[];
@@ -72,8 +79,8 @@ test('alias chains collapse while complex, recursive, generic and inherited decl
   assert.match(result, /export interface Extended extends Base/);
 });
 
-test('rewrites preserve keys, literals, operator precedence and public roots', () => {
-  const result = simplify(`
+test('rewrites preserve keys, literals, operator precedence and public roots', async () => {
+  const result = await simplify(`
     export interface Entry { id: string; }
     export type Keys = keyof Entry;
     export type ReusedNumber = number;
@@ -86,13 +93,13 @@ test('rewrites preserve keys, literals, operator precedence and public roots', (
   assert.equal(ts.isArrayTypeNode(keys.type), true);
   assert.equal(ts.isParenthesizedTypeNode(keys.type.elementType), true);
   assert.equal(ts.isTypeOperatorNode(keys.type.elementType.type), true);
-  assert.match(result, /Entry: 'Entry';/);
+  assert.match(result, /Entry: "Entry";/);
   assert.doesNotMatch(result, /export type ReusedNumber/);
   assert.match(result, /export interface Document/);
 });
 
-test('two-space formatting preserves documentation examples and escaped string values', () => {
-  const result = formatDeclarations(`
+test('two-space formatting preserves documentation examples and escaped string values', async () => {
+  const result = await formatDeclarations(`
     /**
      * Example:
      *   export default { value: 'sample' };

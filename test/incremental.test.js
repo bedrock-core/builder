@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { runBuild } from '../src/run.ts';
-import { projectFor } from '../test-support/project.js';
+import { projectFor, put } from '../test-support/project.js';
 import { manifestFor } from '../test-support/manifest.js';
-import { put, translationsFor, english } from '../test-support/i18n.js';
+import { translationsFor, english } from '../test-support/i18n.js';
 
 const status = (result, id) => result.compilations.find(file => file.id === id)?.status;
 const optionsFor = project => ({ configPath: project.configPath, logger: {} });
@@ -16,7 +16,7 @@ test('script entries rebuild only for their own transitive dependencies', async 
 
   await put(project.project, 'shared/value.ts', 'export const shared = 10;');
   await put(project.project, 'packs/gameplay/scripts/main.ts', `import { shared } from '../../../shared/value.ts'; export const value = shared + 1;`);
-  await put(project.project, 'packs/other/manifest.json', JSON.stringify(manifestFor('script')));
+  await put(project.project, 'packs/other/manifest.json', JSON.stringify(manifestFor('script', 'scripts/main.ts')));
   await put(project.project, 'packs/other/scripts/main.ts', `import { shared } from '../../../shared/value.ts'; export const value = shared + 2;`);
   project.config.packs.other = './packs/other';
   project.config.bedrockCore.profiles.default.export.other = './dist/other';
@@ -136,7 +136,7 @@ test('output formatting and unrelated config changes reuse existing compiled mod
   await put(project.project, 'packs/gameplay/data/value.ts', 'export default { value: 5 };');
   await runBuild(optionsFor(project));
   await runBuild(optionsFor(project));
-  project.config.namespace = 'other_namespace';
+  project.config.externalTool = { enabled: true };
   project.config.bedrockCore.profiles.default.stages.generator.pretty = { indent: 'space', size: 2 };
   await writeFile(project.configPath, JSON.stringify(project.config));
   const formatted = await runBuild(optionsFor(project));
@@ -174,14 +174,14 @@ test('locales reuse compiled modules, evaluate runtime inputs and invalidate onl
   process.env.BUILDER_LOCALE_TEST = 'second';
   const runtime = await runBuild(optionsFor(project));
 
-  assert.equal(status(runtime, 'i18n/compiled:packs/gameplay/i18n/en_US.ts'), 'cached');
-  assert.equal(status(runtime, 'i18n/compiled:packs/gameplay/i18n/cs_CZ.ts'), 'cached');
+  assert.equal(status(runtime, 'i18n/gameplay:compiled:packs/gameplay/i18n/en_US.ts'), 'cached');
+  assert.equal(status(runtime, 'i18n/gameplay:compiled:packs/gameplay/i18n/cs_CZ.ts'), 'cached');
   assert.match(await readFile(path.join(runtime.outputPaths.visuals, 'texts/en_US.lang'), 'utf8'), /flow_test.shop.title=ShopAsecond/);
   await put(project.project, 'shared/title.ts', 'export const suffix = "B";');
   const helper = await runBuild(optionsFor(project));
 
-  assert.equal(status(helper, 'i18n/compiled:packs/gameplay/i18n/en_US.ts'), 'executed');
-  assert.equal(status(helper, 'i18n/compiled:packs/gameplay/i18n/cs_CZ.ts'), 'cached');
+  assert.equal(status(helper, 'i18n/gameplay:compiled:packs/gameplay/i18n/en_US.ts'), 'executed');
+  assert.equal(status(helper, 'i18n/gameplay:compiled:packs/gameplay/i18n/cs_CZ.ts'), 'cached');
   assert.equal(status(helper, 'bundler/gameplay:scripts/main.js'), 'cached');
   assert.match(await readFile(path.join(helper.outputPaths.visuals, 'texts/en_US.lang'), 'utf8'), /flow_test.shop.title=ShopBsecond/);
 });

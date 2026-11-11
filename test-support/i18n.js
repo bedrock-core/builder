@@ -1,6 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import path from 'node:path';
-import { projectFor } from './project.js';
+import { projectFor, put } from './project.js';
 
 export const english = {
   pack: { name: 'Shop', description: 'Sells items' },
@@ -24,15 +22,6 @@ export const czech = {
     stock_few: '{{count}} kusy',
   },
 };
-
-export async function put(root, relative, content) {
-  const file = path.join(root, relative);
-
-  await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, content);
-
-  return file;
-}
 
 export async function translationsFor(t, options) {
   const project = await projectFor(t, options);

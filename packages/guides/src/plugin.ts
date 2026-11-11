@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { cp, mkdir, readFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { hasFiles, inspectPacks, resolveResourcePack, type BuildContext, type BuildDetection, type BuildStepResult } from '@bedrock-core/builder-plugin';
+import { hasFiles, inspectPacks, resolveNamespace, resolveResourcePack, type BuildContext, type BuildDetection, type BuildStepResult } from '@bedrock-core/builder-plugin';
 import type { GuidesSettings } from './index.ts';
 import { compileProject, inside } from './project.ts';
 export type { GuidesSettings } from './index.ts';
@@ -145,11 +145,12 @@ async function discover(context: BuildContext, settings: GuidesSettings) {
  */
 export async function run(context: BuildContext, settings: GuidesSettings): Promise<BuildStepResult> {
   const { graph, sources } = await discover(context, settings);
-  const namespace = settings.namespace ?? context.namespace;
   const version = await implementation();
   const compiled = [];
 
   for (const { owner, sourceDir } of sources.filter(source => source.needed)) {
+    const namespace = resolveNamespace(owner);
+
     if (settings.manifestPath && inside(sourceDir, path.resolve(owner.path, settings.manifestPath))) {
       throw new Error(`guides manifestPath must be outside the source directory in owner pack ${owner.id}`);
     }

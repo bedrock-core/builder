@@ -1,0 +1,22 @@
+{
+  "format_version": 3,
+  "namespace": "core_peer_api_provider",
+  "header": {
+    "name": "Addon API provider",
+    "description": "Cross-realm public API fixture",
+    "uuid": "05d80f9a-f9e6-4d46-b92b-7d10b87bdf73",
+    "version": "1.0.0",
+    "min_engine_version": "1.26.50"
+  },
+  "modules": [{
+    "type": "script",
+    "language": "javascript",
+    "uuid": "2580aa1b-e1cb-48e3-bc59-64b6dfbe8262",
+    "version": "1.0.0",
+    "entry": "scripts/main.ts"
+  }],
+  "dependencies": [
+    { "module_name": "@minecraft/server", "version": "2.10.0" },
+    { "module_name": "@minecraft/server-gametest", "version": "1.0.0-beta" }
+  ]
+}

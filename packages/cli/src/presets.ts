@@ -23,7 +23,7 @@ export async function applyPreset(root: string, preset: ProjectPreset): Promise<
     .replace(/^\s*coreHooks\.configs\.recommended,\r?\n/m, ''));
   delete pkg.devDependencies['eslint-plugin-react-hooks'];
 
-  for (const directory of ['packs/BP/guides', 'packs/BP/i18n', 'packs/BP/scripts/UI', 'packs/BP/blocks', 'packs/BP/entities']) {
+  for (const directory of ['packs/BP/guides', 'packs/BP/i18n', 'packs/BP/UI', 'packs/BP/blocks', 'packs/BP/entities']) {
     await fs.remove(path.join(root, directory));
   }
 
@@ -41,12 +41,14 @@ export async function applyPreset(root: string, preset: ProjectPreset): Promise<
     await fs.remove(path.join(root, 'packs/BP'));
     await fs.remove(path.join(root, 'tsconfig.test.json'));
     delete config.packs.behaviorPack;
+    pkg.exports['./manifest.json'] = './packs/RP/manifest.json';
     delete config.bedrockCore.profiles.test;
     delete config.bedrockCore.profiles['build-test'];
     delete pkg.scripts['build:test'];
     delete pkg.scripts['watch:test'];
     delete pkg.scripts['test:mc'];
     delete pkg.scripts.typecheck;
+    delete pkg.devDependencies['typescript-native'];
     delete pkg.devDependencies['@minecraft/server-gametest'];
     const file = path.join(root, 'packs/RP/manifest.json');
     const manifest = await fs.readJson(file);
@@ -67,16 +69,19 @@ export async function applyPreset(root: string, preset: ProjectPreset): Promise<
       const file = path.join(root, 'packs/BP', name);
       const manifest = await fs.readJson(file);
 
+      manifest.header ??= {};
+      manifest.header.name = config.name;
+      manifest.header.description = config.description ?? '';
       manifest.dependencies = manifest.dependencies.filter((dependency: { module_name?: string }) =>
         dependency.module_name === '@minecraft/server' || dependency.module_name === '@minecraft/server-gametest');
       await fs.writeJson(file, manifest, { spaces: 2 });
     }
 
     await fs.writeFile(path.join(root, 'packs/BP/scripts/main.ts'), `import { world } from '@minecraft/server';
-import { project } from '@bedrock-core/generated/project';
+import manifest from '../manifest.json';
 
 world.afterEvents.playerSpawn.subscribe(({ player, initialSpawn }) => {
-  if (initialSpawn) player.sendMessage(project.name);
+  if (initialSpawn) player.sendMessage({ translate: manifest.header.name });
 });
 `);
     const tsconfig = await fs.readJson(path.join(root, 'tsconfig.json'));

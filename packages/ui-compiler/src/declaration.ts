@@ -85,9 +85,7 @@ export function declaredApps(declaration: Record<string, unknown>): DeclaredApp[
  * @returns ESM source that invokes each declared app module shape function.
  */
 export function declaredScreens(apps: DeclaredApp[], declaration: Record<string, unknown>): string {
-  const fields = { ...declaration, ...(declaration.manifest as object | undefined) };
-  const manifest = Object.fromEntries(['creator', 'pack', 'packName', 'version', 'creatorName', 'description', 'icon', 'thumbnail']
-    .flatMap(name => fields[name] === undefined ? [] : [[name, fields[name]]]));
+  const manifest = declaration.manifest ?? {};
 
   return [
     ...apps.map((app, index) => `import * as App${index} from ${JSON.stringify(app.compiled)};`),

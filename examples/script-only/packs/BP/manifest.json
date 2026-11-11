@@ -1,5 +1,6 @@
 {
   "format_version": 3,
+  "namespace": "builder_example",
   "header": {
     "name": "@bedrock-core bundler example",
     "description": "Standalone bundler fixture",
@@ -16,7 +17,7 @@
     {
       "type": "script",
       "language": "javascript",
-      "entry": "scripts/main.js",
+      "entry": "scripts/main.ts",
       "uuid": "ab316296-60bf-4877-b3f6-1c089e410719",
       "version": "1.0.0"
     }

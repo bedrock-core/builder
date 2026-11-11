@@ -1,6 +1,6 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { pathToFileURL } from 'node:url';
-import type { ScreenData, UiEnvironment, UiLibrary, UiRequest } from './types.ts';
+import type { CompiledScreenData, UiEnvironment, UiLibrary, UiRequest } from './types.ts';
 
 const environment = workerData as UiEnvironment;
 const library = await import(pathToFileURL(environment.library).href) as UiLibrary;
@@ -51,7 +51,7 @@ port.on('message', async (request: UiRequest) => {
 
         const spec = { name: request.name, namespace: request.namespace, testMetadata: request.testMetadata === true };
         const host = library.runtime.hostFor(library.runtime.buildScreenTree(component)).id;
-        let compiled: ScreenData & { face?: unknown; entries?: unknown };
+        let compiled: CompiledScreenData;
 
         if (host === 'experimental-ore-ui') {
           if (!library.compiler.compileExperimentalOreScreen) {
@@ -93,13 +93,13 @@ port.on('message', async (request: UiRequest) => {
           compiled.kind = host === 'form-modal' ? 'modal' : 'action';
         }
 
-        // Linking and registration consume emitted data, not the compiler's source trees.
-        const portable = { ...compiled,
-          ...(Array.isArray(compiled.entries) ? { entryCount: compiled.entries.length } : {}),
+        const { face, entries, ...screen } = compiled;
+        // Preview needs the drawable document before host mechanisms are applied.
+        const portable = {
+          ...screen,
+          ...(Array.isArray(entries) ? { entryCount: entries.length } : {}),
+          ...(request.includeFace && face ? { face: { document: face.document } } : {}),
         };
-
-        delete portable.entries;
-        delete portable.face;
 
         value = JSON.parse(JSON.stringify(portable)) as unknown;
       }

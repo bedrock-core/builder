@@ -13,13 +13,13 @@ async function fixture(t) {
 
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(path.join(root, 'packs/BP/scripts'), { recursive: true });
-  await writeFile(path.join(root, 'packs/BP/manifest.json'), JSON.stringify(manifestFor('script')));
+  await writeFile(path.join(root, 'packs/BP/manifest.json'), JSON.stringify(manifestFor('script', 'scripts/main.ts')));
   await writeFile(path.join(root, 'packs/BP/scripts/custom.js'), 'export const custom = true;');
   const config = {
     name: 'Bundle',
     authors: [],
     targetVersion: '1.26.50',
-    namespace: 'bundle_test',
+
     packs: { behaviorPack: './packs/BP' },
     bedrockCore: {
       formatVersion: '1.0.0',
@@ -186,7 +186,7 @@ test('invalid imports and claimed output paths keep prior exports intact', async
   assert.equal(await readFile(path.join(root, 'dist/previous'), 'utf8'), 'previous');
   await writeFile(path.join(root, 'packs/BP/scripts/main.ts'), 'export const result = 1;');
   await writeFile(path.join(root, 'packs/BP/scripts/main.js'), 'plugin-owned');
-  await assert.rejects(runBuild({ configPath, logger: {} }), /output already exists/);
+  await assert.rejects(runBuild({ configPath, logger: {} }), /collides with authored JavaScript alongside scripts\/main\.ts/);
   assert.equal(await readFile(path.join(root, 'dist/previous'), 'utf8'), 'previous');
 });
 
@@ -194,8 +194,8 @@ test('multiple script packs bundle shared inputs before staged source cleanup', 
   const { root, config, configPath } = await fixture(t);
 
   await mkdir(path.join(root, 'packs/extra/scripts'), { recursive: true });
-  await writeFile(path.join(root, 'packs/BP/manifest.json'), JSON.stringify(manifestFor('script', 'scripts/start.js')));
-  await writeFile(path.join(root, 'packs/extra/manifest.json'), JSON.stringify(manifestFor('script', 'scripts/extra.js')));
+  await writeFile(path.join(root, 'packs/BP/manifest.json'), JSON.stringify(manifestFor('script', 'scripts/start.ts')));
+  await writeFile(path.join(root, 'packs/extra/manifest.json'), JSON.stringify(manifestFor('script', 'scripts/extra.ts')));
   await writeFile(path.join(root, 'packs/BP/scripts/shared.ts'), 'export const shared: number = 17;');
   await writeFile(path.join(root, 'packs/BP/scripts/start.ts'), 'export { shared } from \'./shared.ts\';');
   await writeFile(path.join(root, 'packs/extra/scripts/extra.ts'), 'export { shared } from \'../../BP/scripts/shared.ts\';');
@@ -274,7 +274,7 @@ test('missing manifest sources in a later pack preserve the previous export', as
   config.packs.second = './second';
   config.bedrockCore.profiles.default.export.second = './dist/second';
   await writeFile(configPath, JSON.stringify(config));
-  await assert.rejects(runBuild({ configPath, logger: {} }), /no TS\/JS source matching.*missing.js/);
+  await assert.rejects(runBuild({ configPath, logger: {} }), /scripts\/missing\.js.*does not exist/);
   assert.equal(await readFile(output, 'utf8'), previous);
 });
 
@@ -345,7 +345,7 @@ test('a manifest plugin selects a test entry before bundling without changing th
     export async function run(context) {
       const file = path.join(context.packs.behaviorPack, 'manifest.json');
       const manifest = JSON.parse(await readFile(file, 'utf8'));
-      manifest.modules[0].entry = 'scripts/tests.js';
+      manifest.modules[0].entry = 'scripts/tests.ts';
       await writeFile(file, JSON.stringify(manifest));
     }
   `);
@@ -385,10 +385,75 @@ test('JavaScript manifest entries bundle in place after all shared inputs are re
   assert.equal(await readFile(main, 'utf8'), original);
 });
 
-test('ambiguous TypeScript sources fail without choosing a different entry', async (t) => {
+test('explicit TypeScript manifest entries select their exact source and export JavaScript paths', async (t) => {
   const { root, configPath } = await fixture(t);
+  const pack = path.join(root, 'packs/BP');
+  const manifest = manifestFor('script', 'scripts/main.ts');
+  const extensions = ['ts', 'tsx', 'mts', 'cts'];
 
-  await writeFile(path.join(root, 'packs/BP/scripts/main.ts'), 'export const value = 1;');
-  await writeFile(path.join(root, 'packs/BP/scripts/main.tsx'), 'export const value = 2;');
-  await assert.rejects(runBuild({ configPath, logger: {} }), /ambiguous sources/);
+  await writeFile(path.join(pack, 'scripts/main.ts'), 'export const selected = "ts";');
+  await writeFile(path.join(pack, 'scripts/main.tsx'), 'throw new Error("Wrong entry");');
+
+  for (const extension of extensions.slice(1)) {
+    const entry = `scripts/entry-${extension}.${extension}`;
+
+    manifest.modules.push(manifestFor('script', entry).modules[0]);
+    await writeFile(path.join(pack, entry), `export const selected = ${JSON.stringify(extension)};`);
+  }
+
+  await writeFile(path.join(pack, 'manifest.json'), JSON.stringify(manifest));
+  const result = await runBuild({ configPath, logger: {} });
+  const output = result.outputPaths.behaviorPack;
+  const exported = JSON.parse(await readFile(path.join(output, 'manifest.json'), 'utf8'));
+  const entries = ['scripts/main.js', 'scripts/entry-tsx.js', 'scripts/entry-mts.js', 'scripts/entry-cts.js'];
+
+  assert.deepEqual(exported.modules.map(module => module.entry), entries);
+  assert.doesNotMatch(await readFile(path.join(output, entries[0]), 'utf8'), /Wrong entry/);
+
+  for (const [index, entry] of entries.entries()) {
+    await readFile(path.join(output, entry), 'utf8');
+    await assert.rejects(readFile(path.join(output, manifest.modules[index].entry)), { code: 'ENOENT' });
+  }
+
+  assert.deepEqual(JSON.parse(await readFile(path.join(pack, 'manifest.json'), 'utf8')), manifest);
+});
+
+test('manifest entry errors name the authored path, output and collisions', async (t) => {
+  const { root, configPath } = await fixture(t);
+  const pack = path.join(root, 'packs/BP');
+  const options = { configPath, logger: {} };
+  const select = entry => writeFile(path.join(pack, 'manifest.json'), JSON.stringify(manifestFor('script', entry)));
+
+  await select('scripts/missing.js');
+  await assert.rejects(runBuild(options), /manifest entry scripts\/missing\.js \(output scripts\/missing\.js\) does not exist/);
+  await select('scripts/main.txt');
+  await assert.rejects(runBuild(options), /main\.txt.*use \.js, \.ts/);
+  await select('scripts/../main.ts');
+  await assert.rejects(runBuild(options), /main\.ts.*pack-relative path under scripts\//);
+  await select('scripts/main.ts');
+  await writeFile(path.join(pack, 'scripts/main.ts'), 'export const value = 1;');
+  const duplicate = manifestFor('script', 'scripts/main.ts');
+
+  duplicate.modules.push(manifestFor('script', 'scripts/main.tsx').modules[0]);
+  await writeFile(path.join(pack, 'manifest.json'), JSON.stringify(duplicate));
+  await assert.rejects(runBuild(options), /scripts\/main\.ts and scripts\/main\.tsx share output scripts\/main\.js/);
+  await select('scripts/main.ts');
+  await writeFile(path.join(pack, 'scripts/main.js'), 'export const value = 2;');
+  await assert.rejects(runBuild(options), /output scripts\/main\.js.*collides with authored JavaScript alongside scripts\/main\.ts/);
+});
+
+test('a JavaScript entry must exist even when a TypeScript file has the same name', async (t) => {
+  const { root, configPath } = await fixture(t);
+  const pack = path.join(root, 'packs/BP');
+
+  await writeFile(path.join(pack, 'manifest.json'), JSON.stringify(manifestFor('script', 'scripts/main.js')));
+  await writeFile(path.join(pack, 'scripts/main.ts'), 'export const value = 1;');
+  await assert.rejects(runBuild({ configPath, logger: {} }), /manifest entry scripts\/main\.js.*does not exist/);
+  await writeFile(path.join(pack, 'scripts/main.js'), 'export const value = 2;');
+  const result = await runBuild({ configPath, logger: {} });
+  const source = await readFile(path.join(result.outputPaths.behaviorPack, 'scripts/main.js'), 'utf8');
+
+  assert.match(source, /value = 2/);
+  assert.doesNotMatch(source, /value = 1/);
+  assert.equal(JSON.parse(await readFile(path.join(result.outputPaths.behaviorPack, 'manifest.json'), 'utf8')).modules[0].entry, 'scripts/main.js');
 });

@@ -1,21 +1,76 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractTgz } from '../packages/generator/src/tar.ts';
 import { yarn } from './yarn.ts';
 import { validateConfig } from '../src/config.ts';
-// @ts-expect-error Test fixtures are JavaScript helpers outside the public API.
-import { installUi } from '../test-support/ui.js';
+import { acceptanceDependencies, installedPackage, linkAcceptanceDependencies, type AcceptanceDependencies } from '../test-support/acceptance.ts';
 
 const repository = fileURLToPath(new URL('../', import.meta.url));
 const directory = path.join(repository, '.bedrock-core/release/tarballs');
 const packages = JSON.parse(await readFile(path.join(directory, 'index.json'), 'utf8')) as { name: string; version: string; file: string }[];
-const root = await mkdtemp(path.join(tmpdir(), 'builder-package-check-'));
 const files = Object.fromEntries(packages.map(pkg => [pkg.name, `file:${path.join(directory, pkg.file).replaceAll('\\', '/')}`]));
+const fixturePackage = JSON.parse(await readFile(path.join(repository, 'fixtures/acceptance/package.json'), 'utf8')) as { dependencies: Record<string, string> };
+const dependencies = process.env.BUILDER_ACCEPTANCE_DEPENDENCY_ROOT ? acceptanceDependencies(repository) : undefined;
+const toolchain = { root: repository, modules: path.join(repository, 'node_modules') };
+const archives = new Map<string, { contents: Map<string, Buffer>; dependencies: Record<string, string> }>();
+const root = await mkdtemp(path.join(tmpdir(), 'builder-package-check-'));
+
+async function stageArchives(root: string, names: readonly string[], dependencies: AcceptanceDependencies): Promise<void> {
+  const pending = [...names];
+  const staged = new Set<string>();
+  const external = new Set<string>();
+
+  for (const name of pending) {
+    if (staged.has(name)) {
+      continue;
+    }
+
+    staged.add(name);
+    const archive = archives.get(name);
+
+    assert.ok(archive, `Release archive is missing: ${name}`);
+    const target = path.join(root, 'node_modules', name);
+
+    for (const [file, contents] of archive.contents) {
+      assert.ok(file.startsWith('package/'), `Unexpected archive path: ${file}`);
+      const destination = path.resolve(target, file.slice('package/'.length));
+      const relative = path.relative(target, destination);
+
+      assert.ok(relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative), `Archive path escapes its package: ${file}`);
+      await mkdir(path.dirname(destination), { recursive: true });
+      await writeFile(destination, contents);
+    }
+
+    for (const dependency of Object.keys(archive.dependencies)) {
+      if (archives.has(dependency)) {
+        pending.push(dependency);
+      } else {
+        external.add(dependency);
+      }
+    }
+  }
+
+  for (const name of external) {
+    const source = name.startsWith('@bedrock-core/') || name.startsWith('@minecraft/') ? dependencies : toolchain;
+    const target = path.join(root, 'node_modules', name);
+
+    await mkdir(path.dirname(target), { recursive: true });
+    await symlink(installedPackage(source, name), target, process.platform === 'win32' ? 'junction' : 'dir');
+  }
+}
+
+async function removeTemporary(directory: string, prefix: string): Promise<void> {
+  const target = path.resolve(directory);
+
+  assert.equal(path.dirname(target), path.resolve(tmpdir()));
+  assert.ok(path.basename(target).startsWith(prefix));
+  await rm(target, { recursive: true, force: true });
+}
 
 try {
   for (const pkg of packages) {
@@ -23,6 +78,8 @@ try {
     const metadata = JSON.parse(contents.get('package/package.json')!.toString()) as { exports?: Record<string, unknown>; dependencies?: Record<string, string> };
     const compiled = JSON.parse(contents.get('package/dist/package.json')!.toString()) as { version: string; dependencies?: Record<string, string> };
     const exports = metadata.exports ?? {};
+
+    archives.set(pkg.name, { contents, dependencies: metadata.dependencies ?? {} });
 
     assert.equal(compiled.version, pkg.version);
     assert.deepEqual(compiled.dependencies, metadata.dependencies ?? {}, `${pkg.name} compiled metadata must match its published dependency versions`);
@@ -44,12 +101,20 @@ try {
 
   await writeFile(path.join(root, 'package.json'), JSON.stringify({
     name: 'builder-package-check', private: true, type: 'module', packageManager: 'yarn@4.16.0',
-    dependencies: { '@bedrock-core/builder': files['@bedrock-core/builder'], 'typescript': '5.9.3' }, resolutions: files,
+    dependencies: { ...fixturePackage.dependencies, '@bedrock-core/builder': files['@bedrock-core/builder'], 'typescript-native': 'npm:typescript@7.1.0-beta' }, resolutions: files,
   }, null, 2));
   await writeFile(path.join(root, '.yarnrc.yml'), 'nodeLinker: node-modules\nenableGlobalCache: true\n');
-  yarn(['install', '--no-immutable'], root);
-  await cp(path.join(repository, 'fixtures/acceptance'), path.join(root, 'addon'), { recursive: true });
-  await installUi(path.join(root, 'addon'));
+
+  if (dependencies) {
+    const external = [...new Set([...archives.values()].flatMap(archive => Object.keys(archive.dependencies)))];
+
+    await linkAcceptanceDependencies(root, dependencies, { exclude: [...archives.keys(), ...external] });
+    await stageArchives(root, ['@bedrock-core/builder'], dependencies);
+  } else {
+    yarn(['install', '--no-immutable'], root);
+  }
+
+  await cp(path.join(repository, 'fixtures/acceptance'), path.join(root, 'addon'), { recursive: true, filter: file => path.basename(file) !== 'node_modules' });
   await writeFile(path.join(root, 'addon/packs/BP/scripts/acceptance.screen.tsx'), `
     import { Screen, Text } from '@bedrock-core/ui';
     export default function Page() { return <Screen><Text>Installed UI compiler</Text></Screen>; }
@@ -95,6 +160,7 @@ try {
     import { validateConfig } from '@bedrock-core/builder/config';
     import * as uiOptions from '@bedrock-core/builder-ui';
     import { bundleScripts } from '@bedrock-core/builder-bundler';
+    import { scriptCandidates } from '@bedrock-core/builder-bundler/entries';
     import { compileI18n } from '@bedrock-core/builder-i18n';
     import { compileGuides } from '@bedrock-core/builder-guides';
     import { generateTemplates } from '@bedrock-core/builder-generator';
@@ -102,6 +168,7 @@ try {
     import { fingerprint } from '@bedrock-core/builder-plugin';
     import { resolveManifest } from '@bedrock-core/builder-manifest';
     assert.equal(typeof bundleScripts, 'function');
+    assert.deepEqual(scriptCandidates('scripts/main.js'), ['scripts/main.js']);
     assert.equal(typeof compileI18n, 'function');
     assert.equal(typeof compileGuides, 'function');
     assert.equal(typeof generateTemplates, 'function');
@@ -138,7 +205,6 @@ try {
     import { runBuild, type BuildOptions } from '@bedrock-core/builder/runner';
     import type { BundleOptions } from '@bedrock-core/builder-bundler';
     import type { GuidesOptions, GuideManifest } from '@bedrock-core/builder-guides';
-    import guides from '@bedrock-core/generated/guides/logic';
     import type { ContentValidationOptions } from '@bedrock-core/builder-validation';
     import type { UiSettings } from '@bedrock-core/builder-ui';
     import type { BuildPlugin, BuildContext, BundleExtension, PluginRequirements } from '@bedrock-core/builder-plugin';
@@ -152,7 +218,7 @@ try {
       const count: number = result.value.count;
       return count;
     }
-    const guideManifest: GuideManifest = guides;
+    declare const guideManifest: GuideManifest;
     const guideOptions: GuidesOptions = { root: '.', namespace: 'example', moduleName: '@bedrock-core/generated/guides/example', section: 'example' };
     export { plugin, extension, useContext, guideManifest, guideOptions };
     export { runBuild };
@@ -162,12 +228,27 @@ try {
     compilerOptions: { strict: true, noEmit: true, module: 'NodeNext', target: 'ES2023', types: ['node'], skipLibCheck: false },
     files: ['types.ts', 'addon/.bedrock-core/generated/guides/logic/guides.generated.d.ts'],
   }));
-  yarn(['tsc', '--noEmit'], root);
+
+  if (dependencies) {
+    const typecheck = spawnSync(process.execPath, ['node_modules/typescript-native/bin/tsc', '--noEmit'], { cwd: root, stdio: 'inherit' });
+
+    assert.equal(typecheck.status, 0, 'Archived package declarations must typecheck with installed dependencies');
+  } else {
+    yarn(['tsc', '--noEmit'], root);
+  }
+
   const cli = spawnSync(process.execPath, ['node_modules/@bedrock-core/builder/dist/bin/builder.js', '--help'], { cwd: root, encoding: 'utf8' });
 
   assert.equal(cli.status, 0);
   assert.match(cli.stdout, /bc-builder/);
-  yarn(['exec', 'bc-builder', '--help'], root);
+  const libraryCli = spawnSync(process.execPath, ['node_modules/@bedrock-core/builder/dist/bin/builder.js', 'api-library', '--help'], { cwd: root, encoding: 'utf8' });
+
+  assert.equal(libraryCli.status, 0, libraryCli.stderr);
+  assert.match(libraryCli.stdout, /api-library <entry.ts>/);
+
+  if (!dependencies) {
+    yarn(['exec', 'bc-builder', '--help'], root);
+  }
 
   for (const pkg of packages.filter(pkg => pkg.name !== '@bedrock-core/builder')) {
     const standalone = await mkdtemp(path.join(tmpdir(), 'builder-standalone-check-'));
@@ -178,7 +259,12 @@ try {
         dependencies: { [pkg.name]: files[pkg.name] }, resolutions: files,
       }));
       await writeFile(path.join(standalone, '.yarnrc.yml'), 'nodeLinker: node-modules\nenableGlobalCache: true\n');
-      yarn(['install', '--no-immutable'], standalone);
+
+      if (dependencies) {
+        await stageArchives(standalone, [pkg.name], dependencies);
+      } else {
+        yarn(['install', '--no-immutable'], standalone);
+      }
 
       if (pkg.name === '@bedrock-core/cli') {
         await writeFile(path.join(standalone, 'offline-network.mjs'), `
@@ -198,11 +284,13 @@ try {
         const config = JSON.parse(await readFile(path.join(standalone, 'packed-addon/config.json'), 'utf8'));
 
         validateConfig(config);
-        assert.equal(config.namespace, 'reviewer_packed_addon');
+        const manifest = JSON.parse(await readFile(path.join(standalone, 'packed-addon/packs/BP/manifest.json'), 'utf8'));
+
+        assert.equal(manifest.namespace, 'reviewer_packed_addon');
         const registration = await readFile(path.join(standalone, 'packed-addon/packs/BP/scripts/main.ts'), 'utf8');
 
-        assert.match(registration, /creator: 'reviewer'/);
-        assert.match(registration, /pack: 'packed_addon'/);
+        assert.match(registration, /import manifest from '\.\.\/manifest\.json'/);
+        assert.match(registration, /\bmanifest,/);
         await readFile(path.join(standalone, 'packed-addon/packs/BP/guides/en_US/intro.mdx'), 'utf8');
         await assert.rejects(readFile(path.join(standalone, 'packed-addon/guides/en_US/intro.mdx')), { code: 'ENOENT' });
         assert.ok(config.bedrockCore.profiles['build-test']);
@@ -235,7 +323,7 @@ try {
 
       assert.equal(result.status, 0, `${pkg.name} must load with only its declared dependencies`);
     } finally {
-      await rm(standalone, { recursive: true, force: true });
+      await removeTemporary(standalone, 'builder-standalone-check-');
     }
   }
 
@@ -245,8 +333,12 @@ try {
     integrities[pkg.name] = `sha512-${createHash('sha512').update(await readFile(path.join(directory, pkg.file))).digest('base64')}`;
   }
 
-  await writeFile(path.join(directory, 'verified.json'), `${JSON.stringify({ node: process.versions.node, integrities }, null, 2)}\n`);
-  console.log('@bedrock-core/builder: installed release APIs, CLI, workers and declarations passed');
+  const evidence = dependencies
+    ? { node: process.versions.node, integrities, registryBacked: false, dependencyRoot: dependencies.root, toolchainRoot: toolchain.root }
+    : { node: process.versions.node, integrities };
+
+  await writeFile(path.join(directory, dependencies ? 'verified-local.json' : 'verified.json'), `${JSON.stringify(evidence, null, 2)}\n`);
+  console.log(`@bedrock-core/builder: archived APIs, CLI, workers and declarations passed with ${dependencies ? 'explicit installed dependencies' : 'registry-installed dependencies'}`);
 } finally {
-  await rm(root, { recursive: true, force: true });
+  await removeTemporary(root, 'builder-package-check-');
 }

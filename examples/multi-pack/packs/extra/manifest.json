@@ -1,5 +1,6 @@
 {
   "format_version": 3,
+  "namespace": "builder_example_extragameplay",
   "header": {
     "name": "@bedrock-core extra example",
     "description": "Standalone bundler fixture",
@@ -16,7 +17,7 @@
     {
       "type": "script",
       "language": "javascript",
-      "entry": "scripts/start.js",
+      "entry": "scripts/start.ts",
       "uuid": "be0ca635-5f63-4272-96e3-5292b6039fa6",
       "version": "1.0.0"
     }

@@ -14,13 +14,10 @@ build
 .bedrock-core
 dist
 **/dist
-*.tsbuildinfo
-**/*.tsbuildinfo
 
 # Testing
 coverage
 **/coverage
-.nyc_output
 
 # Environment
 .env

@@ -7,8 +7,6 @@ export interface UiSettings {
   owner?: string;
   /** Builder resource destination ID; inferred from direct local dependencies. */
   resourcePack?: string;
-  /** Override the project namespace for generated UI content. */
-  namespace?: string;
   /** Emit optional screen identity metadata. */
   testMetadata?: boolean;
   /** Emit a build stamp in generated output. */
@@ -34,6 +32,8 @@ export interface UiSettings {
 export interface ScreenEntry {
   /** Authored or generated screen module path. */
   source: string;
+  /** Authored declaration entry for screens synthesized from addon registration. */
+  declarationSource?: string;
   /** Screen export name. */
   name: string;
   /** Member selected from a screen collection, when applicable. */
@@ -111,16 +111,18 @@ export interface UiEnvironment {
 export type UiRequest
   = | { kind: 'exports' }
     | { kind: 'list'; module: string }
-    | { kind: 'screen'; module: string; name: string; member?: string; namespace: string; testMetadata?: boolean }
+    | { kind: 'screen'; module: string; name: string; member?: string; namespace: string; testMetadata?: boolean; includeFace?: boolean }
     | { kind: 'link'; screens: ScreenData[]; namespace: string };
+
+export type CompiledScreenData = ScreenData & { face?: { document: Document }; entries?: unknown };
 
 export interface UiLibrary {
   guides?: Record<string, unknown>;
   ui: Record<string, unknown>;
   jsx: Record<string, unknown>;
   compiler: {
-    compileScreen(screen: unknown, spec: object): ScreenData & { face?: unknown; entries?: unknown };
-    compileFormScreen(screen: unknown, spec: object): ScreenData & { face?: unknown; entries?: unknown };
+    compileScreen(screen: unknown, spec: object): CompiledScreenData;
+    compileFormScreen(screen: unknown, spec: object): CompiledScreenData;
     compileExperimentalOreScreen?(screen: unknown, spec: object): ScreenData;
     buildUiPack(screens: ScreenData[], namespace: string): Pick<LinkedUi, 'screens' | 'hooks' | 'documents' | 'resources'>;
   };

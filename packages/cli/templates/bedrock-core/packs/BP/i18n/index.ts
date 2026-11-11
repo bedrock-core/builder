@@ -14,7 +14,7 @@
  * localized `<Text>` children — `key()` strings and `raw()` messages —
  * measure correctly with no further wiring.
  */
-import bundle from '@bedrock-core/generated/i18n/behaviorPack';
+import en_US from './en_US';
 import { createI18n } from '@bedrock-core/server/i18n';
 
-export const i18n = createI18n(bundle);
+export const i18n = createI18n({ en_US });

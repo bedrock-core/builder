@@ -1,0 +1,17 @@
+{
+  "format_version": 3,
+  "namespace": "core_peer_api_optional",
+  "header": {
+    "name": "Absent optional addon",
+    "description": "An installed contract whose pack is absent",
+    "uuid": "c390e0ea-944e-427d-b224-eb79bbd361d0",
+    "version": "1.0.0"
+  },
+  "modules": [{
+    "type": "script",
+    "language": "javascript",
+    "uuid": "6c54c0fd-0dd4-4bca-a3df-47fe469e8a54",
+    "version": "1.0.0",
+    "entry": "scripts/main.ts"
+  }]
+}

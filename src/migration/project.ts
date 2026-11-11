@@ -8,6 +8,7 @@ import { inspectPack } from '../packs.ts';
 import { resolveExportPaths } from '../export.ts';
 import { localFilterKind } from './local-filter.ts';
 import { validateConfig } from '../config.ts';
+import { scriptSource } from '@bedrock-core/builder-bundler/entries';
 import type { MigrationOptions, MigrationResult } from './types.ts';
 import { isRecord, pointer } from './types.ts';
 
@@ -50,9 +51,17 @@ export async function migrateRegolithProject(configPath = 'config.json', options
       }
 
       try {
-        const manifest = await readManifest(id, packPath);
+        const manifest = await readManifest(id, packPath, true);
 
         inferred.packKinds[id] = (await inspectPack(id, packPath)).kind;
+
+        for (const module of manifest.modules.filter(module => module.type === 'script')) {
+          try {
+            await scriptSource(id, path.resolve(packPath, module.entry!), packPath);
+          } catch (error) {
+            diagnostics.push({ severity: 'error', code: 'script-entry', path: `/packs/${pointer(id)}`, message: error instanceof Error ? error.message : String(error) });
+          }
+        }
 
         for (const uuid of [manifest.header.uuid, ...manifest.modules.map(module => module.uuid)]) {
           if (identities.has(uuid.toLowerCase())) {

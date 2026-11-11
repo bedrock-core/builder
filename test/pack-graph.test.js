@@ -113,7 +113,7 @@ test('targeted invocations retain the full graph and project scope invokes once 
     }
   `);
   const config = {
-    name: 'Graph', authors: [], targetVersion: '1.26.50', namespace: 'graph_test',
+    name: 'Graph', authors: [], targetVersion: '1.26.50',
     packs: Object.fromEntries(Object.keys(directories).map(id => [id, `./${id}`])),
     bedrockCore: { formatVersion: '1.0.0', plugins: {
       owner: { module: './plugin.ts', packs: ['gameplay'] },
@@ -134,13 +134,13 @@ test('targeted invocations retain the full graph and project scope invokes once 
   await writeFile(configPath, JSON.stringify(config));
   await runBuild({ configPath, logger: {} });
   assert.deepEqual(JSON.parse(await readFile(path.join(root, 'dist/resources/owner.json'), 'utf8')), {
-    selected: ['gameplay'], outputs: ['gameplay'], all: ['gameplay', 'resources', 'extras'], graph: ['gameplay', 'resources', 'extras'], extensions: [],
+    selected: ['gameplay'], outputs: ['gameplay'], all: ['gameplay', 'resources', 'extras'], graph: ['gameplay', 'resources', 'extras'], extensions: [['gameplay']],
   });
   assert.deepEqual(JSON.parse(await readFile(path.join(root, 'dist/extras/selected.json'), 'utf8')).selected, ['resources', 'extras']);
   const selected = JSON.parse(await readFile(path.join(root, 'dist/extras/selected.json'), 'utf8'));
 
   assert.deepEqual(selected.outputs, ['resources', 'extras']);
-  assert.deepEqual(selected.extensions, [['resources', 'extras']]);
+  assert.deepEqual(selected.extensions, [['gameplay'], ['resources', 'extras']]);
   assert.deepEqual(JSON.parse(await readFile(path.join(root, 'dist/resources/metadata.json'), 'utf8')), { keep: true });
   await assert.rejects(readFile(path.join(root, 'dist/resources/inputs/hidden.ts')), { code: 'ENOENT' });
 

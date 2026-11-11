@@ -19,11 +19,6 @@
       "pattern": "^[a-z]{2}_[A-Z]{2}$",
       "default": "en_US"
     },
-    "namespace": {
-      "type": "string",
-      "pattern": "^[a-z0-9_]+$",
-      "description": "Defaults to the project's namespace."
-    },
     "strict": {
       "type": "boolean",
       "default": true

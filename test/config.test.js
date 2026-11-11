@@ -109,7 +109,7 @@ test('UI settings use the nested schema for screen modules, metadata and formatt
   const config = example();
 
   config.bedrockCore.profiles.default.stages['ui-compiler'] = {
-    namespace: 'screens', screens: ['./screens.tsx', '@bedrock-core/catalog/compiled'],
+    screens: ['./screens.tsx', '@bedrock-core/catalog/compiled'],
     testMetadata: true, stamp: true, tsconfig: './tsconfig.json', pretty: { indent: 'space', size: 2 },
   };
   validateConfig(config);

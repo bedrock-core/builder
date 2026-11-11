@@ -220,6 +220,7 @@ export function convertFilters(
       namespaces.add(settings.namespace);
     }
 
+    delete settings.namespace;
     entries.push({ stage, settings, location });
   }
 

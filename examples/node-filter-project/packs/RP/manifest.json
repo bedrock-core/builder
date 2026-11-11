@@ -1,5 +1,6 @@
 {
   "format_version": 3,
+  "namespace": "node_filter_example",
   "header": {
     "name": "Node filter example",
     "description": "Resource pack generated with a Regolith Node filter",

@@ -20,7 +20,7 @@ async function fixture(t, plugin, steps = [{ plugin: 'custom', after: 'prepare' 
   const config = {
     name: 'Test',
     authors: [],
-    namespace: 'test',
+
     targetVersion: '1.26.50',
     packs: { behaviorPack: './packs/BP' },
     bedrockCore: {
@@ -113,7 +113,7 @@ test('targeted modules receive one current pack and record distinct artifact own
 
   for (const [index, id] of ['assets', 'gallery'].entries()) {
     assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPaths[id], 'generated.json'), 'utf8')), {
-      id, kind: 'resource', packs: [id], outputs: [id], seen: ['assets', 'gallery'].slice(0, index + 1), imports: ['@bedrock-core/generated/project', ...['@generated/assets', '@generated/gallery'].slice(0, index + 1)], settings: { amount: 4 },
+      id, kind: 'resource', packs: [id], outputs: [id], seen: ['assets', 'gallery'].slice(0, index + 1), imports: ['@generated/assets', '@generated/gallery'].slice(0, index + 1), settings: { amount: 4 },
     });
     await assert.rejects(readFile(path.join(project.root, 'packs', id, 'generated.json')), { code: 'ENOENT' });
   }
@@ -197,11 +197,12 @@ test('unsafe output fails before plugins run', async (t) => {
 });
 test('a destination lock blocks overlapping writes', async (t) => {
   const project = await fixture(t, 'export async function run() {}');
-  const lock = path.join(project.root, 'dist.builder-lock');
+  const { withExportPaths } = await import('../src/export.ts');
 
-  await mkdir(lock);
-  await assert.rejects(runBuild(project.options), { code: 'EEXIST' });
-  assert.equal((await readdir(project.root)).includes('dist.builder-lock'), true);
+  await withExportPaths({ pack: path.join(project.root, 'dist') }, async () => {
+    await assert.rejects(runBuild(project.options), { code: 'EEXIST' });
+    assert.equal((await readdir(project.root)).some(name => name.includes('.builder-')), false);
+  });
 });
 
 test('artifact ownership accepts canonical workspaces beneath an aliased temporary directory', async (t) => {
@@ -223,7 +224,7 @@ test('artifact ownership accepts canonical workspaces beneath an aliased tempora
 
     const result = await runBuild(project.options);
 
-    assert.ok(result.artifacts.some(artifact => artifact.id === 'project:metadata'));
+    assert.ok(!result.artifacts.some(artifact => artifact.id === 'project:metadata'));
     assert.equal(await readFile(path.join(result.outputPaths.behaviorPack, 'source.json'), 'utf8'), '{"source":true}');
   } finally {
     for (const [key, value] of previous) {

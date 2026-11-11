@@ -1,0 +1,7 @@
+{
+  "name": "@prototype/native-access-helper",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": { ".": "./index.ts" },
+  "peerDependencies": { "@minecraft/server": "*" }
+}

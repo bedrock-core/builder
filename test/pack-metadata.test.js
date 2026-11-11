@@ -5,8 +5,7 @@ import path from 'node:path';
 import { runBuild } from '../src/run.ts';
 import { parseLang } from '../packages/i18n/src/index.ts';
 import { manifestFor } from '../test-support/manifest.js';
-import { projectFor } from '../test-support/project.js';
-import { put } from '../test-support/i18n.js';
+import { projectFor, put } from '../test-support/project.js';
 
 async function fixture(t) {
   const project = await projectFor(t);
@@ -83,16 +82,25 @@ test('authored pack-specific display names and descriptions override shared tran
   const result = await runBuild(project.options);
 
   assertDisplay(await language(result, 'gameplay', 'en_US'), 'Behavior Display', 'Behavior Description');
-  assertDisplay(await language(result, 'visuals', 'en_US'), 'Resource Display', 'Resource Description');
+  const resourceLanguage = await language(result, 'visuals', 'en_US');
+
+  assertDisplay(resourceLanguage, 'Resource Display', 'Resource Description');
+  assert.equal(parseLang(resourceLanguage)['flow_test.pack.name'], 'Behavior Display');
+  assert.equal(parseLang(resourceLanguage)['flow_test.pack.description'], 'Behavior Description');
+  const warm = await runBuild(project.options);
+
+  assert.equal(await language(warm, 'visuals', 'en_US'), resourceLanguage);
 });
 
 test('a shared resource pack retains its own manifest display instead of inheriting a behavior owner', async (t) => {
   const project = await fixture(t);
-  const secondary = manifestFor('script');
+  const secondary = manifestFor('script', 'scripts/main.ts');
+
+  secondary.namespace = 'flow_secondary';
 
   secondary.header.name = 'pack.name';
   secondary.header.description = 'pack.description';
-  secondary.dependencies = [{ pack: 'visuals' }];
+  secondary.dependencies = [{ uuid: project.resources.header.uuid }];
   project.config.packs.secondary = './packs/secondary';
   project.config.bedrockCore.profiles.default.export.secondary = './dist/secondary';
   await put(project.project, 'packs/secondary/manifest.json', JSON.stringify(secondary));
@@ -108,6 +116,79 @@ test('a shared resource pack retains its own manifest display instead of inherit
   assertDisplay(await language(result, 'visuals', 'en_US'), 'Project Name', 'Project Description');
   assertDisplay(await language(result, 'gameplay', 'en_US'), 'Behavior Name', 'Behavior Description');
   assertDisplay(await language(result, 'secondary', 'en_US'), 'Behavior Name', 'Behavior Description');
+});
+
+test('native manifest aliases stay pack-local while shared client display keys isolate owners across locales and cached builds', async (t) => {
+  const project = await fixture(t);
+  const secondary = manifestFor('script', 'scripts/main.ts');
+
+  secondary.namespace = 'flow_secondary';
+  secondary.header.name = 'pack.name';
+  secondary.header.description = 'pack.description';
+  secondary.dependencies = [{ uuid: project.resources.header.uuid }];
+  project.config.packs.secondary = './packs/secondary';
+  project.config.bedrockCore.profiles.default.export.secondary = './dist/secondary';
+  await put(project.project, 'packs/secondary/manifest.json', JSON.stringify(secondary));
+  await put(project.project, 'packs/secondary/scripts/main.ts', 'export const value = 2;');
+  const owners = {
+    gameplay: { namespace: 'flow_test', en_US: { name: 'Shop', description: 'Trade items' }, es_ES: { name: 'Tienda', description: 'Comercia objetos' } },
+    secondary: { namespace: 'flow_secondary', en_US: { name: 'Economy', description: 'Player balances' }, es_ES: { name: 'Economia', description: 'Saldos de jugadores' } },
+  };
+
+  for (const [id, owner] of Object.entries(owners)) {
+    for (const locale of ['en_US', 'es_ES']) {
+      await put(project.project, `packs/${id}/i18n/${locale}.ts`, `export default ${JSON.stringify({ pack: owner[locale] })} as const;`);
+    }
+  }
+
+  await put(project.project, 'config.json', JSON.stringify(project.config));
+  const resourceDisplays = {
+    en_US: { name: 'Shared Resources', description: 'Shared client assets' },
+    es_ES: { name: 'Recursos compartidos', description: 'Recursos del cliente' },
+  };
+
+  for (const [locale, display] of Object.entries(resourceDisplays)) {
+    await put(project.project, `packs/visuals/texts/${locale}.lang`, `pack.name=${display.name}\npack.description=${display.description}\n`);
+  }
+
+  const authored = await Promise.all(['gameplay', 'secondary', 'visuals'].map(id => readFile(path.join(project.project, `packs/${id}/manifest.json`), 'utf8')));
+  let previous;
+
+  for (let pass = 0; pass < 2; pass++) {
+    const result = await runBuild(project.options);
+    const snapshot = {};
+
+    for (const id of ['gameplay', 'secondary', 'visuals']) {
+      const native = JSON.parse(await readFile(path.join(result.outputPaths[id], 'manifest.json'), 'utf8'));
+
+      assert.equal(native.header.name, 'pack.name');
+      assert.equal(native.header.description, 'pack.description');
+    }
+
+    for (const locale of ['en_US', 'es_ES']) {
+      const resource = parseLang(await language(result, 'visuals', locale));
+
+      assertDisplay(await language(result, 'visuals', locale), resourceDisplays[locale].name, resourceDisplays[locale].description);
+
+      for (const [id, owner] of Object.entries(owners)) {
+        const display = owner[locale];
+
+        snapshot[`${id}:${locale}`] = await language(result, id, locale);
+        assertDisplay(snapshot[`${id}:${locale}`], display.name, display.description);
+        assert.equal(resource[`${owner.namespace}.pack.name`], display.name);
+        assert.equal(resource[`${owner.namespace}.pack.description`], display.description);
+      }
+
+      snapshot[`visuals:${locale}`] = await language(result, 'visuals', locale);
+    }
+
+    if (previous) {
+      assert.deepEqual(snapshot, previous);
+    }
+
+    previous = snapshot;
+    assert.deepEqual(await Promise.all(['gameplay', 'secondary', 'visuals'].map(id => readFile(path.join(project.project, `packs/${id}/manifest.json`), 'utf8'))), authored);
+  }
 });
 
 test('resource-owned locale modules emit their manifest aliases only in their own generated section', async (t) => {

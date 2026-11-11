@@ -1,12 +1,15 @@
 import { createHash } from 'node:crypto';
 import { glob, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fingerprint, generatedAliases, hasFiles, resolveFeaturePacks, type BuildContext, type BuildDetection, type BuildStepResult } from '@bedrock-core/builder-plugin';
+import { fingerprint, generatedAliases, hasFiles, resolveFeaturePacks, resolveNamespace, type BuildContext, type BuildDetection, type BuildStepResult } from '@bedrock-core/builder-plugin';
 import { readScriptEntries } from '@bedrock-core/builder-manifest';
-import { scriptCandidates, scriptSource } from '@bedrock-core/builder-bundler/entries';
+import { scriptSource } from '@bedrock-core/builder-bundler/entries';
 import { compilerFingerprint } from '@bedrock-core/builder-bundler/compile';
 import { desugarJsxConditionals } from './sugar.ts';
 import { markRuntimeText } from './text.ts';
+import { markPureComponents } from './pure.ts';
+import { callbackSourceId, cacheInlineCallbacks } from './callbacks.ts';
+import { cacheDerivedValues } from './values.ts';
 import {
   bundleUiLibrary,
   bundleUiModule,
@@ -27,10 +30,11 @@ import {
   type PackLocales,
   type UiSettings,
 } from './internal.ts';
-import { writeTestMetadata } from './metadata.ts';
+import { refreshTestMetadata, writeTestMetadata } from './metadata.ts';
 import { prepareOreAssets } from './ore-assets.ts';
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+const screenPatterns = ['UI/**/*.screen.tsx', 'scripts/**/*.screen.tsx'];
 
 async function implementation(files: string[], bundler = false): Promise<string> {
   const sources = files.map(file => new URL(file.replace(/\.ts$/, new URL(import.meta.url).pathname.endsWith('.ts') ? '.ts' : '.js'), import.meta.url));
@@ -57,15 +61,28 @@ async function hasInstalledPackage(root: string, names: string[]): Promise<boole
   }
 }
 
+/** Reserve pack-owned UI sources from content-template discovery. */
+export async function inputDirectories(context: BuildContext, settings: UiSettings = {}): Promise<string[]> {
+  const directories: string[] = [];
+
+  for (const [id, directory] of Object.entries(context.packs)) {
+    if ((settings.owner === undefined || id === settings.owner) && (await context.inspectPack(id)).kind === 'behavior') {
+      directories.push(path.join(directory, 'UI'));
+    }
+  }
+
+  return directories;
+}
+
 /** Compile the owner's screens and link them into its selected local resource pack. */
 export async function run(context: BuildContext, settings: UiSettings): Promise<BuildStepResult> {
-  const namespace = settings.namespace ?? context.namespace;
   const resources: string[] = [];
   const behaviors: string[] = [];
   const scriptEntries: string[] = [];
   const entries: ScreenEntry[] = [];
 
   const routed = await resolveFeaturePacks(context, settings);
+  const namespace = resolveNamespace(routed[0]!);
 
   for (const pack of routed) {
     const id = pack.id;
@@ -74,13 +91,14 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
       resources.push(pack.path);
     } else if (pack.kind === 'behavior') {
       behaviors.push(pack.path);
+      context.excludeFromExport?.(path.join(pack.path, 'UI'));
 
       for (const entry of await readScriptEntries(id, pack.path)) {
-        scriptEntries.push(await scriptSource(id, path.resolve(pack.path, entry)));
+        scriptEntries.push(await scriptSource(id, path.resolve(pack.path, entry), pack.path));
       }
     }
 
-    for await (const file of glob('scripts/**/*.screen.tsx', { cwd: pack.path })) {
+    for await (const file of glob(pack.kind === 'behavior' ? screenPatterns : screenPatterns[1], { cwd: pack.path })) {
       entries.push({ source: path.join(pack.path, file), name: path.basename(file, '.screen.tsx') });
     }
   }
@@ -96,14 +114,16 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
     guides: Object.hasOwn(context.generatedImportsFor?.(routed[0].id) ?? context.generatedImports, '@bedrock-core/generated/guides'),
     tsconfig: settings.tsconfig,
     signal: context.signal,
+    moduleNames: [...new Set(context.bundleExtensions.filter(extension => !extension.packs || extension.packs.includes(routed[0].id)).flatMap(extension => extension.moduleNames ?? []))].sort(),
   };
   const aliases = Object.fromEntries(Object.entries(sourceSettings.aliases).map(([name, file]) => [name, path.relative(context.stagedRoot, file)]));
   const compilerKey = {
-    implementation: await implementation(['bundle.ts', 'sugar.ts', 'text.ts', 'stubs/game.ts'], true),
+    implementation: await implementation(['bundle.ts', 'sugar.ts', 'text.ts', 'pure.ts', 'syntax.ts', 'callbacks.ts', 'values.ts', 'stubs/game.ts'], true),
     compiler: uiCompilerVersion,
     aliases,
     tsconfig: settings.tsconfig ?? null,
     nodePath: process.env.NODE_PATH ?? '',
+    moduleNames: sourceSettings.moduleNames,
   };
   const rendererVersion = await implementation(['worker.ts']);
   let linked: LinkedUi | undefined;
@@ -113,6 +133,7 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
   let oreClient: string | undefined;
   const moduleSources = new Set(settings.screens ?? []);
   const shapedSources = new Set<string>();
+  const declarations = new Map<string, string>();
 
   const declarationEntries = await hasInstalledPackage(context.projectRoot, ['server', 'server-runtime']) ? scriptEntries : [];
 
@@ -150,6 +171,7 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
 
       await writeFile(shaped, declaredScreens(apps, read.declaration));
       shapedSources.add(shaped);
+      declarations.set(shaped, relative);
       moduleSources.add(shaped);
       apps.forEach(app => moduleSources.add(app.compiled));
     }
@@ -236,7 +258,7 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
           throw new Error(`UI module ${source} must default-export a record of screens`);
         }
 
-        names.forEach(name => entries.push({ source: resolved, name, member: name }));
+        names.forEach(name => entries.push({ source: resolved, name, member: name, declarationSource: declarations.get(resolved) }));
       }
 
       const names = new Set<string>();
@@ -300,9 +322,9 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
   if (linked) {
     const metadataEntries = entries.map(entry => ({
       ...entry,
-      source: path.isAbsolute(entry.source)
+      source: entry.declarationSource ?? (path.isAbsolute(entry.source)
         ? path.relative(context.stagedRoot, entry.source).replaceAll('\\', '/')
-        : entry.source,
+        : entry.source),
     }));
     const files = await writeUiHosts(behaviors, linked, settings);
 
@@ -325,7 +347,17 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
     for (const file of new Set(files)) {
       const pack = routed.map(pack => [pack.id, pack.path] as const).find(([, directory]) => file.startsWith(`${directory}${path.sep}`))!;
 
-      await context.registerArtifact(`ui:${pack[0]}:${path.relative(pack[1], file).replaceAll('\\', '/')}`, file);
+      const id = `ui:${pack[0]}:${path.relative(pack[1], file).replaceAll('\\', '/')}`;
+
+      await context.registerArtifact(id, file);
+
+      if (path.relative(pack[1], file).replaceAll('\\', '/') === 'bedrock-core/test-metadata.json') {
+        if (!context.finalizeArtifact) {
+          throw new Error('Test metadata requires a Builder host with artifact finalization support');
+        }
+
+        context.finalizeArtifact(id, () => refreshTestMetadata(pack[1]));
+      }
     }
   } else {
     resources.forEach(pack => writeTestMetadata(pack, [], false));
@@ -347,7 +379,7 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
 
   context.registerBundleExtension({
     id: '@bedrock-core/ui',
-    version: await implementation(['sugar.ts', 'text.ts']),
+    version: await implementation(['sugar.ts', 'text.ts', 'pure.ts', 'syntax.ts', 'callbacks.ts', 'values.ts']),
     packs: Object.entries(context.packs).filter(([, directory]) => behaviors.includes(directory)).map(([id]) => id),
     jsxImportSource: '@bedrock-core/ui',
     resolveFromProject: ['@bedrock-core/'],
@@ -360,13 +392,16 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
           const prepared = args.path.endsWith('.screen.tsx') ? desugarJsxConditionals(source, args.path) : source;
           const extension = path.extname(args.path);
 
-          return { contents: markRuntimeText(prepared, args.path), loader: extension === '.tsx' ? 'tsx' : extension === '.jsx' ? 'jsx' : extension.endsWith('ts') ? 'ts' : 'js', watchFiles: [args.path] };
+          const identity = callbackSourceId(args.path, context.stagedRoot);
+          const callbacks = cacheInlineCallbacks(markPureComponents(markRuntimeText(prepared, args.path), args.path), args.path, identity);
+
+          return { contents: cacheDerivedValues(callbacks, args.path, identity), loader: extension === '.tsx' ? 'tsx' : extension === '.jsx' ? 'jsx' : extension.endsWith('ts') ? 'ts' : 'js', watchFiles: [args.path] };
         });
       },
     }],
   });
 
-  const declarations = path.join(context.projectRoot, '.bedrock-core/generated/ui/screens.generated.d.ts');
+  const declarationsFile = path.join(context.projectRoot, '.bedrock-core/generated/ui/screens.generated.d.ts');
   const content = [
     'declare module \'@bedrock-core/navigation\' {',
     '  interface ScreenKeys {',
@@ -374,11 +409,11 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
     '  }', '}', 'export {};', '',
   ].join('\n');
 
-  await mkdir(path.dirname(declarations), { recursive: true });
+  await mkdir(path.dirname(declarationsFile), { recursive: true });
   let previous: string | undefined;
 
   try {
-    previous = await readFile(declarations, 'utf8');
+    previous = await readFile(declarationsFile, 'utf8');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
       throw error;
@@ -386,7 +421,7 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
   }
 
   if (content !== previous) {
-    await writeFile(declarations, content);
+    await writeFile(declarationsFile, content);
   }
 
   return {
@@ -398,13 +433,21 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
 /** Detect screen files, generated declarations or framework declaration inputs. */
 export async function detect(context: BuildContext, settings: UiSettings = {}): Promise<BuildDetection> {
   context.signal?.throwIfAborted();
-  const packPaths = Object.values(context.packs).map(directory => path.relative(context.stagedRoot, directory).replaceAll('\\', '/'));
+  const patterns: string[] = [];
+
+  for (const [id, directory] of Object.entries(context.packs)) {
+    const relative = path.relative(context.stagedRoot, directory).replaceAll('\\', '/');
+    const pack = await context.inspectPack(id);
+
+    patterns.push(...(pack.kind === 'behavior' ? screenPatterns : [screenPatterns[1]]).map(pattern => `${relative}/${pattern}`));
+  }
+
   let needed = !!settings.screens?.length;
   let input = 'configured screen modules';
 
   if (!needed) {
-    needed = await hasFiles(context.stagedRoot, packPaths.map(directory => `${directory}/scripts/**/*.screen.tsx`));
-    input = 'screen modules in pack scripts';
+    needed = await hasFiles(context.stagedRoot, patterns);
+    input = 'screen modules in pack UI or scripts';
 
     if (!needed) {
       needed = await hasFiles(context.projectRoot, '.bedrock-core/generated/ui/screens.generated.d.ts');
@@ -421,16 +464,15 @@ export async function detect(context: BuildContext, settings: UiSettings = {}): 
 
         for (const entry of await readScriptEntries(id, pack.path)) {
           let source = '';
+          const file = path.resolve(pack.path, entry);
 
-          for (const file of scriptCandidates(path.resolve(pack.path, entry))) {
-            try {
-              if ((await stat(file)).isFile()) {
-                source += await readFile(file, 'utf8');
-              }
-            } catch (error) {
-              if (!['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) {
-                throw error;
-              }
+          try {
+            if ((await stat(file)).isFile()) {
+              source = await readFile(file, 'utf8');
+            }
+          } catch (error) {
+            if (!['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) {
+              throw error;
             }
           }
 

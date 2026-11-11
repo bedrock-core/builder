@@ -325,7 +325,7 @@ export async function publishNodeData<T>(context: BuildContext, publish: () => P
   for (const session of selected) {
     const source = session.dataSource;
     const parts = path.relative(context.projectRoot, source).split(path.sep);
-    const roots = [...Object.values(context.allPacks ?? context.packs).map(directory => path.join(context.projectRoot, path.relative(context.stagedRoot, directory))), ...Object.values(context.outputPaths)];
+    const roots = [...Object.values(context.allPacks ?? context.packs).map(directory => path.join(context.projectRoot, path.relative(context.stagedRoot, directory))), ...Object.values(context.outputPaths), ...(context.apiOutput ? [context.apiOutput] : [])];
 
     if (!contains(context.projectRoot, source) || source === context.projectRoot
       || parts.some(part => ['.git', 'node_modules', '.bedrock-core'].includes(part) || part.includes('.builder-'))

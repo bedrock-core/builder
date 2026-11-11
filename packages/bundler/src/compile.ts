@@ -8,14 +8,31 @@ import type { BuildContext } from '@bedrock-core/builder-plugin';
 export async function compilerFingerprint(): Promise<string> {
   const version = createHash('sha256');
 
-  for (const file of ['index', 'dependencies', 'compile']) {
+  for (const file of ['index', 'dependencies', 'compile', 'api', 'api-source', 'api-provider', 'api-package', 'api-library', 'typescript', 'native-access', 'native-access-transform']) {
     version.update(await readFile(new URL(`./${file}.${new URL(import.meta.url).pathname.endsWith('.ts') ? 'ts' : 'js'}`, import.meta.url)));
   }
+
+  version.update(await readFile(new URL(import.meta.resolve('typescript-native/package.json'))));
 
   return version.digest('hex');
 }
 
 const implementations = new WeakMap<BuildContext, Promise<string>>();
+
+/** Select the authored pack's external modules for a staged or original compiler entry. */
+export function moduleNamesFor(context: BuildContext, source: string): readonly string[] {
+  const original = path.relative(context.projectRoot, source);
+  const entry = !path.isAbsolute(original) && original !== '..' && !original.startsWith(`..${path.sep}`)
+    ? path.join(context.stagedRoot, original)
+    : source;
+  const owner = Object.entries(context.allPacks ?? context.packs).find(([, directory]) => {
+    const relative = path.relative(directory, entry);
+
+    return !path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`);
+  })?.[0] ?? context.pack?.id;
+
+  return [...new Set(context.bundleExtensions.filter(extension => !extension.packs || (owner !== undefined && extension.packs.includes(owner))).flatMap(extension => extension.moduleNames ?? []))].sort();
+}
 
 function implementationFor(context: BuildContext): Promise<string> {
   if (!implementations.has(context)) {
@@ -28,6 +45,7 @@ function implementationFor(context: BuildContext): Promise<string> {
 /** Reuse compiled Node modules while callers continue to evaluate their exports. */
 export async function compileModule(context: BuildContext, options: BundleOptions): Promise<CompiledModule & { cached: boolean }> {
   const source = path.resolve(options.root, options.entry);
+  const moduleNames = [...new Set([...moduleNamesFor(context, source), ...options.moduleNames ?? []])].sort();
   const outfile = path.resolve(options.root, options.outfile);
   const relative = (file: string) => path.relative(context.stagedRoot, file);
   const compilation = await context.reuse(`compiled:${relative(source).replaceAll('\\', '/')}`, {
@@ -42,6 +60,9 @@ export async function compileModule(context: BuildContext, options: BundleOption
       target: options.target ?? 'es2020',
       tsconfig: options.tsconfig ?? null,
       external: options.external ?? [],
+      moduleNames,
+      nativeAccess: options.nativeAccess ?? false,
+      provides: options.provides ?? [],
       aliases: Object.fromEntries(Object.entries(options.aliases ?? {}).map(([name, file]) => [name, relative(path.resolve(options.root, file))])),
       platform: options.platform ?? 'neutral',
       banner: options.banner ?? null,
@@ -51,7 +72,7 @@ export async function compileModule(context: BuildContext, options: BundleOption
       plugins: options.pluginKey ?? null,
     },
     async run() {
-      const result = await bundleScripts(options);
+      const result = await bundleScripts({ ...options, moduleNames });
       const files = [];
 
       for (const directory of result.watchDirs) {

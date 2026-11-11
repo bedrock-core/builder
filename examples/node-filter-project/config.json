@@ -1,7 +1,6 @@
 {
   "$schema": "../../schemas/config.schema.json",
   "targetVersion": "1.26.50",
-  "namespace": "node_filter_example",
   "name": "Node filter example",
   "description": "Resource pack generated with a standalone Regolith Node filter",
   "authors": [

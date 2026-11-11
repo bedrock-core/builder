@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import ts from 'typescript';
+import * as ts from './syntax.ts';
 
 /** Add an inert DOM event registration to the native text-field component. */
 export function patchOreInputBundle(source: string): string {
   assert(!source.includes('__coreOreBindNativeInput'), 'Use an unmodified native Ore bundle');
-  const file = ts.createSourceFile('gameplay.js', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  using parsed = ts.parseSource('gameplay.js', source, ts.ScriptKind.JS);
+  const file = parsed.file;
   const matches: { position: number; react: string; ref: string; change: string }[] = [];
 
   function visit(node: ts.Node): void {
@@ -18,7 +19,7 @@ export function patchOreInputBundle(source: string): string {
           marker = true;
         }
 
-        if (ts.isBindingElement(child) && child.propertyName?.getText(file) === 'onChange' && ts.isIdentifier(child.name)) {
+        if (ts.isBindingElement(child) && child.propertyName?.getText(file) === 'onChange' && child.name && ts.isIdentifier(child.name)) {
           changes.add(child.name.text);
         }
 

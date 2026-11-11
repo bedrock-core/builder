@@ -1,15 +1,27 @@
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import ts from 'typescript';
+import { ScriptTarget } from 'typescript-native/ast';
+import { API, formatDiagnosticsWithColorAndContext } from 'typescript-native/sync';
+import { programDiagnostics } from '../packages/bundler/src/typescript.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const output = path.join(root, '.bedrock-core/release/compiled');
-const configFile = ts.readConfigFile(path.join(root, 'tsconfig.json'), ts.sys.readFile);
-const config = ts.parseJsonConfigFileContent({ ...configFile.config, include: ['src/**/*.ts', 'bin/**/*.ts', 'packages/**/*.ts'] }, ts.sys, root);
-const program = ts.createProgram(config.fileNames, {
+const configFileName = path.join(root, 'tsconfig.json');
+
+using api = new API({ cwd: root });
+const { config: authored, error } = api.readConfigFile(configFileName);
+
+if (error) {
+  throw new Error(formatDiagnosticsWithColorAndContext([error], api));
+}
+
+const config = api.parseJsonConfigFileContent({
+  ...authored as object, include: ['src/**/*.ts', 'bin/**/*.ts', 'packages/**/*.ts'],
+}, { configFileName });
+const program = api.createProgram(config.fileNames, {
   ...config.options,
-  target: ts.ScriptTarget.ES2023,
+  target: ScriptTarget.ES2023,
   noEmit: false,
   declaration: true,
   declarationMap: false,
@@ -17,18 +29,18 @@ const program = ts.createProgram(config.fileNames, {
   rootDir: root,
   outDir: output,
 });
-const diagnostics = ts.getPreEmitDiagnostics(program);
+const diagnostics = [...config.errors, ...programDiagnostics(program)];
 
 if (diagnostics.length) {
-  throw new Error(ts.formatDiagnosticsWithColorAndContext(diagnostics, {
-    getCanonicalFileName: file => file,
-    getCurrentDirectory: () => root,
-    getNewLine: () => '\n',
-  }));
+  throw new Error(formatDiagnosticsWithColorAndContext(diagnostics, api));
 }
 
 await rm(output, { recursive: true, force: true });
 const emitted = program.emit();
+
+if (emitted.diagnostics.length) {
+  throw new Error(formatDiagnosticsWithColorAndContext(emitted.diagnostics, api));
+}
 
 if (emitted.emitSkipped) {
   throw new Error('Release compilation did not emit package files');

@@ -43,13 +43,26 @@ export async function run(context: BuildContext, settings: ManifestSettings): Pr
   }
 
   const pretty = settings.pretty;
-  const manifests = context.project && resolveProjectManifests(Object.fromEntries(resolved.map(item => [item.id, item.manifest])), context.project);
+  const manifests = context.project && resolveProjectManifests(Object.fromEntries(resolved.map(item => [item.id, item.manifest])), context.project, {
+    dependencyRoot: context.projectRoot,
+    registerDependency: file => context.registerDependency(file),
+  });
   const indent = pretty === undefined || pretty === false
     ? undefined
     : (pretty.indent === 'tab' ? '\t' : ' ').repeat(pretty.size ?? (pretty.indent === 'tab' ? 1 : 2));
 
   for (const { id, directory, variants, manifest, inputs } of resolved) {
     context.signal?.throwIfAborted();
+    const moduleNames = [...new Set(['dependencies', 'optionalDependencies'].flatMap((field) => {
+      const dependencies = manifest[field];
+
+      return Array.isArray(dependencies) ? dependencies.flatMap(dependency => dependency && typeof dependency === 'object' && !Array.isArray(dependency) && typeof dependency.module_name === 'string' ? [dependency.module_name] : []) : [];
+    }))].sort();
+
+    if (moduleNames.length) {
+      context.registerBundleExtension({ id: `manifest:${id}:modules`, version: '1', packs: [id], moduleNames });
+    }
+
     const file = path.join(directory, 'manifest.json');
     const content = JSON.stringify(manifests?.[id] ?? manifest, null, indent);
 

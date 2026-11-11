@@ -1,11 +1,13 @@
 import path from 'node:path';
-import ts from 'typescript';
+import { findConfigFile, trackedCompiler, type ResolutionOptions } from './typescript.ts';
+
+export { findConfigFile, moduleResolutionOptions, trackedCompiler } from './typescript.ts';
 
 /** Record the files and missing candidates that can change esbuild resolution. */
 export class CompilationDependencies {
   /** Existing inputs and missing candidates that can change module resolution. */
   readonly files = new Set<string>();
-  private configs = new Map<string, ts.CompilerOptions>();
+  private configs = new Map<string, ResolutionOptions>();
   private nearest = new Map<string, string | undefined>();
   private explicitConfig?: string;
 
@@ -28,18 +30,15 @@ export class CompilationDependencies {
     this.files.add(path.join(file, 'package.json'));
   }
 
-  private config(directory: string): ts.CompilerOptions {
+  /** Read the applicable compiler options and track their configuration inputs. */
+  config(directory: string): ResolutionOptions {
     let file = this.explicitConfig;
 
     if (!file) {
       if (this.nearest.has(directory)) {
         file = this.nearest.get(directory);
       } else {
-        file = ts.findConfigFile(directory, (candidate) => {
-          this.files.add(candidate);
-
-          return ts.sys.fileExists(candidate);
-        });
+        file = findConfigFile(directory, candidate => this.files.add(candidate));
         this.nearest.set(directory, file);
       }
     }
@@ -49,29 +48,9 @@ export class CompilationDependencies {
     }
 
     if (!this.configs.has(file)) {
-      const parsed = ts.getParsedCommandLineOfConfigFile(file, {}, {
-        ...ts.sys,
-        // File enumeration affects typechecking, not an explicit esbuild entry.
-        readDirectory: () => [],
-        readFile: (candidate) => {
-          this.files.add(candidate);
+      using api = trackedCompiler(candidate => this.files.add(candidate));
 
-          return ts.sys.readFile(candidate);
-        },
-        fileExists: (candidate) => {
-          this.files.add(candidate);
-
-          return ts.sys.fileExists(candidate);
-        },
-        directoryExists: (candidate) => {
-          this.files.add(candidate);
-
-          return ts.sys.directoryExists(candidate);
-        },
-        onUnRecoverableConfigFileDiagnostic() {},
-      });
-
-      this.configs.set(file, parsed?.options ?? {});
+      this.configs.set(file, api.parseConfigFile(file).options);
     }
 
     return this.configs.get(file)!;

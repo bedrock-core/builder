@@ -4,9 +4,9 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { watchBuild } from '../src/watch.ts';
-import { projectFor } from '../test-support/project.js';
+import { projectFor, put } from '../test-support/project.js';
 import { seedSchemas } from '../test-support/schemas.js';
-import { translationsFor, put } from '../test-support/i18n.js';
+import { translationsFor } from '../test-support/i18n.js';
 import { guidesFor } from '../test-support/guides.js';
 
 async function waitFor(condition) {
@@ -297,8 +297,8 @@ test('watch tracks external plugin dependencies and serializes changes arriving 
   await waitFor(() => results.length === 1);
   await writeFile(dependency, '{"value":2}');
   await waitFor(() => concurrent === 1);
-  await mkdir(path.join(project.project, 'new-input'));
-  await writeFile(path.join(project.project, 'new-input/file.json'), '{}');
+  await mkdir(path.join(project.project, 'packs/visuals/new-input'));
+  await writeFile(path.join(project.project, 'packs/visuals/new-input/file.json'), '{}');
   await waitFor(() => results.length >= 3);
   assert.equal(maximumConcurrent, 1);
   assert.deepEqual(errors, []);

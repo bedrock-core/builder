@@ -3,9 +3,13 @@
   "title": "@bedrock-core project configuration",
   "description": "Minecraft Bedrock project metadata and @bedrock-core profiles.",
   "type": "object",
+  "not": {
+    "required": [
+      "namespace"
+    ]
+  },
   "required": [
     "targetVersion",
-    "namespace",
     "name",
     "authors",
     "packs",
@@ -18,13 +22,6 @@
     },
     "targetVersion": {
       "$ref": "#/definitions/nonempty"
-    },
-    "namespace": {
-      "type": "string",
-      "pattern": "^[a-z0-9_]+$",
-      "not": {
-        "const": "minecraft"
-      }
     },
     "name": {
       "$ref": "#/definitions/nonempty"
@@ -124,6 +121,12 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "include": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "$ref": "#/definitions/nonempty" },
+              "description": "Additional literal project-relative files or directories copied into staging and observed by watch mode, including plugin data read without imports."
+            },
             "exclude": {
               "type": "array",
               "uniqueItems": true,
@@ -418,6 +421,23 @@
           "type": "boolean",
           "default": true,
           "description": "Reuse deterministic compiler output when its inputs match. Set false to rebuild it."
+        },
+        "validation": {
+          "enum": ["strict", "warn", "skip"],
+          "default": "warn",
+          "description": "Content schema validation mode. JSON syntax and pack manifests are always checked."
+        },
+        "api": {
+          "description": "Portable addon API package output; defaults to dist/api when public addon exports are declared. Set false to disable.",
+          "anyOf": [
+            {
+              "const": false
+            },
+            {
+              "type": "string",
+              "pattern": "\\S"
+            }
+          ]
         }
       }
     },

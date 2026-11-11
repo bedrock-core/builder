@@ -6,6 +6,9 @@ on:
 
 concurrency: cli-test-${{ github.ref }}
 
+env:
+  ACT: ''
+
 permissions:
   contents: read
 
@@ -24,15 +27,16 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: '26.13.0'
 
       - name: Configure temporary paths
         shell: bash
         run: |
           echo "BEDROCK_CLI_TARBALL=$RUNNER_TEMP/bedrock-core-cli.tgz" >> "$GITHUB_ENV"
           echo "BEDROCK_CLI_SMOKE_SUMMARY=$RUNNER_TEMP/cli-smoke-summary.json" >> "$GITHUB_ENV"
-          echo "BC_BDS_HOME=$RUNNER_TEMP/cli-smoke-bds" >> "$GITHUB_ENV"
+          echo "BC_BDS_HOME=$GITHUB_WORKSPACE/.bds" >> "$GITHUB_ENV"
 
+      - run: npm install --global corepack@0.36.0
       - run: corepack enable
 
       - run: yarn install --immutable

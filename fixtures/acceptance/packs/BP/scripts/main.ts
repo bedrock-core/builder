@@ -1,8 +1,13 @@
 import { ItemStack } from '@minecraft/server';
 import { register, type Test } from '@minecraft/server-gametest';
-import guides from '@bedrock-core/generated/guides/logic';
-import translations from '@bedrock-core/generated/i18n';
+import { registerGuides } from '@bedrock-core/guides';
+import { navigation } from '@bedrock-core/navigation/core';
+import { core } from '@bedrock-core/server';
+import { i18n } from '../i18n';
 import loot from '../loot_tables/drop.json';
+import manifest from '../manifest.json';
+
+const { guides } = core.register({ manifest, guides: registerGuides({ commands: false }) });
 
 function check(name: string, run: (test: Test) => void): void {
   register('builder_acceptance', name, run)
@@ -19,11 +24,15 @@ check('generated_item_loads', (test) => {
   test.succeed();
 });
 
-check('generated_imports_resolve', (test) => {
+check('compiled_content_resolves', (test) => {
+  const screens = navigation(core).screens;
+
   test.assert(loot.pools[0].entries[0].name === 'minecraft:apple', 'Imported generated loot data must match its template');
-  test.assert(guides.pages.start !== undefined, 'The generated guide manifest must contain its page');
-  test.assert(translations.namespace === 'builder_acceptance', 'Translations must use the project namespace');
-  test.assert(translations.locales.en_US !== undefined, 'English translations must be bundled');
-  test.assert(translations.locales.es_ES !== undefined, 'Spanish translations must be bundled');
+  test.assert(typeof guides.open === 'function', 'Core must install the guide app');
+  test.assert(screens.find(core.id, 'guide_home') !== undefined, 'The compiled guide entry must be registered');
+  test.assert(screens.find(core.id, 'guide_start') !== undefined, 'The compiled guide page must be registered');
+  test.assert(i18n.bundle.namespace === manifest.namespace, 'Translations must use the owning manifest namespace');
+  test.assert(i18n.forLocale('en_US').t($ => $.accepted) === 'Build accepted', 'English translations must resolve');
+  test.assert(i18n.forLocale('es_ES').t($ => $.accepted) === 'Compilación aceptada', 'Spanish translations must resolve');
   test.succeed();
 });

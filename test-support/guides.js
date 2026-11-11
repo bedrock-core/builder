@@ -1,8 +1,7 @@
 import path from 'node:path';
 import { writeFile } from 'node:fs/promises';
-import { projectFor } from './project.js';
+import { projectFor, put } from './project.js';
 import { installUi } from './ui.js';
-import { put } from './i18n.js';
 
 export async function guidesFor(t, { screens = false, cleanup = true } = {}) {
   const project = await projectFor(t, { cleanup });

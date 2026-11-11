@@ -18,8 +18,6 @@ export interface MigrationDiagnostic {
 
 /** Explicit metadata, profile, filter and destination mappings for Regolith configuration conversion. */
 export interface MigrationOptions {
-  /** Supply a missing project namespace. */
-  namespace?: string;
   /** Supply a missing target Minecraft version. */
   targetVersion?: string;
   /** Profile names to convert; omission selects all profiles. */

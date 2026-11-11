@@ -112,9 +112,9 @@ async function copyTemplate(
     'packs/BP/manifest.test.json',
     'packs/BP/texts/en_US.lang',
     'packs/BP/scripts/main.ts',
-    'packs/BP/scripts/UI/screens/home.screen.tsx',
-    'packs/BP/scripts/UI/screens/plan.tsx',
-    'packs/BP/scripts/UI/screens/profile_form.screen.tsx',
+    'packs/BP/UI/screens/home.screen.tsx',
+    'packs/BP/UI/screens/plan.tsx',
+    'packs/BP/UI/screens/profile_form.screen.tsx',
     'packs/BP/blocks/tutorial.block.ts',
     'packs/BP/entities/training_dummy.entity.ts',
     'packs/RP/manifest.json',
@@ -224,7 +224,7 @@ export async function installDependencies(
     await run('corepack', ['enable'], targetDir);
   } catch (error) {
     throw new Error(
-      `Corepack could not be enabled. Run "corepack enable" with permission, then run "${packageManager} install" in the generated project.`,
+      `Corepack could not be enabled. Install it with "npm install --global corepack", run "corepack enable", then run "${packageManager} install" in the generated project.`,
       { cause: error },
     );
   }
@@ -424,7 +424,7 @@ function displayNextSteps(
   console.info(chalk.gray('  packs/BP/blocks and packs/BP/entities autocomplete once it has run.'));
 
   console.info(
-    chalk.gray('  See packs/BP/scripts/UI/screens/ to explore the starter screens and navigation.'),
+    chalk.gray('  See packs/BP/UI/screens/ to explore the starter screens and navigation.'),
   );
 
   console.info('\n' + chalk.bold('Render pack:') + '\n');

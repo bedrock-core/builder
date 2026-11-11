@@ -20,7 +20,7 @@ export type { ProjectMigration } from './migration/project.ts';
 export function migrateRegolithConfig(input: unknown, options: MigrationOptions = {}): MigrationResult {
   const config = isRecord(input) ? structuredClone(input) : {};
   const diagnostics: MigrationResult['diagnostics'] = [];
-  const metadata = ['$schema', 'targetVersion', 'namespace', 'name', 'description', 'authors'];
+  const metadata = ['$schema', 'targetVersion', 'name', 'description', 'authors'];
 
   const report: ReportDiagnostic = (code, location, message, severity = 'error') => {
     if (!diagnostics.some(item => item.code === code && item.path === location && item.message === message)) {
@@ -139,14 +139,19 @@ export function migrateRegolithConfig(input: unknown, options: MigrationOptions 
 
   delete config.worlds;
   config.targetVersion = options.targetVersion ?? config.targetVersion;
-  config.namespace = options.namespace ?? config.namespace ?? (namespaces.size === 1 ? [...namespaces][0] : undefined);
+
+  if (typeof config.namespace === 'string') {
+    namespaces.add(config.namespace);
+  }
+
+  delete config.namespace;
 
   if (config.targetVersion === undefined) {
     report('target-version', '/targetVersion', 'Set targetVersion or pass --target-version with the intended Minecraft version.');
   }
 
-  if (config.namespace === undefined) {
-    report('namespace', '/namespace', 'Set namespace or pass --namespace; stage namespaces must agree for automatic inference.');
+  if (namespaces.size) {
+    report('manifest-namespace', '/packs', `Declare a namespace in each owner manifest.json. Source namespace values: ${[...namespaces].join(', ')}.`, 'warning');
   }
 
   config.$schema = options.schema ?? new URL('../schemas/config.schema.json', import.meta.url).href;

@@ -1,7 +1,13 @@
 import { context as createContext, version, type Plugin, type Metafile } from 'esbuild';
-import { mkdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { CompilationDependencies } from './dependencies.ts';
+import { apiImports, type ApiModule } from './api.ts';
+import { apiProvider } from './api-provider.ts';
+import { nativeAccessSources } from './native-access.ts';
+
+export { apiImports } from './api.ts';
+export { emitApiLibrary } from './api-library.ts';
 
 /** esbuild version used by the standalone bundler and compilation cache. */
 export const compilerVersion = version;
@@ -24,6 +30,12 @@ export interface BundleOptions {
   tsconfig?: string;
   /** Additional package specifiers retained as runtime imports. */
   external?: string[];
+  /** Declared external addon APIs whose public exports become Core bindings. */
+  moduleNames?: readonly string[];
+  /** Internal provider contract selection; consumer API metadata selects this automatically. */
+  nativeAccess?: boolean;
+  /** Internal checked provider entries whose objects receive generated registration metadata. */
+  provides?: readonly ApiModule[];
   /** Import specifiers mapped to explicit files. */
   aliases?: Record<string, string>;
   /** Cooperative compiler cancellation. */
@@ -77,7 +89,14 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
   const resolving = Symbol('project-dependency');
   const dependencies = new CompilationDependencies(root, options.tsconfig);
   const watchDirs = new Set<string>();
+  const virtualInputs = new Set<string>();
+  const trackedVirtualInputs = new Set<string>();
   let cacheable = true;
+  let requireNativeAccess = options.nativeAccess === true;
+  const nativeSources = new Map<string, string>();
+  let instrumentedSources = new Map<string, string>();
+  const nativeCandidate = options.platform !== 'node' && (requireNativeAccess || options.moduleNames?.some(name => !name.startsWith('@minecraft/')));
+  const provider = apiProvider(options.provides ?? [], options.dependencyRoot ?? root, root);
 
   const resolver: Plugin = {
     name: '@bedrock-core/project-imports',
@@ -105,9 +124,11 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
           };
         }
 
-        // Linked UI libraries share the addon's toolkit instances. Other imports
-        // retain source-relative resolution, including staged tsconfig aliases.
-        const shared = options.resolveFromProject?.some(prefix => args.path.startsWith(prefix));
+        // Runtime bindings and compiled screens belong to the addon's installed
+        // instances even when an ordinary dependency has its own package copies.
+        const shared = ['@bedrock-core/server', '@bedrock-core/server-runtime', '@bedrock-core/ui-runtime']
+          .some(name => args.path === name || args.path.startsWith(`${name}/`))
+          || options.resolveFromProject?.some(prefix => args.path.startsWith(prefix));
         const primaryDirectory = shared ? options.dependencyRoot ?? root : args.resolveDir;
         const fallbackDirectory = shared ? args.resolveDir : options.dependencyRoot ?? root;
         const local = await build.resolve(args.path, {
@@ -158,16 +179,39 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
     }
   }
 
-  const trackedPlugins: Plugin[] = (options.plugins ?? []).map(plugin => ({
+  const trackPlugin = (plugin: Plugin, trusted = false): Plugin => ({
     name: plugin.name,
     setup(build) {
       return plugin.setup({
         ...build,
-        onLoad(options, callback) {
-          build.onLoad(options, async (args) => {
-            const result = await callback(args);
+        onLoad(loadOptions, callback) {
+          build.onLoad(loadOptions, async (args) => {
+            const loaded = await callback(args);
+            const result = loaded && { ...loaded };
+
+            if (args.namespace === 'file' && result?.contents !== undefined && /\.[cm]?[jt]sx?$/.test(args.path)
+              && (nativeCandidate || provider.has(args.path))) {
+              const file = path.normalize(args.path);
+              const contents = provider.transform(file, typeof result.contents === 'string' ? result.contents : Buffer.from(result.contents).toString('utf8'));
+
+              if (nativeCandidate) {
+                nativeSources.set(file, contents);
+              }
+
+              result.contents = instrumentedSources.get(file) ?? contents;
+            }
 
             track(result);
+
+            if (args.namespace !== 'file' && result) {
+              const key = `${args.namespace}:${args.path}`.replaceAll('\\', '/');
+
+              virtualInputs.add(key);
+
+              if ((trusted || options.cachePlugins === true) && result.watchFiles?.length) {
+                trackedVirtualInputs.add(key);
+              }
+            }
 
             return result;
           });
@@ -183,7 +227,36 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
         },
       });
     },
-  }));
+  });
+  const trackedPlugins = (options.plugins ?? []).map(plugin => trackPlugin(plugin));
+  const apis = trackPlugin(apiImports(options.moduleNames ?? [], options.platform !== 'node', options.dependencyRoot ?? root,
+    file => dependencies.files.add(file), () => { requireNativeAccess = true; }), true);
+  const nativeLoader: Plugin = {
+    name: '@bedrock-core/native-access',
+    setup(build) {
+      if (!nativeCandidate && !options.provides?.length) {
+        return;
+      }
+
+      build.onLoad({ filter: /\.[cm]?[jt]sx?$/, namespace: 'file' }, async (args) => {
+        const file = path.normalize(args.path);
+
+        if (!nativeCandidate && !provider.has(file)) {
+          return;
+        }
+
+        const contents = provider.transform(file, await readFile(file, 'utf8'));
+
+        if (nativeCandidate) {
+          nativeSources.set(file, contents);
+        }
+
+        return { contents: instrumentedSources.get(file) ?? contents,
+          loader: /\.tsx$/.test(file) ? 'tsx' : /\.jsx$/.test(file) ? 'jsx' : /\.[cm]?ts$/.test(file) ? 'ts' : 'js',
+          resolveDir: path.dirname(file), watchFiles: [file] };
+      });
+    },
+  };
 
   options.signal?.throwIfAborted();
   const build = await createContext({
@@ -206,7 +279,7 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
     logLevel: 'silent',
     external: ['@minecraft/server', '@minecraft/server-*', '@minecraft/debug-utilities', ...(options.external ?? [])],
     ...(options.tsconfig ? { tsconfig: path.resolve(root, options.tsconfig) } : {}),
-    plugins: [...trackedPlugins, resolver],
+    plugins: [apis, ...trackedPlugins, nativeLoader, resolver],
   });
 
   const cancel = () => {
@@ -217,7 +290,16 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
 
   try {
     options.signal?.throwIfAborted();
-    const result = await build.rebuild();
+    let result = await build.rebuild();
+
+    if (nativeCandidate && requireNativeAccess) {
+      instrumentedSources = nativeAccessSources({ sources: nativeSources, root, dependencyRoot: options.dependencyRoot ?? root,
+        aliases, tsconfig: options.tsconfig, track: file => dependencies.files.add(file) });
+
+      if (instrumentedSources.size) {
+        result = await build.rebuild();
+      }
+    }
 
     options.signal?.throwIfAborted();
 
@@ -227,7 +309,17 @@ export async function bundleScripts(options: BundleOptions): Promise<BundleResul
       await writeFile(file.path, file.contents);
     }
 
-    const inputs = Object.keys(result.metafile!.inputs).map(file => path.resolve(root, file));
+    const inputs: string[] = [];
+
+    for (const file of Object.keys(result.metafile!.inputs)) {
+      const key = file.replaceAll('\\', '/');
+
+      if (virtualInputs.has(key)) {
+        cacheable &&= trackedVirtualInputs.has(key);
+      } else {
+        inputs.push(path.resolve(root, file));
+      }
+    }
 
     for (const input of inputs) {
       dependencies.parents(path.dirname(input));

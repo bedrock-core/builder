@@ -16,7 +16,7 @@ const cli = fileURLToPath(new URL('../bin/migrate.ts', import.meta.url));
 
 function legacy() {
   return {
-    name: 'example', author: 'Author', namespace: 'example', targetVersion: '1.26.50',
+    name: 'example', author: 'Author', targetVersion: '1.26.50',
     packs: { behaviorPack: './packs/BP', resourcePack: './packs/RP' },
     bridge: { retained: true },
     regolith: {
@@ -81,14 +81,14 @@ test('migration emits preferred metadata without redundant project fields', () =
   const result = migrateRegolithConfig(input);
 
   assert.equal(result.ready, true);
-  assert.deepEqual(Object.keys(result.config).slice(0, 6), ['$schema', 'targetVersion', 'namespace', 'name', 'description', 'authors']);
+  assert.deepEqual(Object.keys(result.config).slice(0, 5), ['$schema', 'targetVersion', 'name', 'description', 'authors']);
   assert.equal(Object.hasOwn(result.config, 'type'), false);
   assert.equal(Object.hasOwn(result.config, 'worlds'), false);
   assert.equal(input.type, 'minecraftBedrock');
   assert.deepEqual(input.worlds, ['./worlds/example']);
 });
 
-test('core settings preserve generator opt-in and infer namespace without enabling absent stages', () => {
+test('core settings preserve generator opt-in and report manifest namespace ownership', () => {
   const config = legacy();
 
   delete config.namespace;
@@ -99,13 +99,14 @@ test('core settings preserve generator opt-in and infer namespace without enabli
   const result = migrateRegolithConfig(config);
 
   assert.equal(result.ready, true);
-  assert.equal(result.config.namespace, 'from_core');
+  assert.equal(result.config.namespace, undefined);
+  assert.ok(result.diagnostics.some(item => item.code === 'manifest-namespace'));
   const stages = result.config.bedrockCore.profiles.default.stages;
 
   assert.deepEqual(stages.generator, { pretty: { indent: 'space', size: 2 } });
   assert.deepEqual(stages.bundler, { pretty: { indent: 'space', size: 2 }, debug: true });
   assert.equal(stages.i18n.sourceDir, 'i18n');
-  assert.equal(stages.i18n.namespace, 'from_core');
+  assert.equal(stages.i18n.namespace, undefined);
   delete config.regolith.profiles.default.filters[0].settings.generator;
   assert.equal(migrateRegolithConfig(config).config.bedrockCore.profiles.default.stages.generator, false);
 });
@@ -144,7 +145,7 @@ test('UI settings migrate local screen modules as project paths and preserve pac
   assert.equal(result.ready, true);
   validateConfig(result.config);
   assert.deepEqual(result.config.bedrockCore.profiles.default.stages['ui-compiler'], {
-    namespace: 'screens', testMetadata: true, stamp: true, pretty: { size: 2 },
+    testMetadata: true, stamp: true, pretty: { size: 2 },
     screens: ['./packs/BP/scripts/screens.ts', './packs/data/screens.ts', '@bedrock-core/catalog/compiled'],
   });
   assert.equal(codes(result).length, 0);
@@ -257,9 +258,8 @@ test('missing metadata is actionable and existing builder profiles are preserved
 
   delete input.targetVersion;
   delete input.namespace;
-  assert.ok(codes(migrateRegolithConfig(input)).includes('namespace'));
   assert.ok(codes(migrateRegolithConfig(input)).includes('target-version'));
-  assert.equal(migrateRegolithConfig(input, { namespace: 'supplied', targetVersion: '1.26.50' }).ready, true);
+  assert.equal(migrateRegolithConfig(input, { targetVersion: '1.26.50' }).ready, true);
   input.bedrockCore = { custom: 'do not replace' };
   const result = migrateRegolithConfig(input);
 
@@ -295,6 +295,27 @@ test('project migration reads v3 manifests and produces a working script build',
   const build = await runBuild({ configPath: project.configPath });
 
   assert.match(await readFile(path.join(build.outputPaths.gameplay, 'scripts/main.js'), 'utf8'), /value/);
+});
+
+test('migration requires the authored script entry to name its source', async (t) => {
+  const project = await projectWithRegolith(t);
+  const manifestPath = path.join(project.project, 'packs/gameplay/manifest.json');
+
+  project.behavior.modules[0].entry = 'scripts/main.js';
+  const authored = JSON.stringify(project.behavior);
+
+  await writeFile(manifestPath, authored);
+  const invalid = await migrateRegolithProject(project.configPath);
+
+  assert.equal(invalid.ready, false);
+  assert.ok(invalid.diagnostics.some(item => item.code === 'script-entry' && item.message.includes('scripts/main.js')));
+  await assert.rejects(writeMigration(invalid), /unresolved errors/);
+  assert.equal(await readFile(manifestPath, 'utf8'), authored);
+  project.behavior.modules[0].entry = 'scripts/main.ts';
+  await writeFile(manifestPath, JSON.stringify(project.behavior));
+  const valid = await migrateRegolithProject(project.configPath);
+
+  assert.equal(valid.ready, true, JSON.stringify(valid.diagnostics));
 });
 
 test('local wrapper recognition uses canonical paths and does not execute lookalike scripts', async (t) => {
@@ -377,7 +398,7 @@ test('CLI preview is machine readable and file writes are explicit', async (t) =
   validateConfig(JSON.parse(await readFile(output, 'utf8')));
   assert.equal(await readFile(project.configPath, 'utf8'), source);
   await assert.rejects(exec(process.execPath, [cli, project.configPath, '--output', output]), /--output requires --write/);
-  await assert.rejects(exec(process.execPath, [cli, '--namespace']), /Missing value/);
+  await assert.rejects(exec(process.execPath, [cli, '--target-version']), /Missing value/);
 });
 
 test('CLI reports blocked conversions and leaves source and outputs intact', async (t) => {
@@ -411,13 +432,13 @@ test('CLI profile, metadata, verified-filter and per-pack destination options co
   await writeFile(project.configPath, JSON.stringify(config));
   const source = await readFile(project.configPath, 'utf8');
   const response = JSON.parse((await exec(process.execPath, [
-    cli, project.configPath, '--profile', 'default', '--namespace', 'migrated', '--target-version', '1.26.51',
+    cli, project.configPath, '--profile', 'default', '--target-version', '1.26.51',
     '--filter', 'custom=bundler', '--export', 'default:gameplay=./dist/BP', '--export', 'default:visuals=./dist/RP',
     '--write', '--output', 'config.builder.json', '--json',
   ])).stdout);
 
   assert.equal(response.ready, true);
-  assert.equal(response.config.namespace, 'migrated');
+  assert.equal(response.config.namespace, undefined);
   assert.equal(response.config.targetVersion, '1.26.51');
   assert.deepEqual(Object.keys(response.config.bedrockCore.profiles), ['default']);
   assert.deepEqual(response.config.bedrockCore.profiles.default.export, { gameplay: './dist/BP', visuals: './dist/RP' });

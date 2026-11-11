@@ -1,0 +1,8 @@
+{
+  "name": "@bedrock-core/builder-i18n-example",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@bedrock-core/i18n": "^0.3.0"
+  }
+}

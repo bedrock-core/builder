@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "engines": {
-    "node": ">=22.18"
+    "node": ">=26.13.0"
   },
   "dependencies": {
     "@minecraft/bedrock-schemas": "1.26.50",

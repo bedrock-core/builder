@@ -1,7 +1,6 @@
 {
   "$schema": "../../schemas/config.schema.json",
   "targetVersion": "1.26.50",
-  "namespace": "builder_example",
   "name": "Multi-pack scripts",
   "authors": [],
   "packs": {

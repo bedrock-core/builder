@@ -2,7 +2,7 @@ import { unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { fingerprint, generatedAliases, type BuildContext, type BuildDetection, type BuildStepResult } from '@bedrock-core/builder-plugin';
 import { compilerVersion } from '@bedrock-core/builder-bundler';
-import { compileModule, compilerFingerprint } from '@bedrock-core/builder-bundler/compile';
+import { compileModule, compilerFingerprint, moduleNamesFor } from '@bedrock-core/builder-bundler/compile';
 import { templateFiles } from './selection.ts';
 import { generateTemplates, generateSchemaTypes, type JsonFormatting, type SchemaTypeSettings } from './index.ts';
 
@@ -62,6 +62,7 @@ export async function run(context: BuildContext, settings: GeneratorSettings): P
         key: {
           implementation,
           compilerVersion,
+          moduleNames: moduleNamesFor(context, source),
           nodePath: process.env.NODE_PATH ?? '',
           pretty: settings.pretty ?? false,
           tsconfig: settings.tsconfig ?? null,

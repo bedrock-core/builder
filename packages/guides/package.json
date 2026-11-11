@@ -10,7 +10,7 @@
     "./plugin": "./src/plugin.ts"
   },
   "engines": {
-    "node": ">=22.18"
+    "node": ">=26.13.0"
   },
   "dependencies": {
     "@bedrock-core/builder-plugin": "workspace:*",

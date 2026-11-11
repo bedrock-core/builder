@@ -1,4 +1,10 @@
-import ts from 'typescript';
+import { format } from 'prettier';
+import * as ts from 'typescript-native/ast';
+import { isPropertySignatureDeclaration } from 'typescript-native/ast/is';
+import { createTypeLiteralNode } from 'typescript-native/ast/factory';
+import { getLeadingCommentRanges, type CommentRange } from 'typescript-native/ast/scanner';
+import type { API } from 'typescript-native/sync';
+import path from 'node:path';
 
 type Declaration = ts.TypeAliasDeclaration | ts.InterfaceDeclaration;
 
@@ -19,17 +25,12 @@ interface Edit {
   text: string;
 }
 
-const printer = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed });
 const PRIMITIVES = new Set([
   ts.SyntaxKind.AnyKeyword, ts.SyntaxKind.UnknownKeyword, ts.SyntaxKind.NeverKeyword,
   ts.SyntaxKind.StringKeyword, ts.SyntaxKind.NumberKeyword, ts.SyntaxKind.BooleanKeyword,
   ts.SyntaxKind.BigIntKeyword, ts.SyntaxKind.SymbolKeyword, ts.SyntaxKind.ObjectKeyword,
   ts.SyntaxKind.UndefinedKeyword, ts.SyntaxKind.VoidKeyword,
 ]);
-
-function parse(text: string): ts.SourceFile {
-  return ts.createSourceFile('generated.d.ts', text, ts.ScriptTarget.Latest, true);
-}
 
 function references(node: ts.Node): Reference[] {
   const result: Reference[] = [];
@@ -39,7 +40,7 @@ function references(node: ts.Node): Reference[] {
       result.push({ node, name: node.typeName.text });
     }
 
-    ts.forEachChild(node, visit);
+    node.forEachChild(visit);
   }
 
   visit(node);
@@ -59,7 +60,7 @@ function declarations(source: ts.SourceFile): Map<string, NamedType> {
       continue;
     }
 
-    const type = ts.isTypeAliasDeclaration(node) ? node.type : ts.factory.createTypeLiteralNode(node.members);
+    const type = ts.isTypeAliasDeclaration(node) ? node.type : createTypeLiteralNode(node.members);
 
     result.set(node.name.text, { declaration: node, type, dependencies: new Set(references(type).map(reference => reference.name)) });
   }
@@ -140,7 +141,7 @@ function size(type: ts.TypeNode, depth = 0): number {
     let total = 1;
 
     for (const member of type.members) {
-      if ((!ts.isPropertySignature(member) && !ts.isIndexSignatureDeclaration(member)) || !member.type) {
+      if ((!isPropertySignatureDeclaration(member) && !ts.isIndexSignatureDeclaration(member)) || !member.type) {
         return Infinity;
       }
 
@@ -161,12 +162,12 @@ function primitive(type: ts.TypeNode): boolean {
   return PRIMITIVES.has(type.kind) || (ts.isParenthesizedTypeNode(type) && primitive(type.type));
 }
 
-function comments(node: ts.Node, source: ts.SourceFile): ts.CommentRange[] {
-  return (ts.getLeadingCommentRanges(source.text, node.getFullStart()) ?? [])
+function comments(node: ts.Node, source: ts.SourceFile): CommentRange[] {
+  return (getLeadingCommentRanges(source.text, node.getFullStart()) ?? [])
     .filter(range => source.text.slice(range.pos, range.pos + 3) === '/**');
 }
 
-function commentText(range: ts.CommentRange, source: ts.SourceFile): string {
+function commentText(range: CommentRange, source: ts.SourceFile): string {
   return source.text.slice(range.pos + 3, range.end - 2).split('\n')
     .map(line => line.trim().replace(/^\* ?/, '')).join('\n').trim();
 }
@@ -175,7 +176,7 @@ function commentOwner(reference: ts.Node): ts.Node | undefined {
   let node = reference.parent;
 
   while (node && !ts.isSourceFile(node)) {
-    if (ts.isPropertySignature(node) || ts.isIndexSignatureDeclaration(node)
+    if (isPropertySignatureDeclaration(node) || ts.isIndexSignatureDeclaration(node)
       || ts.isTypeAliasDeclaration(node) || ts.isInterfaceDeclaration(node)) {
       return node;
     }
@@ -195,26 +196,27 @@ function apply(text: string, edits: Edit[]): string {
 }
 
 /** Remove redundant declarations using syntax positions, leaving keys and string values intact. */
-export function simplifyDeclarations(text: string, publicNames: readonly string[]): string {
+export function simplifyDeclarations(api: API, text: string, publicNames: readonly string[]): string {
   const retained = new Set(publicNames);
 
   while (true) {
-    const source = parse(text);
+    using parsed = api.createSourceFile(path.resolve('generated.d.ts'), text);
+    const source = parsed.sourceFile;
     const types = declarations(source);
     const uses = references(source);
     const recursive = recursiveTypes(types);
     const blocked = new Set(retained);
 
     function protect(node: ts.Node): void {
-      if (ts.isExpressionWithTypeArguments(node) && ts.isIdentifier(node.expression)) {
-        blocked.add(node.expression.text);
+      if (ts.isTypeReferenceNode(node) && ts.isHeritageClause(node.parent) && ts.isIdentifier(node.typeName)) {
+        blocked.add(node.typeName.text);
       }
 
       if (ts.isExportSpecifier(node)) {
         blocked.add((node.propertyName ?? node.name).text);
       }
 
-      ts.forEachChild(node, protect);
+      node.forEachChild(protect);
     }
 
     protect(source);
@@ -231,7 +233,7 @@ export function simplifyDeclarations(text: string, publicNames: readonly string[
         continue;
       }
 
-      const shape = printer.printNode(ts.EmitHint.Unspecified, type.type, source);
+      const shape = api.printer.printNode(type.type);
       const existing = shapes.get(shape);
 
       if (existing && !blocked.has(name)) {
@@ -256,7 +258,7 @@ export function simplifyDeclarations(text: string, publicNames: readonly string[
           continue;
         }
 
-        const body = printer.printNode(ts.EmitHint.Unspecified, type.type, source);
+        const body = api.printer.printNode(type.type);
 
         const parentheses = ts.isUnionTypeNode(type.type) || ts.isIntersectionTypeNode(type.type) || ts.isTypeOperatorNode(type.type);
 
@@ -303,8 +305,9 @@ export function simplifyDeclarations(text: string, publicNames: readonly string[
       const body = [...sections].join('\n\n').split('\n').map(line => ` *${line ? ` ${line}` : ''}`).join('\n');
       const last = original.at(-1);
       const start = last?.pos ?? owner.getStart(source);
+      const newline = !last && !source.text.slice(owner.getFullStart(), start).includes('\n') ? '\n' : '';
 
-      edits.push({ start, end: last?.end ?? start, text: `/**\n${body}\n */${last ? '' : '\n'}` });
+      edits.push({ start, end: last?.end ?? start, text: `${newline}/**\n${body}\n */${last ? '' : '\n'}` });
     }
 
     const removals = edits.slice(0, removed.length);
@@ -314,30 +317,7 @@ export function simplifyDeclarations(text: string, publicNames: readonly string[
   }
 }
 
-/** TypeScript's formatter handles indentation without changing literal or comment contents. */
-export function formatDeclarations(text: string): string {
-  const file = 'generated.d.ts';
-  const printed = printer.printFile(parse(text));
-  const service = ts.createLanguageService({
-    getCompilationSettings: () => ({ target: ts.ScriptTarget.Latest }),
-    getScriptFileNames: () => [file],
-    getScriptVersion: () => '0',
-    getScriptSnapshot: name => name === file ? ts.ScriptSnapshot.fromString(printed) : undefined,
-    getCurrentDirectory: () => '.',
-    getDefaultLibFileName: () => '',
-    fileExists: name => name === file,
-    readFile: name => name === file ? printed : undefined,
-  });
-
-  try {
-    const edits = service.getFormattingEditsForDocument(file, {
-      indentSize: 2, tabSize: 2, convertTabsToSpaces: true, newLineCharacter: '\n',
-      indentStyle: ts.IndentStyle.Smart, insertSpaceAfterCommaDelimiter: true,
-      insertSpaceBeforeAndAfterBinaryOperators: true, semicolons: ts.SemicolonPreference.Insert,
-    });
-
-    return apply(printed, edits.map(edit => ({ start: edit.span.start, end: edit.span.start + edit.span.length, text: edit.newText })));
-  } finally {
-    service.dispose();
-  }
+/** Format generated and vendored declarations with the schema compiler's formatter. */
+export function formatDeclarations(text: string): Promise<string> {
+  return format(text, { parser: 'typescript', filepath: 'generated.d.ts', trailingComma: 'none', printWidth: 120 });
 }

@@ -1,7 +1,6 @@
 {
   "$schema": "../../schemas/config.schema.json",
   "targetVersion": "1.26.50",
-  "namespace": "builder_generator",
   "name": "@bedrock-core generator example",
   "authors": [],
   "packs": {

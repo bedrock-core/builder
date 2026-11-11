@@ -5,15 +5,16 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
 import { runBuild } from '../src/run.ts';
-import { projectFor } from '../test-support/project.js';
+import { projectFor, put } from '../test-support/project.js';
 import { manifestFor } from '../test-support/manifest.js';
-import { put } from '../test-support/i18n.js';
 
 async function fixture(t) {
   const project = await projectFor(t);
-  const secondary = manifestFor('script');
+  const secondary = manifestFor('script', 'scripts/main.ts');
 
-  secondary.dependencies = [{ pack: 'visuals' }];
+  secondary.namespace = 'flow_secondary';
+
+  secondary.dependencies = [{ uuid: project.resources.header.uuid }];
   project.config.packs.secondary = './packs/secondary';
   project.config.bedrockCore.profiles.default.export.secondary = './dist/secondary';
   project.config.bedrockCore.profiles.default.stages.generator = { types: false };
@@ -38,7 +39,7 @@ test('pack-local sources produce isolated runtime bundles and compose into a sha
   const language = await readFile(path.join(result.outputPaths.visuals, 'texts/en_US.lang'), 'utf8');
 
   assert.match(language, /flow_test.alpha=alpha %1\$s/);
-  assert.match(language, /flow_test.beta=beta %1\$s/);
+  assert.match(language, /flow_secondary.beta=beta %1\$s/);
   assert.match(language, /generated-i18n:begin:gameplay/);
   assert.match(language, /generated-i18n:begin:secondary/);
 
@@ -85,14 +86,18 @@ test('pack-local custom source directories are reserved from generation and excl
   await access(path.join(project.project, 'packs/gameplay/locales/en_US.ts'));
 });
 
-test('conflicting contributions to the same resource keys preserve all previous exports', async (t) => {
+test('duplicate addon namespaces preserve all previous resource exports', async (t) => {
   const project = await fixture(t);
   const first = await runBuild(project.options);
   const file = path.join(first.outputPaths.visuals, 'texts/en_US.lang');
   const previous = await readFile(file, 'utf8');
 
   await put(project.project, 'packs/secondary/i18n/en_US.ts', 'export default { alpha: "Different" };');
-  await assert.rejects(runBuild(project.options), /conflicts with generated translation/);
+  const secondary = JSON.parse(await readFile(path.join(project.project, 'packs/secondary/manifest.json'), 'utf8'));
+
+  secondary.namespace = project.behavior.namespace;
+  await put(project.project, 'packs/secondary/manifest.json', JSON.stringify(secondary));
+  await assert.rejects(runBuild(project.options), /Duplicate addon namespace/);
   assert.equal(await readFile(file, 'utf8'), previous);
 });
 

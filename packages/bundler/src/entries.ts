@@ -1,8 +1,14 @@
 import { lstat } from 'node:fs/promises';
+import path from 'node:path';
+import { scriptOutputEntry } from '@bedrock-core/builder-manifest';
 
-async function exists(file: string): Promise<boolean> {
+async function isFile(file: string): Promise<boolean> {
   try {
-    await lstat(file);
+    const info = await lstat(file);
+
+    if (!info.isFile()) {
+      throw new Error(`Expected a regular file at ${file}`);
+    }
 
     return true;
   } catch (error) {
@@ -14,38 +20,24 @@ async function exists(file: string): Promise<boolean> {
   }
 }
 
-/** Prefer typed sources corresponding to a manifest JavaScript entry. */
-export function scriptCandidates(output: string): string[] {
-  const stem = output.slice(0, -3);
-
-  return ['.ts', '.tsx', '.mts', '.cts'].map(extension => `${stem}${extension}`).concat(output);
+/** Return the exact authored source entry. */
+export function scriptCandidates(entry: string): string[] {
+  return [entry];
 }
 
-/** Resolve one unambiguous authored source; colliding outputs or missing entries fail. */
-export async function scriptSource(packId: string, output: string): Promise<string> {
-  const typedSources: string[] = [];
+/** Resolve the authored source and reject an existing TypeScript output collision. */
+export async function scriptSource(packId: string, entry: string, directory?: string): Promise<string> {
+  const output = scriptOutputEntry(entry);
+  const display = (file: string) => (directory === undefined ? file : path.relative(directory, file)).replaceAll('\\', '/');
+  const description = `Pack ${packId} manifest entry ${display(entry)} (output ${display(output)})`;
 
-  for (const candidate of scriptCandidates(output).slice(0, -1)) {
-    if (await exists(candidate)) {
-      typedSources.push(candidate);
-    }
+  if (!await isFile(entry)) {
+    throw new Error(`${description} does not exist. Set the manifest entry to the actual source file.`);
   }
 
-  if (typedSources.length > 1) {
-    throw new Error(`Pack ${packId} has ambiguous sources for its manifest entry: ${output}`);
+  if (entry !== output && await isFile(output)) {
+    throw new Error(`${description} collides with authored JavaScript alongside ${display(entry)}. Move or remove ${display(output)}, or choose a different entry name.`);
   }
 
-  if (typedSources.length === 1) {
-    if (await exists(output)) {
-      throw new Error(`Bundler output already exists alongside its TypeScript source: ${output}`);
-    }
-
-    return typedSources[0]!;
-  }
-
-  if (await exists(output)) {
-    return output;
-  }
-
-  throw new Error(`Pack ${packId} has no TS/JS source matching its manifest entry: ${output}`);
+  return entry;
 }

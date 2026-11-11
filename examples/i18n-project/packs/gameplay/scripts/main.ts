@@ -1,3 +1,3 @@
-import bundle from '@bedrock-core/generated/i18n/gameplay';
+import { i18n } from '../i18n';
 
-console.warn(bundle.locales[bundle.defaultLocale]['shop.intro']);
+console.warn(i18n.t($ => $.shop.intro));

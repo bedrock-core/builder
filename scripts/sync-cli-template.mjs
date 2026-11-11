@@ -33,6 +33,7 @@ export function syncCliTemplate(root = repository, uiRoot = resolve(root, '../ui
     '@bedrock-core/config': read(resolve(root, '../apps/packages/config/package.json')).version,
     '@bedrock-core/guides': read(resolve(root, '../apps/packages/guides/package.json')).version,
     '@bedrock-core/i18n': read(resolve(root, '../server/packages/i18n/package.json')).version,
+    '@bedrock-core/observable': read(resolve(root, '../server/packages/observable/package.json')).version,
     '@bedrock-core/server': read(resolve(root, '../server/package.json')).version,
   };
 
@@ -45,6 +46,8 @@ export function syncCliTemplate(root = repository, uiRoot = resolve(root, '../ui
   }
 
   pkg.dependencies['@bedrock-core/ui'] = uiVersion;
+  pkg.dependencies['@bedrock-core/ui-runtime'] = read(resolve(uiRoot, 'packages/ui-runtime/package.json')).version;
+  pkg.dependencies['@bedrock-core/ore-styled'] = read(resolve(uiRoot, 'packages/ore-styled/package.json')).version;
 
   for (const name of ['eslint', 'eslint-plugin-react-hooks']) {
     const version = ui.peerDependencies?.[name];

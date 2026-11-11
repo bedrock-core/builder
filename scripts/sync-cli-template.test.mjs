@@ -23,10 +23,13 @@ test('template synchronization follows each owning package and keeps Navigation 
     ['builder/package.json', '0.1.0'],
     ['ui/package.json', '0.13.0'],
     ['ui/packages/navigation/package.json', '0.14.0'],
+    ['ui/packages/ore-styled/package.json', '0.10.0'],
+    ['ui/packages/ui-runtime/package.json', '0.13.1'],
     ['apps/packages/catalog/package.json', '0.2.0'],
     ['apps/packages/config/package.json', '0.4.0'],
     ['apps/packages/guides/package.json', '0.3.0'],
     ['server/packages/i18n/package.json', '0.2.0'],
+    ['server/packages/observable/package.json', '1.1.0'],
     ['server/package.json', '0.2.1'],
     ['bds-runner/package.json', '0.2.0'],
   ]) { put(file, { version, ...file === 'ui/package.json' ? { peerDependencies: { 'eslint': '^10.3.0', 'eslint-plugin-react-hooks': '7.1.1' } } : {} }); }
@@ -42,12 +45,15 @@ test('template synchronization follows each owning package and keeps Navigation 
   const pkg = JSON.parse(readFileSync(path.join(directory, template, 'package.json'), 'utf8'));
 
   assert.equal(pkg.dependencies['@bedrock-core/navigation'], '0.14.0');
+  assert.equal(pkg.dependencies['@bedrock-core/ore-styled'], '0.10.0');
   assert.equal(pkg.dependencies['@bedrock-core/ui'], '0.13.0');
+  assert.equal(pkg.dependencies['@bedrock-core/ui-runtime'], '0.13.1');
   assert.equal(pkg.devDependencies.eslint, '^10.3.0');
   assert.equal(pkg.devDependencies['eslint-plugin-react-hooks'], '7.1.1');
   assert.equal(pkg.dependencies['@bedrock-core/catalog'], '^0.2.0');
   assert.equal(pkg.dependencies['@bedrock-core/config'], '^0.4.0');
   assert.equal(pkg.dependencies['@bedrock-core/guides'], '^0.3.0');
+  assert.equal(pkg.dependencies['@bedrock-core/observable'], '^1.1.0');
   assert.equal(pkg.dependencies['@bedrock-core/server'], '^0.2.1');
   assert.equal(pkg.devDependencies['@bedrock-core/bds-runner'], '^0.2.0');
 

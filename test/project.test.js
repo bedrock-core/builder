@@ -2,7 +2,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import ts from 'typescript';
 import { validateConfig } from '../src/config.ts';
 import { runBuild } from '../src/run.ts';
 import { projectFor } from '../test-support/project.js';
@@ -15,7 +14,8 @@ const json = async file => JSON.parse(await readFile(file, 'utf8'));
 async function fixture(t) {
   const project = await projectFor(t);
 
-  project.config.namespace = 'stable_identity';
+  project.behavior.namespace = 'stable_identity';
+  project.resources.namespace = 'stable_identity';
   project.config.name = 'Human Name';
   project.config.description = 'Shared description';
   project.config.authors = ['Creator'];
@@ -29,7 +29,7 @@ async function fixture(t) {
     manifest.modules.forEach(module => delete module.version);
 
     if (id === 'gameplay') {
-      manifest.dependencies = [{ pack: 'visuals' }];
+      manifest.dependencies = [{ uuid: project.resources.header.uuid }];
     }
 
     await writeFile(path.join(project.project, `packs/${id}/manifest.json`), JSON.stringify(manifest));
@@ -40,28 +40,23 @@ async function fixture(t) {
   return project;
 }
 
-test('project namespace is explicit and validated without mutating configuration', async (t) => {
+test('config keeps build metadata and rejects a namespace field without mutating input', async (t) => {
   const project = await fixture(t);
   const snapshot = structuredClone(project.config);
 
   assert.equal(validateConfig(project.config), project.config);
   assert.deepEqual(project.config, snapshot);
-  project.config.namespace = 'different';
-  assert.equal(validateConfig(project.config), project.config);
-  delete project.config.namespace;
-  assert.throws(() => validateConfig(project.config), /namespace/);
 
-  for (const namespace of ['', 'minecraft', 'Bad Namespace']) {
-    project.config.namespace = namespace;
-    assert.throws(() => validateConfig(project.config), /namespace/);
+  for (const namespace of ['different', '', 'minecraft', 'Bad Namespace']) {
+    assert.throws(() => validateConfig({ ...project.config, namespace }), /manifest.json/);
   }
 });
 
-test('shared metadata completes native manifests and supplies typed project data without source changes', async (t) => {
+test('manifest imports receive resolved metadata without changing the authored source', async (t) => {
   const project = await fixture(t);
   const source = await readFile(path.join(project.project, 'packs/gameplay/manifest.json'), 'utf8');
 
-  await writeFile(path.join(project.project, 'packs/gameplay/scripts/main.ts'), 'import { project } from "@bedrock-core/generated/project"; export const metadata = project;');
+  await writeFile(path.join(project.project, 'packs/gameplay/scripts/main.ts'), 'import manifest from "../manifest.json"; export { manifest };');
   const result = await runBuild({ configPath: project.configPath, logger: {} });
   const manifest = await json(path.join(result.outputPaths.gameplay, 'manifest.json'));
 
@@ -72,33 +67,28 @@ test('shared metadata completes native manifests and supplies typed project data
   assert.equal(manifest.modules[0].version, '2.4.0');
   assert.deepEqual(manifest.dependencies, [{ uuid: project.resources.header.uuid, version: '2.4.0' }]);
   assert.deepEqual(manifest.metadata.authors, ['Creator']);
+  assert.equal(manifest.namespace, undefined);
   assert.equal(await readFile(path.join(project.project, 'packs/gameplay/manifest.json'), 'utf8'), source);
   const output = await readFile(path.join(result.outputPaths.gameplay, 'scripts/main.js'), 'utf8');
 
   assert.match(output, /stable_identity/);
-  assert.match(output, /npm-name/);
-  assert.match(output, /Human Name/);
+  assert.match(output, /2\.4\.0/);
+  assert.match(output, /Creator/);
   assert.doesNotMatch(output, /profiles|stagedRoot|formatVersion/);
-  const declaration = path.join(project.project, '.bedrock-core/generated/project.d.ts');
-  const declarations = await readFile(declaration, 'utf8');
-
-  assert.doesNotMatch(declarations, /addonManifest|"addon"/);
-  const program = ts.createProgram([declaration], { noEmit: true, strict: true, types: [] });
-
-  assert.deepEqual(ts.getPreEmitDiagnostics(program).map(item => ts.flattenDiagnosticMessageText(item.messageText, '\n')), []);
+  await assert.rejects(access(path.join(project.project, '.bedrock-core/generated/project.d.ts')));
 });
 
 test('script packs retain independent authored registration identities', async (t) => {
   const project = await fixture(t);
   const identities = {
-    gameplay: { creator: 'first', pack: 'gameplay', version: '1.0.0' },
-    secondary: { creator: 'second', pack: 'tools', version: '3.0.0' },
+    gameplay: { namespace: 'first_gameplay', version: '1.0.0' },
+    secondary: { namespace: 'second_tools', version: '3.0.0' },
   };
 
   project.config.packs.secondary = './packs/secondary';
   project.config.bedrockCore.profiles.default.export.secondary = './dist/secondary';
   await mkdir(path.join(project.project, 'packs/secondary/scripts'), { recursive: true });
-  await writeFile(path.join(project.project, 'packs/secondary/manifest.json'), JSON.stringify(manifestFor('script')));
+  await writeFile(path.join(project.project, 'packs/secondary/manifest.json'), JSON.stringify(manifestFor('script', 'scripts/main.ts')));
 
   for (const [id, identity] of Object.entries(identities)) {
     await writeFile(path.join(project.project, `packs/${id}/scripts/main.ts`), `export const registration = ${JSON.stringify(identity)};`);
@@ -192,7 +182,7 @@ test('standalone translations reject conflicting authored and generated keys bef
 
 test('manifest defaults retain explicit values and reject unknown pack references and malformed native dependencies', () => {
   const manifest = manifestFor('data');
-  const project = { namespace: 'test', name: 'Name', description: '', authors: [], targetVersion: '1.26.50', version: '2.0.0' };
+  const project = { name: 'Name', description: '', authors: [], targetVersion: '1.26.50', version: '2.0.0' };
   const snapshot = structuredClone(manifest);
 
   assert.equal(resolveProjectManifests({ logic: manifest }, project).logic.header.version, '1.0.0');

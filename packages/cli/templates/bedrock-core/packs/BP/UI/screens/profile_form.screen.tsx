@@ -8,7 +8,7 @@ import { back } from '@bedrock-core/ui/navigation';
  * A native modal form (ModalFormData-backed): every field's value arrives once, in
  * onSubmit, keyed by its `name`. Exactly one Form.Button type="submit" is required.
  *
- * The compiled key combines the shared project namespace with `profile_form`.
+ * The compiled key combines the owning manifest's namespace with `profile_form`.
  */
 export default function ProfileForm(): JSX.Element {
   return (

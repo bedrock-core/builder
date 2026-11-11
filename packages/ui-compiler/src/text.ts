@@ -1,4 +1,4 @@
-import ts from 'typescript';
+import * as ts from './syntax.ts';
 
 /** Mark Core text expressions whose values cannot be proven constant from their source. */
 export function markRuntimeText(source: string, fileName = 'screen.tsx'): string {
@@ -7,15 +7,9 @@ export function markRuntimeText(source: string, fileName = 'screen.tsx'): string
   }
 
   const name = fileName.replaceAll('\\', '/');
-  const file = ts.createSourceFile(name, source, ts.ScriptTarget.Latest, true, /\.[jt]sx$/i.test(name) ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
-  const options: ts.CompilerOptions = { noLib: true, noResolve: true, target: ts.ScriptTarget.Latest };
-  const host = ts.createCompilerHost(options);
 
-  host.getSourceFile = candidate => candidate.replaceAll('\\', '/') === name ? file : undefined;
-  host.fileExists = candidate => candidate.replaceAll('\\', '/') === name;
-  host.readFile = candidate => candidate.replaceAll('\\', '/') === name ? source : undefined;
-
-  const checker = ts.createProgram([name], options, host).getTypeChecker();
+  using analysis = ts.analyzeSource(name, source);
+  const { file, checker } = analysis;
   const texts = new Set<ts.Symbol>();
   const namespaces = new Set<ts.Symbol>();
   const factories = new Set<ts.Symbol>();
@@ -30,7 +24,7 @@ export function markRuntimeText(source: string, fileName = 'screen.tsx'): string
   };
 
   for (const statement of file.statements) {
-    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || statement.importClause?.isTypeOnly) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || statement.importClause?.phaseModifier === ts.SyntaxKind.TypeKeyword) {
       continue;
     }
 
@@ -93,7 +87,7 @@ export function markRuntimeText(source: string, fileName = 'screen.tsx'): string
     }
 
     seen.add(value);
-    const declaration = value.valueDeclaration;
+    const declaration = value.valueDeclaration?.resolve();
 
     return declaration !== undefined && ts.isVariableDeclaration(declaration) && declaration.initializer !== undefined
       && (declaration.parent.flags & ts.NodeFlags.Const) !== 0 && isText(declaration.initializer, seen);
@@ -134,7 +128,7 @@ export function markRuntimeText(source: string, fileName = 'screen.tsx'): string
     }
 
     seen.add(value);
-    const declaration = value.valueDeclaration;
+    const declaration = value.valueDeclaration?.resolve();
 
     if (declaration === undefined || !ts.isVariableDeclaration(declaration) || declaration.initializer === undefined
       || (declaration.parent.flags & ts.NodeFlags.Const) === 0) {

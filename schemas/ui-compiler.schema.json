@@ -18,11 +18,6 @@
       "type": "boolean",
       "description": "Stage override for the profile debug setting."
     },
-    "namespace": {
-      "type": "string",
-      "pattern": "^[a-z0-9_]+$",
-      "description": "Defaults to the project namespace."
-    },
     "testMetadata": {
       "type": "boolean",
       "default": false

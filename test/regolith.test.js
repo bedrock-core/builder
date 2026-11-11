@@ -19,6 +19,8 @@ const bundlerFilter = fileURLToPath(new URL('../../regolith-filters/bundler/', i
 async function fixture(t, { cleanup = true } = {}) {
   const project = await projectFor(t, { cleanup });
 
+  project.behavior.modules[0].entry = 'scripts/main.js';
+  await writeFile(path.join(project.project, 'packs/gameplay/manifest.json'), JSON.stringify(project.behavior));
   await mkdir(path.join(project.project, 'filters'));
   await writeFile(path.join(project.project, 'packs/gameplay/scripts/main.js'), 'export const value = 1;');
   await writeFile(path.join(project.project, 'filters/main.cjs'), '');

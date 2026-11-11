@@ -6,11 +6,37 @@ import ts from 'typescript';
 import { compileI18n, parseLang } from '../packages/i18n/src/index.ts';
 import { runBuild } from '../src/run.ts';
 import { validateConfig } from '../src/config.ts';
-import { projectFor } from '../test-support/project.js';
-import { translationsFor, compileOptions, put, english, czech } from '../test-support/i18n.js';
+import { projectFor, put } from '../test-support/project.js';
+import { translationsFor, compileOptions, english, czech } from '../test-support/i18n.js';
 import { manifestFor } from '../test-support/manifest.js';
 
 const textAt = (root, file) => readFile(path.join(root, file), 'utf8');
+
+test('runtime index modules are ignored without relaxing locale-module validation', async (t) => {
+  const project = await translationsFor(t);
+
+  for (const extension of ['ts', 'js', 'mts', 'mjs']) {
+    await put(project.project, `packs/gameplay/i18n/index.${extension}`, `import bundle from '@bedrock-core/generated/i18n/gameplay'; throw new Error('Runtime index must not be evaluated as a locale');`);
+  }
+
+  const result = await compileI18n(compileOptions(project));
+
+  assert.equal(result.bundle.locales.en_US['shop.title'], 'Shop');
+  assert.deepEqual(result.warnings, []);
+  assert.ok(!result.inputs.some(file => /index\.(?:ts|js|mts|mjs)$/.test(file)));
+  await put(project.project, 'packs/gameplay/i18n/typo.ts', 'export default {};');
+  await assert.rejects(compileI18n(compileOptions(project)), /typo.ts: expected a locale resource module/);
+});
+
+test('a runtime index alone does not activate the translation stage', async (t) => {
+  const project = await projectFor(t);
+
+  await put(project.project, 'packs/gameplay/i18n/index.ts', `import bundle from '@bedrock-core/generated/i18n/gameplay'; export const i18n = bundle;`);
+  const result = await runBuild({ configPath: project.configPath, logger: {} });
+
+  assert.equal(result.stages.find(stage => stage.stage === 'i18n').status, 'skipped');
+  assert.equal(result.stages.find(stage => stage.stage === 'generator').status, 'skipped');
+});
 
 test('default exports emit compatible positional language entries, runtime templates and metadata aliases', async (t) => {
   const project = await translationsFor(t);
@@ -276,6 +302,8 @@ for (const [id, kind] of [['gameplay', 'behavior'], ['visuals', 'resource']]) {
     project.config.bedrockCore.profiles.default.stages = { i18n: { client: kind !== 'behavior' }, bundler: false };
 
     if (kind === 'behavior') {
+      project.behavior.modules[0].entry = 'scripts/main.js';
+      await put(project.project, 'packs/gameplay/manifest.json', JSON.stringify(project.behavior));
       await put(project.project, 'packs/gameplay/scripts/main.js', 'export {};');
     } else {
       await put(project.project, 'packs/visuals/i18n/en_US.ts', `export default ${JSON.stringify(english)} as const;`);

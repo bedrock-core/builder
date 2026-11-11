@@ -9,7 +9,7 @@ import { runBuild } from '../src/run.ts';
 
 const configFor = packs => ({
   name: 'Pack selection', authors: [], targetVersion: '1.26.50',
-  namespace: 'pack_test', packs,
+  packs,
   bedrockCore: { formatVersion: '1.0.0', profiles: { default: {
     export: Object.fromEntries(Object.keys(packs).map(id => [id, `./dist/${id}`])),
   } } },
@@ -91,6 +91,10 @@ test('multiple packs use manifest classification rather than configured names', 
 
   await rm(path.join(root, 'two/scripts/main.js'));
   await writeFile(path.join(root, 'two/scripts/main.ts'), 'export const value = 1;');
+  const manifest = JSON.parse(await readFile(path.join(root, 'two/manifest.json'), 'utf8'));
+
+  manifest.modules[0].entry = 'scripts/main.ts';
+  await writeFile(path.join(root, 'two/manifest.json'), JSON.stringify(manifest));
   config.bedrockCore.profiles.default.stages = { bundler: true };
   await writeFile(configPath, JSON.stringify(config));
   await runBuild({ configPath, logger: {} });

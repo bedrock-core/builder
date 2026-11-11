@@ -8,7 +8,7 @@ export async function installUi(root) {
       exports: { '.': './index.js', './jsx-runtime': './jsx.js', './jsx-dev-runtime': './jsx.js' },
       files: {
         'index.js': `
-          export { Screen, Text, Container, render } from '@bedrock-core/ui-runtime';
+          export { Screen, Text, Button, Container, render, useState } from '@bedrock-core/ui-runtime';
           export const registerCompiledScreen = (screen, value) => { globalThis.uiScreens ??= []; globalThis.uiScreens.push(value.key); };
           export const registerStaticScreens = values => { globalThis.uiScreens ??= []; globalThis.uiScreens.push(...values.map(value => value.key)); };
           export const registerContainerLooks = () => {};
@@ -31,6 +31,8 @@ export async function installUi(root) {
           export const Screen = props => ({ ...props, kind: 'form' });
           export const Container = props => ({ ...props, kind: 'chest' });
           export const Text = props => { checkOwner(); return { text: props.children }; };
+          export const Button = props => ({ ...props, kind: 'button' });
+          export const useState = initial => [initial, () => {}];
           export function render(component) {
             owner = true;
             try {

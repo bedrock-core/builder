@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import path from 'node:path';
 import { projectFor } from '../test-support/project.js';
@@ -25,12 +25,14 @@ test('UI watch reuses screens for script and asset edits, rebuilds affected scre
   const results = [];
   const errors = [];
   const scripts = path.join(project.project, 'packs/gameplay/scripts');
+  const ui = path.join(project.project, 'packs/gameplay/UI');
 
   await installUi(project.project);
+  await mkdir(ui);
   project.config.bedrockCore.profiles.default.watch = { debounceMs: 30 };
   await writeFile(project.configPath, JSON.stringify(project.config));
-  await writeFile(path.join(scripts, 'data.json'), '{"text":"First"}');
-  await writeFile(path.join(scripts, 'affected.screen.tsx'), `import { Screen, Text } from '@bedrock-core/ui'; import data from './data.json'; export default function Page() { return <Screen><Text>{data.text}</Text></Screen>; }`);
+  await writeFile(path.join(ui, 'data.json'), '{"text":"First"}');
+  await writeFile(path.join(ui, 'affected.screen.tsx'), `import { Screen, Text } from '@bedrock-core/ui'; import data from './data.json'; export default function Page() { return <Screen><Text>{data.text}</Text></Screen>; }`);
   await writeFile(path.join(scripts, 'unrelated.screen.tsx'), `import { Screen, Text } from '@bedrock-core/ui'; export default function Page() { return <Screen><Text>Stable</Text></Screen>; }`);
   const watching = watchBuild({
     configPath: project.configPath, signal: controller.signal, logger: {},
@@ -60,15 +62,25 @@ test('UI watch reuses screens for script and asset edits, rebuilds affected scre
   await waitFor(() => results.length > count);
   assert.deepEqual(rebuilt(results.at(-1)), []);
   count = results.length;
-  await writeFile(path.join(scripts, 'affected.screen.tsx'), 'export default function broken(');
+  await writeFile(path.join(ui, 'affected.screen.tsx'), 'export default function broken(');
   await waitFor(() => errors.length > 0);
   assert.equal(results.length, count);
   assert.match(await readFile(path.join(results.at(-1).outputPaths.visuals, 'ui/core-ui/screens/flow_test/affected.json'), 'utf8'), /First/);
-  await writeFile(path.join(scripts, 'affected.screen.tsx'), `import { Screen, Text } from '@bedrock-core/ui'; import data from './data.json'; export default function Page() { return <Screen><Text>{data.text}</Text></Screen>; }`);
-  await writeFile(path.join(scripts, 'data.json'), '{"text":"Second"}');
+  await writeFile(path.join(ui, 'affected.screen.tsx'), `import { Screen, Text } from '@bedrock-core/ui'; import data from './data.json'; export default function Page() { return <Screen><Text>{data.text}</Text></Screen>; }`);
+  await writeFile(path.join(ui, 'data.json'), '{"text":"Second"}');
   await waitFor(() => results.length > count);
   assert.deepEqual(rebuilt(results.at(-1)), ['ui-compiler/screen:affected']);
   assert.match(await readFile(path.join(results.at(-1).outputPaths.visuals, 'ui/core-ui/screens/flow_test/affected.json'), 'utf8'), /Second/);
+  count = results.length;
+  await rename(path.join(ui, 'affected.screen.tsx'), path.join(ui, 'renamed.screen.tsx'));
+  await waitFor(() => results.length > count);
+  assert.deepEqual(rebuilt(results.at(-1)), ['ui-compiler/screen:renamed']);
+  await assert.rejects(readFile(path.join(results.at(-1).outputPaths.visuals, 'ui/core-ui/screens/flow_test/affected.json')), { code: 'ENOENT' });
+  assert.match(await readFile(path.join(project.project, '.bedrock-core/generated/ui/screens.generated.d.ts'), 'utf8'), /flow_test:renamed/);
+  count = results.length;
+  await rm(path.join(ui, 'renamed.screen.tsx'));
+  await waitFor(() => results.length > count);
+  assert.doesNotMatch(await readFile(path.join(project.project, '.bedrock-core/generated/ui/screens.generated.d.ts'), 'utf8'), /flow_test:renamed/);
   count = results.length;
   await delay(400);
   assert.equal(results.length, count, 'Generated declarations and pack output must not cause watch loops');

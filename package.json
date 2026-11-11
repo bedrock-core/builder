@@ -16,6 +16,7 @@
     "./migrate": "./src/migrate.ts",
     "./validation": "./src/validation.ts",
     "./schemas/config.schema.json": "./schemas/config.schema.json",
+    "./schemas/pack-manifest.schema.json": "./schemas/pack-manifest.schema.json",
     "./schemas/manifest.schema.json": "./schemas/manifest.schema.json",
     "./schemas/bundler.schema.json": "./schemas/bundler.schema.json",
     "./schemas/generator.schema.json": "./schemas/generator.schema.json",
@@ -27,7 +28,7 @@
     "test": "node --test",
     "plan": "node bin/plan.ts",
     "build": "node bin/build.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node node_modules/typescript-native/bin/tsc --noEmit",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix --max-warnings=0",
     "format": "eslint . --fix --max-warnings=0",
@@ -43,17 +44,23 @@
     "test:packages": "node scripts/verify-packages.ts",
     "acceptance": "node scripts/acceptance.ts",
     "acceptance:native": "node scripts/acceptance.ts --native",
+    "acceptance:api": "node scripts/api-acceptance.ts",
+    "acceptance:api:native": "node scripts/api-acceptance.ts --native",
+    "acceptance:api-packages": "node scripts/api-package-acceptance.mjs",
+    "acceptance:api-packages:native": "node scripts/api-package-acceptance.mjs --native",
+    "acceptance:navigation-api": "node scripts/navigation-api-acceptance.mjs",
+    "acceptance:navigation-api:native": "node scripts/navigation-api-acceptance.mjs --native",
     "release": "yarn check && yarn acceptance && yarn pack-release && yarn test:packages",
     "publish-release": "node scripts/publish-release.ts",
     "changeset": "changeset",
     "changeset:status": "changeset status --verbose",
-    "version:packages": "changeset version && node scripts/sync-cli-template.mjs --builder-only",
+    "version:packages": "changeset version && node scripts/sync-cli-template.mjs --builder-only && yarn install --mode=update-lockfile",
     "tag-release": "node scripts/tag-release.ts",
     "test:release": "node --test scripts/publish-release.test.ts scripts/cli-artifact.test.mjs scripts/sync-cli-template.test.mjs scripts/release-versions.test.ts",
     "publish:ci": "yarn publish-release --scope \"$RELEASE_SCOPE\" && yarn tag-release --scope \"$RELEASE_SCOPE\""
   },
   "engines": {
-    "node": ">=22.18"
+    "node": ">=26.13.0"
   },
   "dependencies": {
     "@bedrock-core/builder-bundler": "workspace:*",
@@ -65,7 +72,8 @@
     "@bedrock-core/builder-ui": "workspace:*",
     "@bedrock-core/builder-validation": "workspace:*",
     "@types/node": "25.9.9",
-    "ajv": "8.17.1"
+    "ajv": "8.17.1",
+    "typescript-native": "npm:typescript@7.1.0-beta"
   },
   "devDependencies": {
     "@changesets/cli": "3.0.3",
@@ -102,6 +110,7 @@
     },
     "exports": {
       "./schemas/config.schema.json": "./schemas/config.schema.json",
+      "./schemas/pack-manifest.schema.json": "./schemas/pack-manifest.schema.json",
       "./export": {
         "types": "./dist/src/export.d.ts",
         "default": "./dist/src/export.js"

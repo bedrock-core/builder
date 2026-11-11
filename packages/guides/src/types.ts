@@ -10,8 +10,6 @@ export interface GuidesSettings {
   owner?: string;
   /** Builder resource destination ID; inferred from direct local dependencies. */
   resourcePack?: string;
-  /** Override the project namespace for generated guide keys. */
-  namespace?: string;
   /** Guide content directory; defaults to guides inside each owner pack, or inside root for standalone callers. */
   sourceDir?: string;
   /** Guide fallback locale; defaults to en_US. */

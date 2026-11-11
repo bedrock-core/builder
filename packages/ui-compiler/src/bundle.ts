@@ -2,15 +2,21 @@ import { build, version, type Plugin } from 'esbuild';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { CompilationDependencies } from '@bedrock-core/builder-bundler/dependencies';
+import { apiImports } from '@bedrock-core/builder-bundler';
 import { gameStubPlugin } from './stubs/game.ts';
 import { desugarJsxConditionals } from './sugar.ts';
 import { markRuntimeText } from './text.ts';
+import { markPureComponents } from './pure.ts';
+import { callbackSourceId, cacheInlineCallbacks } from './callbacks.ts';
+import { cacheDerivedValues } from './values.ts';
 
 /** esbuild version used by UI bundles and their cache records. */
 export const uiCompilerVersion = version;
 export const libraryModules: Record<string, string> = {
   '@bedrock-core/ui': 'ui',
   '@bedrock-core/ui-runtime': 'ui',
+  '@bedrock-core/ore-styled': 'oreStyled',
+  '@bedrock-core/ui/ore-styled': 'oreStyledFacade',
   '@bedrock-core/ui/navigation': 'navigation',
   '@bedrock-core/navigation': 'navigation',
   '@bedrock-core/navigation/core': 'coreNavigation',
@@ -39,6 +45,8 @@ export interface UiBundleOptions {
   tsconfig?: string;
   /** Import specifiers mapped to generated or custom files. */
   aliases?: Record<string, string>;
+  /** Declared addon APIs whose public exports become inert Core bindings. */
+  moduleNames?: readonly string[];
   /** Entry source used by module/declaration bundling. */
   source?: string;
   /** Shared toolkit module export names used to link screen modules. */
@@ -68,6 +76,8 @@ export interface UiBundle {
  * @remarks Resolve the toolkit from the authored dependency root so screen modules share its installed runtime instances.
  */
 export async function bundleUiLibrary(options: UiBundleOptions): Promise<UiBundle> {
+  const styled = !['@bedrock-core/ore-styled', '@bedrock-core/ui/ore-styled'].some(name => Object.hasOwn(options.aliases ?? {}, name));
+
   return bundle(options, `
     import * as ui from '@bedrock-core/ui';
     import * as navigation from '@bedrock-core/navigation';
@@ -79,8 +89,10 @@ export async function bundleUiLibrary(options: UiBundleOptions): Promise<UiBundl
     import * as container from '@bedrock-core/ui-runtime/container';
     import * as entity from '@bedrock-core/ui-runtime/entity';
     import * as i18n from '@bedrock-core/i18n';
+    ${styled ? 'import * as oreStyled from \'@bedrock-core/ore-styled\';' : ''}
+    ${styled ? 'import * as oreStyledFacade from \'@bedrock-core/ui/ore-styled\';' : ''}
     ${options.guides ? 'import * as guides from \'@bedrock-core/guides\';' : ''}
-    export { ui, navigation, coreNavigation, navigationRuntime, jsx, compiler, runtime, container, entity, i18n${options.guides ? ', guides' : ''} };
+    export { ui, navigation, coreNavigation, navigationRuntime, jsx, compiler, runtime, container, entity, i18n${styled ? ', oreStyled, oreStyledFacade' : ''}${options.guides ? ', guides' : ''} };
   `);
 }
 
@@ -129,14 +141,21 @@ async function bundle(options: UiBundleOptions, contents: string, declaration = 
   };
 
   const resolving = Symbol('ui-resolution');
-  const plugins: Plugin[] = [];
+  const plugins: Plugin[] = [apiImports(options.moduleNames ?? [], false, options.dependencyRoot, file => dependencies.files.add(file))];
 
   if (!options.exports) {
     plugins.push({
       name: '@bedrock-core/ui-optional-surfaces',
       setup(builder) {
-        builder.onResolve({ filter: /^@bedrock-core\/(?:navigation(?:\/(?:core|runtime))?|ui-runtime\/(?:container|entity)|guides)$/ }, async (args) => {
+        builder.onResolve({ filter: /^@bedrock-core\/(?:navigation(?:\/(?:core|runtime))?|ui-runtime\/(?:container|entity)|(?:ui\/)?ore-styled|guides)$/ }, async (args) => {
           if (args.pluginData === resolving) {
+            return;
+          }
+
+          const styled = args.path === '@bedrock-core/ore-styled' || args.path === '@bedrock-core/ui/ore-styled';
+
+          // Only toolkit entry surfaces are optional; installed dependencies resolve normally.
+          if (styled && (path.resolve(args.importer) !== path.resolve(options.root, 'ui.entry.ts') || options.aliases?.[args.path])) {
             return;
           }
 
@@ -176,6 +195,10 @@ async function bundle(options: UiBundleOptions, contents: string, declaration = 
 
           const member = Object.hasOwn(libraryModules, args.path) ? libraryModules[args.path] : undefined;
 
+          if ((member === 'oreStyled' || member === 'oreStyledFacade') && !options.exports![member]?.length) {
+            return;
+          }
+
           if (member && Object.hasOwn(options.exports!, member)) {
             return { path: member, namespace: 'ui-library' };
           }
@@ -199,7 +222,10 @@ async function bundle(options: UiBundleOptions, contents: string, declaration = 
         const prepared = args.path.endsWith('.screen.tsx') ? desugarJsxConditionals(source, args.path) : source;
         const extension = path.extname(args.path);
 
-        return { contents: markRuntimeText(prepared, args.path), loader: extension === '.tsx' ? 'tsx' : extension === '.jsx' ? 'jsx' : extension.endsWith('ts') ? 'ts' : 'js' };
+        const identity = callbackSourceId(args.path, options.root);
+        const callbacks = cacheInlineCallbacks(markPureComponents(markRuntimeText(prepared, args.path), args.path), args.path, identity);
+
+        return { contents: cacheDerivedValues(callbacks, args.path, identity), loader: extension === '.tsx' ? 'tsx' : extension === '.jsx' ? 'jsx' : extension.endsWith('ts') ? 'ts' : 'js' };
       });
       builder.onLoad({ filter: /\.(?:[cm]?[jt]sx?|json)$/ }, (args) => {
         const contents = sourceOverrides.get(normalizeSource(args.path));
@@ -264,7 +290,7 @@ async function bundle(options: UiBundleOptions, contents: string, declaration = 
     bundle: true,
     format: 'esm',
     platform: 'node',
-    target: 'node22',
+    target: 'node26',
     jsx: 'automatic',
     jsxImportSource: '@bedrock-core/ui',
     ...(options.tsconfig ? { tsconfig: path.resolve(options.root, options.tsconfig) } : {}),
@@ -285,7 +311,7 @@ async function bundle(options: UiBundleOptions, contents: string, declaration = 
   let cacheable = sourceOverrides.size === 0;
 
   for (const [file, metadata] of Object.entries(result.metafile!.inputs)) {
-    if (file === 'ui.entry.ts' || file.startsWith('ui-library:') || file.startsWith('minecraft-stub:') || file.startsWith('ui-declaration:') || file.startsWith('ui-optional:')) {
+    if (file === 'ui.entry.ts' || file.startsWith('ui-library:') || file.startsWith('minecraft-stub:') || file.startsWith('ui-declaration:') || file.startsWith('ui-optional:') || file.startsWith('core-api:')) {
       continue;
     }
 

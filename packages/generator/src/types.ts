@@ -134,8 +134,8 @@ export async function generateSchemaTypes(options: SchemaTypeOptions): Promise<S
 
     const { formatDeclarations } = await import('./declarations.ts');
 
-    await writeFile(path.join(candidate, 'index.d.ts'), formatDeclarations(indexDtsText(categories, schemas.version)));
-    await writeFile(path.join(candidate, 'globals.d.ts'), formatDeclarations(globalsDtsText(categories, options.typePrefix ?? '')));
+    await writeFile(path.join(candidate, 'index.d.ts'), await formatDeclarations(indexDtsText(categories, schemas.version)));
+    await writeFile(path.join(candidate, 'globals.d.ts'), await formatDeclarations(globalsDtsText(categories, options.typePrefix ?? '')));
     await writeFile(path.join(candidate, '.generated'), marker);
 
     if (await exists(output)) {

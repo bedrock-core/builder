@@ -3,11 +3,12 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { bundleDtsText } from './dts.ts';
+import { bundleDtsText, resourceExtensionsDtsText } from './dts.ts';
 import { flattenNesting, templateVars, toPositional } from './interp.ts';
 import { manifestAliasEntries, parseLang, stripGeneratedSection, stripAllGeneratedSections, stripLangEntries, upsertGeneratedSection } from './lang.ts';
 import { discoverI18nLibs, localeFiles, LOCALE_FILE_RE } from './libs.ts';
 import { loadResources } from './load.ts';
+import { loadI18nSource } from './source.ts';
 import { scanVanillaUsage, walkSources } from './scan.ts';
 import { checkParity, checkPlurals, checkVarParity, flattenResources, pluralBase } from './tree.ts';
 import { fetchVanillaLang, vanillaDtsText, VANILLA_LANG_URL_TEMPLATE } from './vanilla.ts';
@@ -59,15 +60,16 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
   const sourceDir = path.resolve(root, options.sourceDir ?? 'i18n');
   const outputDir = path.resolve(root, options.outputDir ?? '.bedrock-core/generated/i18n');
   const typesDir = path.resolve(root, options.typesDir ?? outputDir);
-  const defaultLocale = options.defaultLocale ?? 'en_US';
   const namespace = options.namespace;
-  const files = localeFiles(sourceDir);
   const inputs = new Set<string>([sourceDir]);
+  const source = await loadI18nSource(sourceDir, options, inputs);
+  const defaultLocale = options.defaultLocale ?? source?.options.defaultLocale ?? 'en_US';
+  const files = source ? new Map(Object.keys(source.locales).map(locale => [locale, source.file])) : localeFiles(sourceDir);
   const warnings: string[] = [];
   const errors: string[] = [];
   const pending = new Map<string, string>();
   const declarations: string[] = [];
-  const result: I18nResult = { files: [], inputs: [], declarations, warnings };
+  const result: I18nResult = { files: [], inputs: [], declarations, warnings, ...(source ? { entry: source.file } : {}) };
   const packs = (options.packs ?? []).map(pack => ({ ...pack, path: path.resolve(root, pack.path) }));
   const localeNames = new Set(files.keys());
 
@@ -122,9 +124,17 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
     }
   }
 
-  if (fs.existsSync(sourceDir)) {
+  if (source?.options.namespace !== undefined && source.options.namespace !== namespace) {
+    error('namespace', `the authored i18n instance must use its owning manifest namespace (${namespace})`);
+  }
+
+  if (options.defaultLocale !== undefined && source?.options.defaultLocale !== undefined && options.defaultLocale !== source.options.defaultLocale) {
+    error('defaultLocale', 'the authored instance and stage settings must agree');
+  }
+
+  if (!source && fs.existsSync(sourceDir)) {
     for (const entry of fs.readdirSync(sourceDir)) {
-      if (/\.d\.(?:ts|mts)$/.test(entry)) {
+      if (/\.d\.(?:ts|mts)$/.test(entry) || /^index\.(?:ts|js|mts|mjs)$/.test(entry)) {
         continue;
       }
 
@@ -175,7 +185,9 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
     const ownRaw = new Map<string, Table>();
 
     for (const [locale, file] of files) {
-      ownRaw.set(locale, await load(file, locale));
+      ownRaw.set(locale, source
+        ? flattenResources(source.locales[locale], { error: (key, text) => error(`${locale} ${key}`, text) })
+        : await load(file, locale));
     }
 
     if (options.metadata) {
@@ -187,6 +199,29 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
 
           if (!table.has(resourceKey)) {
             table.set(resourceKey, value);
+          }
+        }
+
+        ownRaw.set(locale, table);
+      }
+    }
+
+    const displayOwner = packs.find(pack => pack.kind === 'behavior') ?? packs[0];
+
+    if (displayOwner?.metadata) {
+      for (const locale of localeNames) {
+        const file = path.join(displayOwner.path, 'texts', `${locale}.lang`);
+
+        inputs.add(file);
+        const authored = fs.existsSync(file) ? parseLang(stripAllGeneratedSections(fs.readFileSync(file, 'utf8'))) : {};
+        const table = ownRaw.get(locale) ?? new Map(ownRaw.get(defaultLocale));
+
+        for (const field of ['name', 'description'] as const) {
+          const key = displayOwner.aliases?.[field] ?? (displayOwner.aliases === undefined ? `pack.${field}` : undefined);
+          const value = key ? authored[key] : undefined;
+
+          if (value !== undefined && value !== displayOwner.metadata[field]) {
+            table.set(`pack.${field}`, value);
           }
         }
 
@@ -219,7 +254,7 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
       }
 
       group.names.push(lib.name);
-      const typeLocale = resources.has(defaultLocale) ? defaultLocale : resources.has('en_US') ? 'en_US' : [...resources.keys()][0];
+      const typeLocale = resources.has('en_US') ? 'en_US' : [...resources.keys()][0];
 
       group.typeRefs.push(`${lib.name}/i18n/${typeLocale}`);
 
@@ -336,7 +371,8 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
 
       vanillaKeys = new Set(Object.keys(vanillaDefault));
       const sources = [
-        ...packs.filter(pack => pack.kind === 'behavior').flatMap(pack => walkSources(path.join(pack.path, 'scripts'))),
+        ...packs.filter(pack => pack.kind === 'behavior').flatMap(pack => walkSources(pack.path)),
+        ...(source ? walkSources(sourceDir) : []),
         ...libs.flatMap(lib => walkSources(path.join(lib.pkgDir, 'src'))),
       ];
 
@@ -572,14 +608,16 @@ export async function compileI18n(options: I18nOptions): Promise<I18nResult> {
       const relative = authoredFile ? path.relative(options.declarationDir ?? typesDir, authoredFile).replaceAll('\\', '/') : undefined;
       const declarationFile = path.join(typesDir, 'i18n.generated.d.ts');
 
-      pending.set(declarationFile, bundleDtsText({
+      const typeOptions = {
         metadata: !!options.metadata,
         moduleName: options.moduleName,
         defaultLocale,
         ownModule: relative ? relative.startsWith('.') ? relative : `./${relative}` : undefined,
         vanilla: options.vanilla ?? false,
         libs: [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([branch, group]) => ({ namespace: branch, typeRefs: group.typeRefs.sort() })),
-      }));
+      };
+
+      pending.set(declarationFile, source ? resourceExtensionsDtsText(typeOptions) : bundleDtsText(typeOptions));
       declarations.push(declarationFile);
 
       if (options.vanilla) {

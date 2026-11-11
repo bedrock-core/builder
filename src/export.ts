@@ -1,7 +1,11 @@
-import { cp, lstat, mkdir, readdir, realpath, rename, rm } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
+import { copyFile, cp, lstat, mkdir, mkdtemp, open, readdir, readFile, realpath, rm, writeFile, type FileHandle } from 'node:fs/promises';
+import type { Dirent } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { setTimeout as delay } from 'node:timers/promises';
 import path from 'node:path';
 import { readManifest, validatePackManifests } from './manifest.ts';
+import { apiPackageMetadata } from '@bedrock-core/builder-manifest';
 
 /** Validated pack sources and explicit export destinations for standalone publication. */
 export interface ExportOptions {
@@ -23,7 +27,7 @@ export interface ExportedPack {
   path: string;
 }
 
-type PublishPacks = (packs: Record<string, string>, signal?: AbortSignal) => Promise<ExportedPack[]>;
+type PublishPacks = (packs: Record<string, string>, signal?: AbortSignal, apiPackage?: string) => Promise<ExportedPack[]>;
 
 function contains(root: string, file: string): boolean {
   const relative = path.relative(root, file);
@@ -150,6 +154,12 @@ export function resolveExportPaths(project: string, packs: Record<string, string
   checkPackIds(packs, selection);
   const paths = Object.fromEntries(Object.entries(selection).map(([id, directory]) => [id, path.resolve(project, expandExportPath(directory, environment))]));
 
+  validateDestinations(project, packs, paths);
+
+  return paths;
+}
+
+function validateDestinations(project: string, packs: Record<string, string>, paths: Record<string, string>): void {
   checkDestinations(paths);
 
   for (const destination of Object.values(paths)) {
@@ -166,83 +176,345 @@ export function resolveExportPaths(project: string, packs: Record<string, string
       }
     }
   }
-
-  return paths;
 }
 
-async function inspectSource(directory: string): Promise<void> {
-  await assertDirectory(directory);
+/** Resolve a dedicated API package destination with the pack publication safety rules. */
+export function resolveApiPackagePath(project: string, packs: Record<string, string>, paths: Record<string, string>, destination: string): string {
+  const output = path.resolve(project, expandExportPath(destination, process.env));
 
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (entry.isSymbolicLink()) {
-      throw new Error(`Export source contains a symlink: ${path.join(directory, entry.name)}`);
+  validateDestinations(project, packs, { ...paths, '\0api-package': output });
+
+  return output;
+}
+
+async function inspectSource(root: string): Promise<Map<string, Dirent>> {
+  const entries = new Map<string, Dirent>();
+
+  async function visit(directory: string): Promise<void> {
+    await assertDirectory(directory);
+
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const file = path.join(directory, entry.name);
+
+      if (entry.isSymbolicLink()) {
+        throw new Error(`Export source contains a symlink: ${file}`);
+      }
+
+      entries.set(path.relative(root, file), entry);
+
+      if (entry.isDirectory()) {
+        await visit(file);
+      }
+    }
+  }
+
+  await visit(root);
+
+  return entries;
+}
+
+/** Check the complete inventory and compare bytes before allocating publication snapshots. */
+async function sameTree(source: string, destination: string, inputs: Map<string, Dirent>, outputs: Map<string, Dirent>, signal?: AbortSignal): Promise<boolean> {
+  if (inputs.size !== outputs.size) {
+    return false;
+  }
+
+  const files: string[] = [];
+
+  for (const [file, input] of inputs) {
+    const output = outputs.get(file);
+
+    if (!output || (input.isDirectory() ? !output.isDirectory() : !input.isFile() || !output.isFile())) {
+      return false;
     }
 
-    if (entry.isDirectory()) {
-      await inspectSource(path.join(directory, entry.name));
+    if (input.isFile()) {
+      files.push(file);
+    }
+  }
+
+  for (let offset = 0; offset < files.length; offset += 8) {
+    const compared = await Promise.allSettled(files.slice(offset, offset + 8).map(async (file) => {
+      signal?.throwIfAborted();
+      const paths = [path.join(source, file), path.join(destination, file)];
+      const before = await Promise.all(paths.map(file => lstat(file)));
+
+      if (!before.every(info => info.isFile()) || before[0].size !== before[1].size
+        || !await sameContents(paths[0], paths[1], before[0].size, signal)) {
+        return false;
+      }
+
+      const after = await Promise.all(paths.map(file => lstat(file)));
+
+      return before.every((info, index) => {
+        const current = after[index];
+
+        return current.isFile() && current.dev === info.dev && current.ino === info.ino && current.size === info.size
+          && current.mtimeMs === info.mtimeMs && current.ctimeMs === info.ctimeMs;
+      });
+    }));
+
+    for (const result of compared) {
+      if (result.status === 'rejected') {
+        throw result.reason;
+      }
+
+      if (!result.value) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+async function apiPackageName(directory: string, packs?: Record<string, string>): Promise<string> {
+  const metadata = JSON.parse(await readFile(path.join(directory, 'package.json'), 'utf8')) as Record<string, unknown>;
+  const api = apiPackageMetadata(metadata);
+
+  if (typeof metadata.name !== 'string' || !api) {
+    throw new Error(`Export directory does not identify a portable API package: ${directory}`);
+  }
+
+  if (packs) {
+    const identities = await Promise.all(Object.entries(packs).map(([id, directory]) => readManifest(id, directory)));
+
+    for (const relative of new Set(Object.values(api.manifests))) {
+      const file = path.resolve(directory, relative);
+
+      if (!contains(directory, file)) {
+        throw new Error('API owner manifests must stay inside the published package');
+      }
+
+      const owner = JSON.parse(await readFile(file, 'utf8')) as { header?: { uuid?: string; version?: unknown } };
+
+      if (!identities.some(pack => pack.header.uuid === owner.header?.uuid && pack.header.version === owner.header.version)) {
+        throw new Error(`API owner identity does not match a final pack manifest: ${relative}`);
+      }
+    }
+  }
+
+  return metadata.name;
+}
+
+async function updateFileSystem(operation: () => Promise<unknown>, signal?: AbortSignal): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    signal?.throwIfAborted();
+
+    try {
+      await operation();
+
+      return;
+    } catch (error) {
+      if (attempt === 3 || !['EBUSY', 'EPERM', 'EACCES', 'ENOTEMPTY'].includes((error as NodeJS.ErrnoException).code ?? '')) {
+        throw error;
+      }
+
+      await delay(50 * (attempt + 1), undefined, { signal });
     }
   }
 }
 
-async function publishPacks({ packs, paths, signal }: ExportOptions): Promise<ExportedPack[]> {
+async function readChunk(file: FileHandle, buffer: Buffer, length: number, position: number, signal?: AbortSignal): Promise<number> {
+  let read = 0;
+
+  while (read < length) {
+    signal?.throwIfAborted();
+    const { bytesRead } = await file.read(buffer, read, length - read, position + read);
+
+    if (!bytesRead) {
+      break;
+    }
+
+    read += bytesRead;
+  }
+
+  return read;
+}
+
+/** Compare exact bytes with bounded memory, including equal-size files with equal timestamps. */
+async function sameContents(source: string, destination: string, size: number, signal?: AbortSignal): Promise<boolean> {
+  const input = await open(source, 'r');
+
+  try {
+    const output = await open(destination, 'r');
+
+    try {
+      const left = Buffer.allocUnsafe(Math.min(size, 64 * 1024));
+      const right = Buffer.allocUnsafe(left.length);
+
+      for (let position = 0; position < size; position += left.length) {
+        const length = Math.min(left.length, size - position);
+        const [a, b] = await Promise.all([readChunk(input, left, length, position, signal), readChunk(output, right, length, position, signal)]);
+
+        if (a !== length || b !== length || !left.subarray(0, length).equals(right.subarray(0, length))) {
+          return false;
+        }
+      }
+
+      return (await output.stat()).size === size;
+    } finally {
+      await output.close();
+    }
+  } finally {
+    await input.close();
+  }
+}
+
+/** Preserve directory and unchanged-file identities while applying a complete snapshot. */
+async function synchronize(source: string, destination: string, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
+  await ensureDirectory(destination);
+  const pending = new Set(await readdir(destination));
+  const entries = await readdir(source, { withFileTypes: true });
+
+  // Publish the root manifest after the files it can reference.
+  entries.sort((a, b) => Number(a.name === 'manifest.json') - Number(b.name === 'manifest.json'));
+
+  // Only inspection runs concurrently; mutations retain manifest-last order.
+  for (let offset = 0; offset < entries.length; offset += 8) {
+    const inspected = await Promise.allSettled(entries.slice(offset, offset + 8).map(async (entry) => {
+      signal?.throwIfAborted();
+      const input = path.join(source, entry.name);
+      const output = path.join(destination, entry.name);
+      const current = await lstat(output).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'ENOENT') {
+          throw error;
+        }
+
+        return undefined;
+      });
+      let unchanged = false;
+
+      if (!entry.isDirectory() && current?.isFile()) {
+        const incoming = await lstat(input);
+
+        unchanged = incoming.size === current.size && await sameContents(input, output, incoming.size, signal);
+      }
+
+      return { entry, input, output, current, unchanged };
+    }));
+
+    for (const result of inspected) {
+      signal?.throwIfAborted();
+
+      if (result.status === 'rejected') {
+        throw result.reason;
+      }
+
+      const { entry, input, output, unchanged } = result.value;
+      let { current } = result.value;
+
+      pending.delete(entry.name);
+
+      if (current?.isSymbolicLink()) {
+        throw new Error(`Export destination contains a symlink: ${output}`);
+      }
+
+      if (current && current.isDirectory() !== entry.isDirectory()) {
+        await updateFileSystem(() => rm(output, { recursive: true, force: true }), signal);
+        current = undefined;
+      }
+
+      if (entry.isDirectory()) {
+        await synchronize(input, output, signal);
+      } else if (!unchanged) {
+        if (current && (!current.isFile() || current.nlink > 1)) {
+          throw new Error(`Export requires an independent regular file: ${output}`);
+        }
+
+        await updateFileSystem(() => copyFile(input, output), signal);
+      }
+    }
+  }
+
+  for (const name of pending) {
+    signal?.throwIfAborted();
+    await updateFileSystem(() => rm(path.join(destination, name), { recursive: true, force: true }), signal);
+  }
+}
+
+async function publishPacks({ packs, paths, signal }: ExportOptions, api?: { source: string; path: string }): Promise<ExportedPack[]> {
   checkPackIds(packs, paths);
   await validatePackManifests(packs);
-  const jobs: { id: string; path: string; candidate: string; backup?: string; installed: boolean }[] = [];
+  const jobs: { path: string; candidate: string; backup?: string; started: boolean }[] = [];
+  let workspace: string | undefined;
   let preserveBackups = false;
 
   try {
-    for (const [id, directory] of Object.entries(packs)) {
+    const directories = Object.entries(packs).map(([id, source]) => ({ id, source, destination: paths[id]!, api: false }));
+
+    if (api) {
+      directories.push({ id: '\0api-package', source: api.source, destination: api.path, api: true });
+    }
+
+    for (const { id, source: directory, destination, api: isApi } of directories) {
       signal?.throwIfAborted();
       const source = path.resolve(directory);
-      const destination = paths[id]!;
 
-      await inspectSource(source);
+      const inputs = await inspectSource(source);
+      const packageName = isApi ? await apiPackageName(source, packs) : undefined;
 
       if (await exists(destination)) {
-        await assertDirectory(destination);
+        const outputs = await inspectSource(destination);
 
-        if ((await readdir(destination)).length) {
+        if (outputs.size) {
           try {
-            await readManifest(id, destination);
+            if (isApi) {
+              if (await apiPackageName(destination) !== packageName) {
+                throw new Error('API package name does not match the existing export');
+              }
+            } else {
+              await readManifest(id, destination);
+            }
           } catch (cause) {
             throw new Error(`Export destination does not identify a pack: ${destination}`, { cause });
           }
         }
+
+        if (await sameTree(source, destination, inputs, outputs, signal)) {
+          continue;
+        }
       }
 
-      const job = { id, path: destination, candidate: `${destination}.builder-${randomUUID()}`, installed: false };
+      workspace ??= await mkdtemp(path.join(await realpath(tmpdir()), 'bedrock-core-export-'));
+      const job = {
+        path: destination, candidate: path.join(workspace, `${jobs.length}-next`),
+        backup: await exists(destination) ? path.join(workspace, `${jobs.length}-previous`) : undefined,
+        started: false,
+      };
 
       jobs.push(job);
       await cp(source, job.candidate, { recursive: true });
+
+      if (job.backup) {
+        await cp(destination, job.backup, { recursive: true });
+      }
     }
 
     for (const job of jobs) {
       signal?.throwIfAborted();
 
-      if (await exists(job.path)) {
-        job.backup = `${job.path}.builder-backup-${randomUUID()}`;
-        await rename(job.path, job.backup);
-      }
-
-      await rename(job.candidate, job.path);
-      job.installed = true;
+      job.started = true;
+      await synchronize(job.candidate, job.path, signal);
     }
 
     signal?.throwIfAborted();
 
-    return jobs.map(({ id, path }) => ({ id, path }));
+    return Object.keys(packs).map(id => ({ id, path: paths[id]! }));
   } catch (error) {
     const rollbackErrors: unknown[] = [];
 
     for (const job of [...jobs].reverse()) {
-      try {
-        if (job.installed) {
-          await rm(job.path, { recursive: true, force: true });
-        }
+      if (!job.started) {
+        continue;
+      }
 
-        if (job.backup && await exists(job.backup)) {
-          await rename(job.backup, job.path);
-          job.backup = undefined;
+      try {
+        if (job.backup) {
+          await synchronize(job.backup, job.path);
+        } else {
+          await updateFileSystem(() => rm(job.path, { recursive: true, force: true }));
         }
       } catch (rollbackError) {
         rollbackErrors.push(rollbackError);
@@ -251,19 +523,13 @@ async function publishPacks({ packs, paths, signal }: ExportOptions): Promise<Ex
 
     if (rollbackErrors.length) {
       preserveBackups = true;
-      const backups = jobs.flatMap(job => job.backup ? [job.backup] : []);
-
-      throw new AggregateError([error, ...rollbackErrors], `Export rollback failed; backups retained at ${backups.join(', ')}`, { cause: error });
+      throw new AggregateError([error, ...rollbackErrors], `Export rollback failed; recovery files retained at ${workspace}`, { cause: error });
     }
 
     throw error;
   } finally {
-    for (const job of jobs) {
-      await rm(job.candidate, { recursive: true, force: true });
-
-      if (job.backup && !preserveBackups) {
-        await rm(job.backup, { recursive: true, force: true });
-      }
+    if (workspace && !preserveBackups) {
+      await rm(workspace, { recursive: true, force: true, maxRetries: 3 });
     }
   }
 }
@@ -273,29 +539,51 @@ async function publishPacks({ packs, paths, signal }: ExportOptions): Promise<Ex
  * @param paths Dedicated nonoverlapping pack destination directories.
  * @param build Callback receiving the guarded publication function.
  * @returns The callback result, with destination locks released on completion.
- * @remarks This API holds locks and provides publication; the callback owns preparation and any additional validation.
+ * @remarks Locks are keyed by destination in the OS temporary directory. The callback owns preparation and any additional validation.
  * @throws If a destination is unsafe or already locked, or the callback fails.
  */
-export async function withExportPaths<T>(paths: Record<string, string>, build: (publish: PublishPacks) => Promise<T>): Promise<T> {
+export async function withExportPaths<T>(paths: Record<string, string>, build: (publish: PublishPacks) => Promise<T>, apiPath?: string): Promise<T> {
   paths = Object.fromEntries(Object.entries(paths).map(([id, directory]) => [id, path.resolve(directory)]));
-  checkDestinations(paths);
+  const destinations = apiPath ? { ...paths, '\0api-package': path.resolve(apiPath) } : paths;
+
+  checkDestinations(destinations);
+  const lockRoot = path.join(await realpath(tmpdir()), 'bedrock-core-export-locks');
+
+  await ensureDirectory(lockRoot);
   const locks: string[] = [];
 
   try {
-    for (const destination of Object.values(paths).sort()) {
+    for (const destination of Object.values(destinations).sort()) {
       await ensureDirectory(path.dirname(destination));
 
       if (await exists(destination)) {
         await assertDirectory(destination);
       }
 
-      const lock = `${destination}.builder-lock`;
+      const identity = process.platform === 'win32' ? destination.toLowerCase() : destination;
+      const lock = path.join(lockRoot, createHash('sha256').update(identity).digest('hex'));
 
-      await mkdir(lock);
+      try {
+        await mkdir(lock);
+      } catch (cause) {
+        if ((cause as NodeJS.ErrnoException).code !== 'EEXIST') {
+          throw cause;
+        }
+
+        throw Object.assign(new Error(`Export destination is locked: ${destination}; lock: ${lock}`, { cause }), { code: 'EEXIST' });
+      }
+
       locks.push(lock);
+      await writeFile(path.join(lock, 'owner.json'), JSON.stringify({ pid: process.pid, destination }));
     }
 
-    return await build((packs, signal) => publishPacks({ packs, paths, signal }));
+    return await build((packs, signal, apiPackage) => {
+      if (apiPackage && !apiPath) {
+        throw new Error('API package publication needs a reserved destination');
+      }
+
+      return publishPacks({ packs, paths, signal }, apiPackage ? { source: apiPackage, path: apiPath! } : undefined);
+    });
   } finally {
     for (const lock of locks.reverse()) {
       await rm(lock, { recursive: true, force: true });
@@ -306,8 +594,8 @@ export async function withExportPaths<T>(paths: Record<string, string>, build: (
 /**
  * Publish pack folders with manifest checks, locks and rollback, without the build runner.
  * @returns Published pack IDs and absolute destination directories.
- * @remarks JSON schema validation is separate. Use validatePackContent before publication when content checks are required.
- * @throws If manifest checks or publication fail; previous exports are retained.
+ * @remarks Updates files in place without renaming pack roots. Snapshots and locks stay in the OS temporary directory. JSON schema validation is separate; use validatePackContent when content checks are required.
+ * @throws If manifest checks or publication fail. Failed rollback reports a retained recovery directory.
  */
 export async function exportPacks({ packs, paths, signal, environment = process.env }: ExportOptions): Promise<ExportedPack[]> {
   signal?.throwIfAborted();

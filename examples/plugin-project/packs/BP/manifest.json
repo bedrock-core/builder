@@ -1,5 +1,6 @@
 {
   "format_version": 3,
+  "namespace": "builder_example",
   "header": {
     "name": "@bedrock-core plugin example",
     "description": "Generated JSON fixture",

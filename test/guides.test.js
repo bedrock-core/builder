@@ -9,7 +9,7 @@ import { parseLang } from '../packages/guides/src/lang.ts';
 import { runBuild } from '../src/run.ts';
 import { validateConfig } from '../src/config.ts';
 import { guidesFor, guidesOptions, installGuides, exportedModule } from '../test-support/guides.js';
-import { put } from '../test-support/i18n.js';
+import { put } from '../test-support/project.js';
 import { manifestFor } from '../test-support/manifest.js';
 
 const optionsFor = project => ({ configPath: project.configPath, logger: {} });
@@ -391,7 +391,9 @@ test('pack-relative guide directories reserve components from generators and omi
 
 async function addGuidePack(project, { shared = false, page = 'next', title = 'Other guide' } = {}) {
   const resource = shared ? project.resources : manifestFor('resources');
-  const behavior = manifestFor('script');
+  const behavior = manifestFor('script', 'scripts/main.ts');
+
+  behavior.namespace = 'flow_other';
 
   behavior.dependencies = [{ uuid: resource.header.uuid, version: resource.header.version }];
   project.config.packs.other = './packs/other';
@@ -422,7 +424,7 @@ test('multiple guide owners have separate runtime imports, declarations and link
   assert.deepEqual(Object.keys(gameplay.value.pages), ['next', 'start']);
   assert.deepEqual(Object.keys(other.value.pages), ['next']);
   assert.equal(parseLang(await readFile(path.join(result.outputPaths.visuals, 'texts/en_US.lang'), 'utf8'))['flow_test.guides.next.title'], 'Next');
-  assert.equal(parseLang(await readFile(path.join(result.outputPaths.otherAssets, 'texts/en_US.lang'), 'utf8'))['flow_test.guides.next.title'], 'Other guide');
+  assert.equal(parseLang(await readFile(path.join(result.outputPaths.otherAssets, 'texts/en_US.lang'), 'utf8'))['flow_other.guides.next.title'], 'Other guide');
 
   for (const owner of ['gameplay', 'other']) {
     const declaration = await readFile(path.join(project.project, '.bedrock-core/generated/guides', owner, 'guides.generated.d.ts'), 'utf8');
@@ -451,19 +453,23 @@ test('guide owners sharing a resource pack preserve independent language contrib
 
   assert.match(language, /manual.key=Keep trailing space \n/);
   assert.match(language, /flow_test.guides.next.title=Next/);
-  assert.match(language, /flow_test.guides.other.title=Updated guide/);
+  assert.match(language, /flow_other.guides.other.title=Updated guide/);
   assert.equal(language.split('<core:generated-guides:begin:gameplay>').length, 2);
   assert.equal(language.split('<core:generated-guides:begin:other>').length, 2);
   assert.equal(compiled(result, 'en_US/start.mdx'), 'cached');
 });
 
-test('conflicting guide keys in a shared resource destination fail without replacing exported packs', async (t) => {
+test('duplicate addon namespaces fail without replacing shared resource exports', async (t) => {
   const project = await guidesFor(t);
   const first = await runBuild(optionsFor(project));
   const previous = await readFile(path.join(first.outputPaths.visuals, 'texts/en_US.lang'), 'utf8');
 
   await addGuidePack(project, { shared: true });
-  await assert.rejects(runBuild(optionsFor(project)), /Conflicting guide translation for flow_test\.guides\.next\./);
+  const other = JSON.parse(await readFile(path.join(project.project, 'packs/other/manifest.json'), 'utf8'));
+
+  other.namespace = project.behavior.namespace;
+  await put(project.project, 'packs/other/manifest.json', JSON.stringify(other));
+  await assert.rejects(runBuild(optionsFor(project)), /Duplicate addon namespace/);
   assert.equal(await readFile(path.join(first.outputPaths.visuals, 'texts/en_US.lang'), 'utf8'), previous);
 });
 

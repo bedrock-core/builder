@@ -1,0 +1,10 @@
+{
+  "name": "@prototype/native-access-js",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": { "types": "./index.d.ts", "default": "./index.js" },
+    "./commonjs": { "types": "./commonjs.d.cts", "default": "./commonjs.cjs" }
+  },
+  "peerDependencies": { "@minecraft/server": "*" }
+}

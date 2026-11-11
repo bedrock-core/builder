@@ -7,13 +7,13 @@
  * such globals (`Block`, `Item`, `LootTable`, `Recipe`, `Particle`, …);
  * press Ctrl+Space after `satisfies ` to browse them.
  */
-import { project } from '@bedrock-core/generated/project';
+import manifest from '../manifest.json';
 
 export default {
   'format_version': '1.21.0',
   'minecraft:entity': {
     description: {
-      identifier: `${project.namespace}:training_dummy`,
+      identifier: `${manifest.namespace}:training_dummy`,
       is_summonable: true,
       is_spawnable: false,
       is_experimental: false,

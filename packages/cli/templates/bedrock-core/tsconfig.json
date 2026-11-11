@@ -27,6 +27,7 @@
 	],
 	"include": [
 		"packs/BP/scripts/**/*",
+		"packs/BP/UI/**/*",
 		"packs/BP/blocks/**/*",
 		"packs/BP/entities/**/*",
 		"packs/BP/i18n/**/*",

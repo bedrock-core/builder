@@ -1,0 +1,13 @@
+{
+  "$schema": "./.bds/schema/bds-runner.json",
+  "version": "1.26.51.1",
+  "channel": "stable",
+  "instance": "gametest",
+  "instances": {
+    "gametest": 19782
+  },
+  "properties": {
+    "server-ip": "127.0.0.1",
+    "enable-lan-visibility": false
+  }
+}

@@ -18,8 +18,6 @@ export interface I18nSettings {
   sourceDir?: string;
   /** Required fallback locale; defaults to en_US. */
   defaultLocale?: string;
-  /** Project namespace used to qualify generated keys. */
-  namespace?: string;
   /** Fail on locale/key problems unless explicitly false. */
   strict?: boolean;
   /** Runtime JSON formatting; false or omission emits compact JSON. */
@@ -96,6 +94,8 @@ export interface TranslationBundle {
 
 /** Generated translation bundle, language files, declarations and diagnostics. */
 export interface I18nResult {
+  /** Authored createI18n entry bound to compiled data by the Builder plugin. */
+  entry?: string;
   /** Compiled runtime data, absent when there are no locale inputs. */
   bundle?: TranslationBundle;
   /** Written runtime JSON path when a bundle exists. */

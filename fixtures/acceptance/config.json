@@ -1,7 +1,6 @@
 {
   "$schema": "../../schemas/config.schema.json",
   "targetVersion": "1.26.50",
-  "namespace": "builder_acceptance",
   "name": "@bedrock-core builder acceptance",
   "authors": [],
   "packs": { "logic": "./packs/BP", "assets": "./packs/RP", "theme": "./packs/theme" },
@@ -11,7 +10,7 @@
       "default": {
         "stages": {
           "generator": { "types": false },
-          "guides": { "compileScreens": false, "resourcePack": "assets" },
+          "guides": { "resourcePack": "assets" },
           "i18n": { "resourcePack": "assets" },
           "ui-compiler": { "resourcePack": "assets" }
         },

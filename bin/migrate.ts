@@ -11,7 +11,6 @@ Preview is the default. Filters, shell commands and expressions are never execut
   --write                    Write a complete migration; save an in-place backup
   --output path              With --write, create a new config beside the original
   --profile name             Select a profile (repeatable; default: all)
-  --namespace value          Supply missing project namespace
   --target-version value     Supply missing targetVersion
   --export profile:pack=path  Set exact destinations (repeat for every pack)
   --filter id=stage          Map a verified local filter or fork to a stage or core
@@ -49,8 +48,6 @@ try {
       write = true;
     } else if (flag === '--json') {
       json = true;
-    } else if (flag === '--namespace') {
-      options.namespace = argument(index++);
     } else if (flag === '--target-version') {
       options.targetVersion = argument(index++);
     } else if (flag === '--output') {

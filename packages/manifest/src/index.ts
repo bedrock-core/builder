@@ -2,6 +2,13 @@ import { readFile, realpath, stat } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { JsonFormatting, ProjectMetadata } from '@bedrock-core/builder-plugin';
+import { validateAddonFields } from './authoring.ts';
+import { resolveModuleDependency } from './modules.ts';
+
+export { moduleManifestPath } from './modules.ts';
+export { apiPackageMetadata, hasApiExports, type ApiPackageMetadata } from './api-package.ts';
+export { nativeManifest, finalizePackManifests, scriptOutputEntry, scriptOutputManifest } from './authoring.ts';
+export { prepareAddonArtwork } from './artwork.ts';
 
 const toolVersion: string = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
@@ -161,16 +168,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * Read and validate manifest v3 fields without requiring compiled script files.
  * @param id Configured pack ID used in diagnostics.
  * @param directory Directory containing the current pack manifest.
+ * @param authored Allow authored TypeScript entries before bundling.
  * @returns Validated v3 manifest metadata; compiled script files are not required yet.
  */
-export async function readManifest(id: string, directory: string): Promise<Manifest> {
+export async function readManifest(id: string, directory: string, authored = false): Promise<Manifest> {
   const value: unknown = JSON.parse(await readFile(path.join(directory, 'manifest.json'), 'utf8'));
 
-  return validateManifest(id, value);
+  return validateManifest(id, value, authored);
 }
 
-/** Validate a complete native v3 document; script output files are checked separately. */
-export function validateManifest(id: string, value: unknown): Manifest {
+/** Validate v3 fields. Authored documents may refer to TypeScript sources before bundling. */
+export function validateManifest(id: string, value: unknown, authored = false): Manifest {
   function fail(field: string): never {
     throw new Error(`Pack ${id} has invalid manifest.${field}`);
   }
@@ -220,11 +228,25 @@ export function validateManifest(id: string, value: unknown): Manifest {
       fail('header.min_engine_version');
     }
 
-    if (fields.type === 'script' && (fields.language !== 'javascript'
-      || typeof fields.entry !== 'string' || !/^scripts\/.+\.js$/.test(fields.entry)
-      || fields.entry.split('/').some(part => part === '..' || part === '.' || part === '')
-      || fields.entry.includes('\\'))) {
-      fail(`modules[${index}].entry or language`);
+    if (fields.type === 'script') {
+      if (fields.language !== 'javascript') {
+        fail(`modules[${index}].language; use "javascript" for the exported script module`);
+      }
+
+      const entry = fields.entry;
+      const label = `modules[${index}].entry (${JSON.stringify(entry) ?? 'missing'})`;
+
+      if (typeof entry !== 'string' || !entry.startsWith('scripts/')
+        || entry.split('/').some(part => part === '..' || part === '.' || part === '')
+        || /[\\:*?"<>|\u0000-\u001f]/.test(entry)) { // eslint-disable-line no-control-regex -- Script paths must reject ASCII control characters.
+        fail(`${label}; use a pack-relative path under scripts/, such as scripts/main.${authored ? 'ts' : 'js'}`);
+      }
+
+      const extension = authored ? /[^/]\.(?:js|ts|tsx|mts|cts)$/ : /[^/]\.js$/;
+
+      if (!extension.test(entry) || /\.d\.(?:ts|mts|cts)$/.test(entry)) {
+        fail(`${label}; ${authored ? 'use .js, .ts, .tsx, .mts or .cts (for example scripts/main.ts)' : 'exported scripts must use .js (for example scripts/main.js); run the bundler for TypeScript sources'}`);
+      }
     }
   }
 
@@ -317,7 +339,7 @@ export async function resolveManifest(file: string, options: ManifestResolveOpti
   const manifest = await resolve(file, []);
 
   if (options.validate !== false) {
-    validateManifest(file, manifest);
+    validateManifest(file, manifest, true);
   }
 
   return { manifest, inputs: [...inputs] };
@@ -326,15 +348,36 @@ export async function resolveManifest(file: string, options: ManifestResolveOpti
 /**
  * Complete cloned manifests with shared metadata and local pack references.
  * Explicit header/module fields win. UUIDs must be authored and are never generated here.
- * Local `{ pack: id }` requirements become native header UUID/version requirements.
+ * Local namespace references select behavior packs or their paired resources.
  * All documents are validated before returning; reciprocal requirements are permitted.
  */
-export function resolveProjectManifests(inputs: Readonly<Record<string, JsonObject>>, project: ProjectMetadata): Record<string, JsonObject> {
+export function resolveProjectManifests(inputs: Readonly<Record<string, JsonObject>>, project: ProjectMetadata, options: { dependencyRoot?: string; registerDependency?: (file: string) => void } = {}): Record<string, JsonObject> {
   const manifests = structuredClone(inputs);
+  const namespaces = new Map<string, string>();
+  const resources = new Map<string, string[]>();
+  const scripted = new Set<string>();
 
   for (const [id, manifest] of Object.entries(manifests)) {
     if (!isRecord(manifest.header) || !Array.isArray(manifest.modules)) {
       throw new Error(`Pack ${id} needs an authored header and modules`);
+    }
+
+    if (manifest.modules.some(module => isRecord(module) && module.type === 'script')) {
+      scripted.add(id);
+    }
+
+    if (typeof manifest.namespace === 'string' && manifest.modules.some(module => isRecord(module) && (module.type === 'script' || module.type === 'data'))) {
+      const previous = namespaces.get(manifest.namespace);
+
+      if (previous) {
+        throw new Error(`Duplicate addon namespace ${manifest.namespace}: ${previous} and ${id}`);
+      }
+
+      namespaces.set(manifest.namespace, id);
+    }
+
+    if (typeof manifest.namespace === 'string' && manifest.modules.some(module => isRecord(module) && module.type === 'resources')) {
+      resources.set(manifest.namespace, [...(resources.get(manifest.namespace) ?? []), id]);
     }
 
     const header = manifest.header as JsonObject;
@@ -399,50 +442,108 @@ export function resolveProjectManifests(inputs: Readonly<Record<string, JsonObje
   }
 
   for (const [id, manifest] of Object.entries(manifests)) {
-    if (Array.isArray(manifest.dependencies)) {
-      manifest.dependencies = manifest.dependencies.map((value) => {
+    for (const field of ['dependencies', 'optionalDependencies'] as const) {
+      if (!Array.isArray(manifest[field])) {
+        continue;
+      }
+
+      manifest[field] = manifest[field].map((value) => {
         if (!isRecord(value)) {
           return value;
         }
 
         const dependency = value as JsonObject;
-        const targetId = typeof dependency.pack === 'string' ? dependency.pack : typeof dependency.uuid === 'string' ? uuids.get(dependency.uuid.toLowerCase()) : undefined;
 
-        if (dependency.pack !== undefined && (typeof dependency.pack !== 'string' || !Object.hasOwn(manifests, dependency.pack)
-          || dependency.uuid !== undefined || dependency.module_name !== undefined)) {
-          throw new Error(`Pack ${id} has invalid local pack dependency: ${String(dependency.pack)}`);
+        if (dependency.pack !== undefined) {
+          throw new Error(`Pack ${id} has invalid dependency.pack; identify local packs by namespace`);
+        }
+
+        if (dependency.module !== undefined) {
+          throw new Error(`Pack ${id} has invalid dependency.module; use module_name`);
+        }
+
+        if (dependency.module_name !== undefined) {
+          if (typeof dependency.module_name !== 'string' || !dependency.module_name.trim()
+            || dependency.uuid !== undefined) {
+            throw new Error(`Pack ${id} has invalid ${field} module_name dependency`);
+          }
+
+          const selected = resolveModuleDependency(dependency, options, mergeObjects);
+
+          delete dependency.module_name;
+          Object.assign(dependency, selected);
+        }
+
+        const uuidId = typeof dependency.uuid === 'string' ? uuids.get(dependency.uuid.toLowerCase()) : undefined;
+        const behaviorId = typeof dependency.namespace === 'string' ? namespaces.get(dependency.namespace) : undefined;
+        const resourceIds = typeof dependency.namespace === 'string' ? (resources.get(dependency.namespace) ?? []).filter(candidate => candidate !== id) : [];
+        const namespaceId = behaviorId !== id && behaviorId !== undefined ? behaviorId : resourceIds.length === 1 ? resourceIds[0] : undefined;
+        // An explicit UUID distinguishes external owners from local packs sharing their namespace.
+        const targetId = uuidId ?? (dependency.uuid === undefined ? namespaceId : undefined);
+
+        if (dependency.uuid === undefined && dependency.module_name === undefined && dependency.namespace !== undefined && !namespaceId) {
+          if (resourceIds.length > 1) {
+            throw new Error(`Pack ${id} dependency namespace ${String(dependency.namespace)} has multiple resource packs; select one by UUID`);
+          }
+
+          if (dependency.namespace === manifest.namespace) {
+            throw new Error(`Pack ${id} cannot depend on its own addon namespace without a paired pack`);
+          }
+
+          throw new Error(`Pack ${id} dependency namespace ${String(dependency.namespace)} does not identify a local pack; external addons need a native UUID/version`);
         }
 
         if (targetId) {
           const target = manifests[targetId].header as JsonObject;
+          const targetNamespace = manifests[targetId].namespace;
 
-          delete dependency.pack;
+          if (dependency.namespace !== undefined && dependency.namespace !== targetNamespace) {
+            throw new Error(`Pack ${id} dependency on ${targetId} must use addon namespace ${String(targetNamespace)}`);
+          }
+
+          if (dependency.uuid !== undefined && (typeof dependency.uuid !== 'string' || dependency.uuid.toLowerCase() !== String(target.uuid).toLowerCase())) {
+            throw new Error(`Pack ${id} dependency namespace ${String(dependency.namespace)} must use native UUID ${String(target.uuid)}`);
+          }
+
+          if (dependency.module_name !== undefined) {
+            throw new Error(`Pack ${id} has invalid ${field}; native modules cannot identify addon namespaces`);
+          }
+
           dependency.uuid = target.uuid;
           dependency.version ??= target.version;
 
           if (dependency.version !== target.version) {
             throw new Error(`Pack ${id} dependency on ${targetId} must use selected version ${String(target.version)}`);
           }
+
+          if (!scripted.has(targetId)) {
+            delete dependency.namespace;
+          }
+        }
+
+        if (!scripted.has(id)) {
+          delete dependency.namespace;
         }
 
         return dependency;
       });
     }
 
-    validateManifest(id, manifest);
+    validateAddonFields(id, manifest);
+    validateManifest(id, manifest, true);
   }
 
   return manifests;
 }
 
 /**
- * Read declared runtime entries before their bundles exist.
+ * Read authored script entries before their bundles exist.
  * @param id Configured pack ID used in diagnostics.
  * @param directory Directory containing the current pack manifest.
  * @returns Relative entry paths declared by the current manifest script modules.
  */
 export async function readScriptEntries(id: string, directory: string): Promise<string[]> {
-  const manifest = await readManifest(id, directory);
+  const manifest = await readManifest(id, directory, true);
 
   return manifest.modules.filter(module => module.type === 'script').map(module => module.entry!);
 }

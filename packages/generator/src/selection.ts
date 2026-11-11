@@ -1,5 +1,6 @@
 import { glob, readFile, stat } from 'node:fs/promises';
-import ts from 'typescript';
+import * as ts from 'typescript-native/ast';
+import { API } from 'typescript-native/sync';
 import path from 'node:path';
 import type { BuildContext } from '@bedrock-core/builder-plugin';
 
@@ -33,6 +34,8 @@ export async function templateFiles(context: BuildContext, settings: TemplateSel
   const include = settings.include ?? packPaths.map(directory => `${relative(context.stagedRoot, directory)}/**/*.ts`);
   const files = new Set<string>();
 
+  using api = settings.include === undefined ? new API() : undefined;
+
   for await (const name of glob(include, { cwd: context.stagedRoot, exclude })) {
     const file = path.resolve(context.stagedRoot, name);
 
@@ -44,8 +47,9 @@ export async function templateFiles(context: BuildContext, settings: TemplateSel
       throw new Error(`Generator templates must be inside configured packs: ${name}`);
     }
 
-    if (settings.include === undefined) {
-      const source = ts.createSourceFile(file, await readFile(file, 'utf8'), ts.ScriptTarget.Latest, true);
+    if (api) {
+      using parsed = api.createSourceFile(file, await readFile(file, 'utf8'), { scriptKind: ts.ScriptKind.TS });
+      const source = parsed.sourceFile;
       const producesOutput = source.statements.some(statement =>
         (ts.isExportAssignment(statement) && !statement.isExportEquals)
         || ((ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement))

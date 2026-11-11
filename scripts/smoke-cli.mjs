@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { createRequire, stripTypeScriptTypes } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -283,14 +283,10 @@ try {
 
     assert.ok(testManifest.dependencies.some(dep => dep.module_name === '@minecraft/server-gametest'));
     script('lint');
-    run(process.execPath, [join(project, 'node_modules/typescript/bin/tsc'), '--noEmit'], project);
+    script('typecheck');
 
-    const require = createRequire(join(project, 'package.json'));
-    const ts = require('typescript');
     const localeFile = join(project, 'packs/BP/i18n/en_US.ts');
-    const localeJs = ts.transpileModule(readFileSync(localeFile, 'utf8'), {
-      compilerOptions: { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext },
-    }).outputText;
+    const localeJs = stripTypeScriptTypes(readFileSync(localeFile, 'utf8'));
     const locale = (await import(`data:text/javascript;base64,${Buffer.from(localeJs).toString('base64')}`)).default;
 
     assert.equal(locale.meta, undefined);

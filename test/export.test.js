@@ -1,12 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile, readdir, symlink, rm } from 'node:fs/promises';
+import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
+import fs, { mkdir, readFile, writeFile, readdir, symlink, rm, stat, utimes, rename, link } from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import path from 'node:path';
 import { projectFor } from '../test-support/project.js';
 import { manifestFor } from '../test-support/manifest.js';
 import { runBuild } from '../src/run.ts';
-import { exportPacks, resolveExportPaths } from '../src/export.ts';
+import { exportPacks, resolveExportPaths, withExportPaths } from '../src/export.ts';
 import { validateConfig } from '../src/config.ts';
 
 test('export variables resolve absolute and relative paths without recursively expanding values', () => {
@@ -182,13 +185,347 @@ test('destination conflicts prevent replacing any pack and locks preserve existi
   await writeFile(path.join(project.project, 'packs/gameplay/scripts/main.ts'), 'export const value = 3;');
   await assert.rejects(runBuild(options), /does not identify a pack/);
   assert.equal(await readFile(path.join(result.outputPaths.gameplay, 'scripts/main.js'), 'utf8'), previous);
-  const lock = `${result.outputPaths.visuals}.builder-lock`;
+  await withExportPaths({ visuals: result.outputPaths.visuals }, async () => {
+    await assert.rejects(runBuild(options), { code: 'EEXIST' });
+    assert.equal((await readdir(path.dirname(result.outputPaths.gameplay))).some(name => name.includes('.builder-')), false);
+  });
 
-  await mkdir(lock);
-  await assert.rejects(runBuild(options), { code: 'EEXIST' });
-  assert.equal((await readdir(path.dirname(result.outputPaths.gameplay))).includes('gameplay.builder-lock'), false);
-  assert.deepEqual(await readdir(lock), []);
+  await withExportPaths(result.outputPaths, async () => {});
   await assert.rejects(runBuild({ ...options, signal: AbortSignal.abort(new Error('cancelled')) }), /cancelled/);
+});
+
+test('system-pack exports keep locks and all publication artifacts outside scanned pack folders', async (t) => {
+  const project = await projectFor(t);
+  const source = path.join(project.project, 'packs/visuals');
+  const parent = path.join(project.root, 'bds/system_resource_packs');
+  const paths = { visuals: path.join(parent, 'example') };
+  const cancellation = new AbortController();
+
+  t.mock.method(cancellation.signal, 'throwIfAborted', () => {
+    assert.equal(readdirSync(parent).some(name => name.includes('.builder-')), false);
+  });
+
+  await withExportPaths(paths, async (publish) => {
+    assert.deepEqual(await readdir(parent), []);
+    await assert.rejects(withExportPaths(paths, async () => {}), /Export destination is locked/);
+    await publish({ visuals: source }, cancellation.signal);
+    assert.deepEqual(await readdir(parent), ['example']);
+    await writeFile(path.join(source, 'asset.json'), '{"value":2}');
+    await publish({ visuals: source }, cancellation.signal);
+    assert.deepEqual(await readdir(parent), ['example']);
+  });
+
+  assert.equal(await readFile(path.join(paths.visuals, 'asset.json'), 'utf8'), '{"value":2}');
+});
+
+test('publication preserves root and unchanged-file identities and handles file/directory replacements', async (t) => {
+  const project = await projectFor(t);
+  const source = path.join(project.project, 'packs/visuals');
+  const destination = path.join(project.root, 'published');
+  const options = { packs: { visuals: source }, paths: { visuals: destination } };
+
+  await writeFile(path.join(source, 'becomes-directory'), 'old file');
+  await mkdir(path.join(source, 'becomes-file'));
+  await writeFile(path.join(source, 'becomes-file/old'), 'old nested file');
+  await exportPacks(options);
+  const asset = path.join(destination, 'asset.json');
+
+  await utimes(asset, 1000, 1000);
+  const rootBefore = await stat(destination);
+  const fileBefore = await stat(asset);
+
+  await rm(path.join(source, 'becomes-directory'));
+  await mkdir(path.join(source, 'becomes-directory'));
+  await writeFile(path.join(source, 'becomes-directory/new'), 'new nested file');
+  await rm(path.join(source, 'becomes-file'), { recursive: true });
+  await writeFile(path.join(source, 'becomes-file'), 'new file');
+  await writeFile(path.join(destination, 'stale'), 'stale file');
+  await exportPacks(options);
+
+  assert.equal((await stat(destination)).ino, rootBefore.ino);
+  assert.equal((await stat(asset)).ino, fileBefore.ino);
+  assert.equal((await stat(asset)).mtimeMs, fileBefore.mtimeMs);
+  assert.equal(await readFile(path.join(destination, 'becomes-directory/new'), 'utf8'), 'new nested file');
+  assert.equal(await readFile(path.join(destination, 'becomes-file'), 'utf8'), 'new file');
+  await assert.rejects(stat(path.join(destination, 'stale')), { code: 'ENOENT' });
+});
+
+test('unchanged packs skip snapshots and same-size edits still publish', async (t) => {
+  const project = await projectFor(t);
+  const packs = { visuals: path.join(project.project, 'packs/visuals'), gameplay: path.join(project.project, 'packs/gameplay') };
+  const paths = { gameplay: path.join(project.root, 'BP'), visuals: path.join(project.root, 'RP') };
+  const asset = path.join(paths.visuals, 'asset.json');
+  const timestamp = new Date('2025-01-01T00:00:00Z');
+  const expected = [{ id: 'visuals', path: paths.visuals }, { id: 'gameplay', path: paths.gameplay }];
+
+  project.behavior.modules[0].entry = 'scripts/main.js';
+  await writeFile(path.join(packs.gameplay, 'manifest.json'), JSON.stringify(project.behavior));
+  await writeFile(path.join(packs.gameplay, 'scripts/main.js'), 'export const value = 1;');
+  await exportPacks({ packs, paths });
+  await utimes(asset, timestamp, timestamp);
+  const before = await stat(asset);
+  const root = await stat(paths.visuals);
+  const copy = t.mock.method(fs, 'cp');
+
+  syncBuiltinESMExports();
+  t.after(() => {
+    copy.mock.restore();
+    syncBuiltinESMExports();
+  });
+
+  assert.deepEqual(await exportPacks({ packs, paths }), expected);
+  assert.equal(copy.mock.callCount(), 0);
+  assert.equal((await stat(asset)).ino, before.ino);
+  assert.equal((await stat(asset)).mtimeMs, before.mtimeMs);
+
+  await writeFile(asset, '{"value":2}');
+  await utimes(asset, timestamp, timestamp);
+  const changed = await stat(asset);
+
+  assert.equal(changed.size, before.size);
+  assert.equal(changed.mtimeMs, before.mtimeMs);
+  assert.deepEqual(await exportPacks({ packs, paths }), expected);
+  assert.equal(copy.mock.callCount(), 2);
+  assert.equal(await readFile(asset, 'utf8'), '{"value":1}');
+  assert.equal((await stat(paths.visuals)).ino, root.ino);
+});
+
+test('binary exports compare all bytes across batches and preserve unchanged files despite matching timestamps', async (t) => {
+  const project = await projectFor(t);
+  const source = path.join(project.project, 'packs/visuals');
+  const destination = path.join(project.root, 'published');
+  const options = { packs: { visuals: source }, paths: { visuals: destination } };
+  const contents = Array.from({ length: 12 }, (_, index) => Buffer.alloc(index === 0 ? 0 : 3 * 64 * 1024 + 19, index));
+
+  for (const [index, content] of contents.entries()) {
+    await writeFile(path.join(source, `${index}.bin`), content);
+  }
+
+  await exportPacks(options);
+
+  for (let index = 0; index < contents.length; index++) {
+    await utimes(path.join(destination, `${index}.bin`), 1000, 1000);
+  }
+
+  const unchanged = await stat(path.join(destination, '11.bin'));
+  const corrupt = Buffer.from(contents[3]);
+
+  corrupt[corrupt.length - 1] ^= 0xff;
+  await writeFile(path.join(destination, '3.bin'), corrupt);
+  await utimes(path.join(destination, '3.bin'), 1000, 1000);
+  await utimes(path.join(source, '3.bin'), 1000, 1000);
+  contents[1][64 * 1024] ^= 0xff;
+  contents[2] = Buffer.concat([contents[2], Buffer.from('growth')]);
+  contents[4] = contents[4].subarray(0, 64 * 1024 - 1);
+  contents[5] = Buffer.alloc(0);
+
+  for (const index of [1, 2, 4, 5]) {
+    await writeFile(path.join(source, `${index}.bin`), contents[index]);
+    await utimes(path.join(source, `${index}.bin`), 1000, 1000);
+  }
+
+  await exportPacks(options);
+
+  for (const [index, content] of contents.entries()) {
+    assert.deepEqual(await readFile(path.join(destination, `${index}.bin`)), content);
+  }
+
+  const after = await stat(path.join(destination, '11.bin'));
+
+  assert.equal(after.ino, unchanged.ino);
+  assert.equal(after.mtimeMs, unchanged.mtimeMs);
+  assert.equal((await stat(path.join(destination, '0.bin'))).mtimeMs, 1_000_000);
+});
+
+test('canceling a partially created export removes its new root and preserves siblings', async (t) => {
+  const project = await projectFor(t);
+  const source = path.join(project.project, 'packs/visuals');
+  const destination = path.join(project.root, 'published');
+  const sibling = path.join(project.root, 'keep');
+  const cancellation = new AbortController();
+
+  await writeFile(sibling, 'unrelated');
+  t.mock.method(cancellation.signal, 'throwIfAborted', () => {
+    if (existsSync(path.join(destination, 'asset.json'))) {
+      throw new Error('cancelled after first file');
+    }
+  });
+
+  await assert.rejects(exportPacks({ packs: { visuals: source }, paths: { visuals: destination }, signal: cancellation.signal }), /cancelled after first file/);
+  await assert.rejects(stat(destination), { code: 'ENOENT' });
+  assert.equal(await readFile(sibling, 'utf8'), 'unrelated');
+});
+
+test('symlinks inside existing exports are refused before any output changes', async (t) => {
+  const project = await projectFor(t);
+  const source = path.join(project.project, 'packs/visuals');
+  const destination = path.join(project.root, 'published');
+  const external = path.join(project.root, 'external');
+  const options = { packs: { visuals: source }, paths: { visuals: destination } };
+
+  await exportPacks(options);
+  await mkdir(external);
+  await writeFile(path.join(external, 'keep'), 'unrelated');
+  await symlink(external, path.join(destination, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
+  await writeFile(path.join(source, 'asset.json'), '{"value":2}');
+  await assert.rejects(exportPacks(options), /contains a symlink/);
+  assert.equal(await readFile(path.join(destination, 'asset.json'), 'utf8'), '{"value":1}');
+  assert.equal(await readFile(path.join(external, 'keep'), 'utf8'), 'unrelated');
+});
+
+async function holdWindowsPath(t, file, share) {
+  const script = `
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+public static class ExportHandle {
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  public static extern SafeFileHandle CreateFile(string path, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
+}
+'@
+$handle = [ExportHandle]::CreateFile($env:BC_EXPORT_TEST_PATH, [uint32]2147483648, ${share}, [IntPtr]::Zero, 3, 0x02000000, [IntPtr]::Zero)
+if ($handle.IsInvalid) { throw "CreateFile failed: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())" }
+try { [Console]::WriteLine('READY'); [Console]::ReadLine() | Out-Null } finally { $handle.Dispose() }
+`;
+  const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], {
+    windowsHide: true, env: { ...process.env, BC_EXPORT_TEST_PATH: file }, stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  const closed = once(child, 'close');
+  let diagnostics = '';
+  let released = false;
+
+  const release = async () => {
+    if (!released) {
+      released = true;
+      child.stdin.end('\n');
+    }
+
+    await closed;
+  };
+
+  child.stderr.on('data', (data) => {
+    diagnostics += data;
+  });
+  t.after(release);
+  await new Promise((resolve, reject) => {
+    child.stdout.on('data', (data) => {
+      if (data.toString().includes('READY')) {
+        resolve();
+      }
+    });
+    child.once('error', reject);
+    child.once('exit', (code) => {
+      reject(new Error(`Handle helper exited (${code}): ${diagnostics}`));
+    });
+  });
+
+  return release;
+}
+
+test('Windows exports update packs while a native directory handle denies root renames', { skip: process.platform !== 'win32', timeout: 15000 }, async (t) => {
+  const project = await projectFor(t);
+  const source = path.join(project.project, 'packs/visuals');
+  const destination = path.join(project.root, 'system_resource_packs/example');
+  const options = { packs: { visuals: source }, paths: { visuals: destination } };
+
+  await exportPacks(options);
+  const release = await holdWindowsPath(t, destination, 3);
+
+  try {
+    await assert.rejects(rename(destination, `${destination}-rename-probe`), error => ['EPERM', 'EBUSY', 'EACCES'].includes(error.code));
+    await writeFile(path.join(source, 'asset.json'), '{"value":2}');
+    await exportPacks(options);
+    assert.equal(await readFile(path.join(destination, 'asset.json'), 'utf8'), '{"value":2}');
+  } finally {
+    await release();
+  }
+});
+
+test('a Windows file sharing conflict restores changes already published to other packs', { skip: process.platform !== 'win32', timeout: 15000 }, async (t) => {
+  const project = await projectFor(t);
+  const packs = { first: path.join(project.project, 'packs/visuals'), second: path.join(project.project, 'packs/gameplay') };
+  const paths = { first: path.join(project.root, 'RP'), second: path.join(project.root, 'BP') };
+
+  project.behavior.modules[0].entry = 'scripts/main.js';
+  await writeFile(path.join(packs.second, 'manifest.json'), JSON.stringify(project.behavior));
+  await writeFile(path.join(packs.second, 'scripts/main.js'), 'previous script');
+  await exportPacks({ packs, paths });
+  const locked = path.join(paths.second, 'scripts/main.js');
+  const previous = await readFile(locked, 'utf8');
+
+  const release = await holdWindowsPath(t, locked, 1);
+
+  try {
+    await writeFile(path.join(packs.first, 'asset.json'), '{"value":2}');
+    await writeFile(path.join(packs.second, 'scripts/main.js'), 'changed script');
+    await assert.rejects(exportPacks({ packs, paths }), error => ['EPERM', 'EBUSY', 'EACCES'].includes(error.code));
+    assert.equal(await readFile(path.join(paths.first, 'asset.json'), 'utf8'), '{"value":1}');
+    assert.equal(await readFile(locked, 'utf8'), previous);
+  } finally {
+    await release();
+  }
+});
+
+test('changed hard-linked destination files cannot overwrite an external target', async (t) => {
+  const project = await projectFor(t);
+  const source = path.join(project.project, 'packs/visuals');
+  const destination = path.join(project.root, 'published');
+  const options = { packs: { visuals: source }, paths: { visuals: destination } };
+
+  await exportPacks(options);
+  const external = path.join(project.root, 'external');
+
+  await writeFile(external, '{"value":1}');
+  await rm(path.join(destination, 'asset.json'));
+  await link(external, path.join(destination, 'asset.json'));
+  await writeFile(path.join(source, 'asset.json'), '{"value":2}');
+  await assert.rejects(exportPacks(options), /independent regular file/);
+  assert.equal(await readFile(external, 'utf8'), '{"value":1}');
+});
+
+test('failed rollback retains recovery snapshots outside the destination tree', async (t) => {
+  const project = await projectFor(t);
+  const source = path.join(project.project, 'packs/visuals');
+  const destination = path.join(project.root, 'published');
+  const options = { packs: { visuals: source }, paths: { visuals: destination } };
+
+  await exportPacks(options);
+  await writeFile(path.join(source, 'asset.json'), '{"value":2}');
+  const cancellation = new AbortController();
+
+  t.mock.method(cancellation.signal, 'throwIfAborted', () => {
+    if (!cancellation.signal.aborted && readFileSyncValue() === '{"value":2}') {
+      renameSync(destination, path.join(project.root, 'moved'));
+      writeFileSync(destination, 'conflicting file');
+      cancellation.abort(new Error('cancelled during export'));
+    }
+
+    if (cancellation.signal.aborted) {
+      throw cancellation.signal.reason;
+    }
+  });
+
+  function readFileSyncValue() {
+    return existsSync(path.join(destination, 'asset.json')) ? readFileSync(path.join(destination, 'asset.json'), 'utf8') : undefined;
+  }
+
+  let failure;
+
+  try {
+    await exportPacks({ ...options, signal: cancellation.signal });
+  } catch (error) {
+    failure = error;
+  }
+
+  assert.ok(failure instanceof AggregateError);
+  const workspace = failure.message.split('recovery files retained at ')[1];
+
+  assert.ok(workspace);
+  assert.match(path.basename(workspace), /^bedrock-core-export-/);
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  assert.equal(await readFile(path.join(workspace, '0-previous/asset.json'), 'utf8'), '{"value":1}');
+  assert.equal(await readFile(path.join(workspace, '0-next/asset.json'), 'utf8'), '{"value":2}');
 });
 
 test('explicit destinations export non-behavior/resource pack types without inferred routing', async (t) => {

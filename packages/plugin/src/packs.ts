@@ -13,6 +13,17 @@ export interface FeatureRouting {
   resourcePack?: string;
 }
 
+/** Resolve the owner's authored manifest namespace. */
+export function resolveNamespace(owner: PackInfo): string {
+  const namespace = owner.manifest?.namespace;
+
+  if (typeof namespace !== 'string' || !/^[a-z0-9_]+$/.test(namespace) || namespace === 'minecraft') {
+    throw new Error(`Pack ${owner.id} needs a namespace in its manifest (lowercase a-z, 0-9 and underscores; minecraft is reserved)`);
+  }
+
+  return namespace;
+}
+
 /** Resolve a feature against the full graph, including in a targeted invocation. */
 export async function resolveFeaturePacks(context: BuildContext, settings: FeatureRouting, client = true): Promise<readonly PackInfo[]> {
   const packs = context.inspectPacks ? await context.inspectPacks() : await inspectPacks(context.allPacks ?? context.packs);
@@ -86,8 +97,25 @@ export async function inspectPacks(directories: Readonly<Record<string, string>>
 /** Resolve local requirements across supplied descriptors without imposing build order. */
 export function resolvePackGraph(packs: readonly PackInfo[]): readonly PackInfo[] {
   const identities = new Map<string, PackInfo>();
+  const namespaces = new Map<string, string>();
 
   for (const pack of packs) {
+    const namespace = pack.manifest?.namespace;
+
+    if (namespace !== undefined) {
+      const resolvedNamespace = resolveNamespace(pack);
+
+      if (pack.moduleTypes.includes('script')) {
+        const previous = namespaces.get(resolvedNamespace);
+
+        if (previous) {
+          throw new Error(`Duplicate addon namespace ${String(namespace)}: ${previous} and ${pack.id}`);
+        }
+
+        namespaces.set(resolvedNamespace, pack.id);
+      }
+    }
+
     if (pack.uuid) {
       const previous = identities.get(pack.uuid.toLowerCase());
 

@@ -1,0 +1,15 @@
+{
+  "targetVersion": "1.26.50",
+  "name": "api-provider",
+  "authors": [],
+  "packs": { "behaviorPack": "./packs/BP" },
+  "bedrockCore": {
+    "formatVersion": "1.0.0",
+    "profiles": {
+      "build": {
+        "stages": { "generator": false, "guides": false, "i18n": false, "ui-compiler": false },
+        "export": { "behaviorPack": "../dist/provider" }
+      }
+    }
+  }
+}

@@ -97,8 +97,8 @@ test('one external feature owns generated registry data and custom bundling with
     export function registerWidgets() {
       return { install(core) {
         const registry = new Map(definitions.map(value => [value.id, value]));
-        core.fill('example:widgets', registry);
-        return registry;
+        core.provideService('example:widgets', registry);
+        return { value: registry };
       } };
     }
   `);
@@ -113,12 +113,12 @@ test('one external feature owns generated registry data and custom bundling with
   const options = { configPath: project.configPath, logger: {} };
   const first = await runBuild(options);
   const exported = await runtime(first);
-  const slots = new Map();
-  const registry = exported.registerWidgets().install({ fill: (id, value) => slots.set(id, value) });
+  const services = new Map();
+  const { value: registry } = exported.registerWidgets().install({ provideService: (id, value) => services.set(id, value) });
 
   assert.equal(exported.value, 9);
   assert.deepEqual(registry.get('first'), { id: 'first', weight: 3 });
-  assert.equal(slots.get('example:widgets'), registry);
+  assert.equal(services.get('example:widgets'), registry);
   assert.ok(first.dependencies.includes(path.join(project.project, 'feature/tuning.txt')));
   const second = await runBuild(options);
 
@@ -131,7 +131,7 @@ test('one external feature owns generated registry data and custom bundling with
   assert.equal((await runtime(third)).value, 12);
   await put(project, 'packs/gameplay/content/widgets.json', '[{"id":"second","weight":5}]');
   const fourth = await runBuild(options);
-  const updated = (await runtime(fourth)).registerWidgets().install({ fill() {} });
+  const { value: updated } = (await runtime(fourth)).registerWidgets().install({ provideService() {} });
 
   assert.equal(updated.has('first'), false);
   assert.deepEqual(updated.get('second'), { id: 'second', weight: 5 });
@@ -216,6 +216,11 @@ test('full plugin replacements use their own detector through the shared stage r
       async run(context) {
         executed++;
 
+        const manifestPath = path.join(context.packs.gameplay, 'manifest.json');
+        const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+
+        manifest.modules[0].entry = 'scripts/main.js';
+        await writeFile(manifestPath, JSON.stringify(manifest));
         await writeFile(path.join(context.packs.gameplay, 'scripts/main.js'), 'export const value = 27;');
 
         return { reason: 'custom bundler' };

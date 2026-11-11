@@ -1,17 +1,22 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runBuild } from '../src/run.ts';
+import { acceptanceDependencies } from '../test-support/acceptance.ts';
 
 const repository = fileURLToPath(new URL('../', import.meta.url));
 const root = await mkdtemp(path.join(tmpdir(), 'builder-acceptance-'));
 const source = fileURLToPath(new URL('../fixtures/acceptance', import.meta.url));
 
 try {
-  await cp(source, root, { recursive: true });
+  const { modules } = acceptanceDependencies(repository);
+
+  await cp(source, root, { recursive: true, filter: file => path.basename(file) !== 'node_modules' });
+  await symlink(modules, path.join(root, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
+  console.log(`@bedrock-core/builder: acceptance dependencies: ${modules}`);
   const options = { configPath: path.join(root, 'config.json') };
   const first = await runBuild(options);
 
@@ -20,7 +25,7 @@ try {
   assert.ok(first.validation.files.some(file => file.schema?.includes('/items/')));
   const unchanged = await runBuild(options);
 
-  assert.ok(unchanged.compilations.every(item => item.status === 'cached'));
+  assert.ok(unchanged.compilations.every(item => item.status === 'cached'), JSON.stringify(unchanged.compilations.filter(item => item.status !== 'cached')));
   const entry = path.join(root, 'packs/BP/scripts/main.ts');
 
   await writeFile(entry, `${await readFile(entry, 'utf8')}\nexport const revision = 2;\n`);
@@ -44,10 +49,10 @@ try {
     }
 
     const status = await new Promise<number | null>((resolve, reject) => {
-      const child = spawn(process.execPath, [cli, 'run', '--packs', path.join(root, 'dist'), '--packs', path.join(root, 'dist/theme'), '--tag', 'builder_acceptance', '--expect-registered', '2', '--port', '19773', '--idle', '1', '--timeout', '180', '--fresh'], {
-        cwd: root,
+      const child = spawn(process.execPath, [cli, 'run', '--packs', path.join(root, 'dist'), '--packs', path.join(root, 'dist/theme'), '--tag', 'builder_acceptance', '--expect-registered', '2', '--idle', '1', '--timeout', '180'], {
+        cwd: repository,
         stdio: 'inherit',
-        env: { ...process.env, BC_BDS_HOME: path.join(repository, '.bedrock-core/acceptance/bds') },
+        env: { ...process.env, BC_BDS_HOME: process.env.BC_BDS_HOME ?? path.join(repository, '.bds') },
       });
 
       child.once('error', reject);

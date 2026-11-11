@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const SOURCE_RE = /\.(?:ts|tsx|js|jsx|mjs)$/;
+const SOURCE_RE = /\.(?:ts|tsx|mts|js|jsx|mjs)$/;
 
 /** One source file read off disk, as the scans below consume it. */
 export interface Source {
@@ -32,7 +32,7 @@ export function walkSources(dir: string): Source[] {
       continue;
     }
 
-    if (!SOURCE_RE.test(entry.name) || entry.name.endsWith('.d.ts')) {
+    if (!SOURCE_RE.test(entry.name) || /\.d\.(?:ts|mts)$/.test(entry.name)) {
       continue;
     }
 

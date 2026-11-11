@@ -343,7 +343,7 @@ test('generator failures retain the last export and reject selections outside pa
 test('generator settings schema rejects malformed selectors, formatting and unknown fields', () => {
   const config = {
     name: 'Generator schema', authors: [], targetVersion: '1.26.50',
-    namespace: 'generator_schema', packs: { visuals: './pack' },
+    packs: { visuals: './pack' },
     bedrockCore: { formatVersion: '1.0.0', profiles: { default: { stages: {} } } },
   };
 

@@ -9,8 +9,8 @@ import {
 } from '@bedrock-core/ui/ore-styled';
 import { Fragment, type JSX, Panel, Screen, Text, useState } from '@bedrock-core/ui';
 import { Link, createStackNavigator, createStaticNavigation } from '@bedrock-core/navigation';
-import { i18n } from '../i18n';
-import { project } from '@bedrock-core/generated/project';
+import { i18n } from '../../i18n';
+import manifest from '../../manifest.json';
 import planPage from './plan';
 
 const { fontColor, spacing } = theme.tokens;
@@ -83,7 +83,7 @@ const RootStack = createStackNavigator({
   screens: {
     Home: HomePage,
     Plan: planPage,
-    Profile: `${project.namespace}:profile_form`,
+    Profile: `${manifest.namespace}:profile_form`,
   },
 });
 

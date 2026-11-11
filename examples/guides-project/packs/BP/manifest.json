@@ -1,5 +1,6 @@
 {
   "format_version": 3,
+  "namespace": "example_guides",
   "header": {
     "name": "@bedrock-core guides example",
     "description": "Generated guide data and translations",
@@ -11,14 +12,20 @@
     {
       "type": "script",
       "language": "javascript",
-      "entry": "scripts/main.js",
+      "entry": "scripts/main.ts",
       "uuid": "6b1f4b26-cbb3-4b70-a813-bb5da5af92a5",
       "version": "1.0.0"
     }
   ],
   "dependencies": [
     {
-      "pack": "assets"
+      "namespace": "example_guides"
+    },
+    {
+      "module_name": "@minecraft/server"
+    },
+    {
+      "module_name": "@minecraft/server-ui"
     }
   ]
 }

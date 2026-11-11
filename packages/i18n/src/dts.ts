@@ -7,6 +7,21 @@ export interface BundleDtsOptions {
   libs: { namespace: string; typeRefs: string[] }[];
 }
 
+/** Extend direct locale-object instances with compiler-provided shared resource branches. */
+export function resourceExtensionsDtsText({ moduleName = '@bedrock-core/generated/i18n', vanilla, libs }: BundleDtsOptions): string {
+  return [
+    'import \'@bedrock-core/i18n\';',
+    '',
+    'declare module \'@bedrock-core/i18n\' {',
+    '  interface I18nResourceExtensions {',
+    ...libs.map(({ namespace, typeRefs }) => `    readonly ${JSON.stringify(namespace)}: ${typeRefs.map(ref => `typeof import('${ref}').default`).join(' & ')};`),
+    ...(vanilla ? [`    readonly vanilla: import('${moduleName}-vanilla').VanillaResources;`] : []),
+    '  }',
+    '}',
+    '',
+  ].join('\n');
+}
+
 export function bundleDtsText({ defaultLocale, ownModule, metadata, moduleName = '@bedrock-core/generated/i18n', vanilla, libs }: BundleDtsOptions): string {
   const ownSpecifier = ownModule?.replaceAll('\\', '\\\\').replaceAll('\'', '\\\'');
   const libAliases = libs.map(({ namespace, typeRefs }) => {
@@ -16,7 +31,7 @@ export function bundleDtsText({ defaultLocale, ownModule, metadata, moduleName =
   });
 
   const branches = [
-    ...libs.map(({ namespace }) => `readonly ${namespace}: Lib_${namespace};`),
+    ...libs.map(({ namespace }) => `readonly ${JSON.stringify(namespace)}: Lib_${namespace};`),
     ...(vanilla ? [`readonly vanilla: import('${moduleName}-vanilla').VanillaResources;`] : []),
   ];
 

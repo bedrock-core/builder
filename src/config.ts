@@ -4,6 +4,7 @@ import type { builtinPlugins } from './builtins.ts';
 export type { JsonFormatting } from '@bedrock-core/builder-plugin';
 import type { JsonFormatting } from '@bedrock-core/builder-plugin';
 import type { PackLinkOverrides } from '@bedrock-core/builder-plugin';
+import type { ContentValidationMode } from '@bedrock-core/builder-validation';
 
 /** Built-in transformation names, in execution order. */
 export type StageName = keyof typeof builtinPlugins;
@@ -51,10 +52,14 @@ export interface BuildProfile {
   stages?: Partial<Record<StageName, StageSelection>>;
   /** Reuse verified compilation and validation results; defaults to true. */
   cache?: boolean;
+  /** Content schema validation mode; defaults to warn. JSON syntax and pack manifests always validate. */
+  validation?: ContentValidationMode;
   /** Invocations after prepare, before/after enabled stages, or before export. */
   steps?: PluginStep[];
   /** Destination for every configured pack ID, relative to config.json or absolute. */
   export?: Record<string, string>;
+  /** Publish declared addon API exports; defaults to dist/api, or false to disable. */
+  api?: string | false;
   /** Debounce interval and additional project-relative inputs for watch mode. */
   watch?: { debounceMs?: number; paths?: string[] };
 }
@@ -64,8 +69,6 @@ export interface ProjectConfig {
   $schema?: string;
   /** Target Minecraft version used by participating stages. */
   targetVersion: string;
-  /** Default namespace for generated content. */
-  namespace: string;
   /** Human-readable project name. */
   name: string;
   /** Optional project description. */
@@ -78,8 +81,8 @@ export interface ProjectConfig {
   bedrockCore: {
     formatVersion: '1.0.0';
     plugins?: Record<string, PluginDefinition>;
-    /** Literal project-relative paths omitted from staging and watch mode. */
-    staging?: { exclude?: string[] };
+    /** Extra authored inputs and omitted paths, relative to config.json. */
+    staging?: { include?: string[]; exclude?: string[] };
     profiles: Record<string, BuildProfile>;
   };
   [key: string]: unknown;
@@ -127,6 +130,10 @@ export function validatePluginDefinition(definition: unknown, name: string): Plu
  * @throws If metadata or builder fields fail schema validation.
  */
 export function validateConfig(config: unknown): ProjectConfig {
+  if (config !== null && typeof config === 'object' && Object.hasOwn(config, 'namespace')) {
+    throw new Error('Invalid project configuration: declare namespace in each pack manifest.json');
+  }
+
   if (!validate(config)) {
     const details = (validate.errors ?? [])
       .map(error => `${error.instancePath || '/'} ${error.message}`)

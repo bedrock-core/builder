@@ -7,7 +7,7 @@
  * block schema: `options` needs no annotation in either callback, components
  * autocomplete, and typos are errors. `satisfies` is erased at build time.
  */
-import { project } from '@bedrock-core/generated/project';
+import manifest from '../manifest.json';
 
 type Options = {
   id: string; // used for output filename and identifier suffix
@@ -23,7 +23,7 @@ export default [
     'format_version': '1.21.0',
     'minecraft:block': {
       description: {
-        identifier: `${project.namespace}:${options.id}`,
+        identifier: `${manifest.namespace}:${options.id}`,
         properties: {},
       },
       components: {

@@ -1,0 +1,10 @@
+{
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@bedrock-core/observable": "^1.1.0",
+    "@bedrock-core/server-runtime": "^0.3.0",
+    "@minecraft/server": "2.10.0",
+    "@minecraft/server-gametest": "1.0.0-beta.1.26.50-stable"
+  }
+}

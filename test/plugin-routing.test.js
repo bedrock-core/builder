@@ -15,7 +15,7 @@ const requirements = { modules: ['script'], dependencies: { assets: { modules: [
 
 async function addPack(project, id, type, dependencies = []) {
   const directory = path.join(project.project, 'packs', id);
-  const manifest = manifestFor(type);
+  const manifest = manifestFor(type, 'scripts/main.ts');
 
   manifest.dependencies = dependencies;
   await mkdir(directory, { recursive: true });
@@ -203,7 +203,7 @@ test('project scope aggregates declared owners and related packs into one invoca
 });
 
 test('schema and planner keep native owner overrides separate from legacy script mappings', async () => {
-  const base = { name: 'Routing', authors: [], namespace: 'route_test', targetVersion: '1.26.50', packs: { logic: './logic' }, bedrockCore: {
+  const base = { name: 'Routing', authors: [], targetVersion: '1.26.50', packs: { logic: './logic' }, bedrockCore: {
     formatVersion: '1.0.0', plugins: { native: { module: './plugin.mjs', packs: ['logic'] } }, profiles: { default: { export: { logic: './dist/logic' }, steps: [{ plugin: 'native', after: 'prepare', links: { logic: { assets: 'textures' } } }] } },
   } };
 

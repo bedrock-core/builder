@@ -1,9 +1,12 @@
 import path from 'node:path';
 import { compileI18n, type I18nSettings, type TranslationPack } from './index.ts';
 import { cp, glob, mkdir, readFile, rm } from 'node:fs/promises';
-import { generatedAliases, hasFiles, inspectPacks, resolveResourcePack, type BuildContext, type BuildDetection, type PackInfo } from '@bedrock-core/builder-plugin';
+import { generatedAliases, hasFiles, inspectPacks, resolveNamespace, resolveResourcePack, type BuildContext, type BuildDetection, type PackInfo } from '@bedrock-core/builder-plugin';
 import { parseLang } from './lang.ts';
 import { compileModule } from '@bedrock-core/builder-bundler/compile';
+import { bindI18nSource, hasI18nSource } from './source.ts';
+
+const sourceExcludes = ['**/*.d.{ts,mts}', 'index.{ts,js,mts,mjs}'];
 
 function within(root: string, file: string): boolean {
   const relative = path.relative(root, file);
@@ -52,7 +55,7 @@ async function discover(context: BuildContext, settings: I18nSettings) {
       throw new Error(`i18n sourceDir must be a directory inside owner pack ${owner.id}`);
     }
 
-    const modules = await hasFiles(sourceDir, '*.{ts,js,mts,mjs}', ['**/*.d.{ts,mts}']);
+    const modules = hasI18nSource(sourceDir) || await hasFiles(sourceDir, '*.{ts,js,mts,mjs}', sourceExcludes);
     const resources = (owner.dependencies ?? []).flatMap(dependency => dependency.kind === 'local' ? graph.filter(pack => pack.id === dependency.packId && pack.kind === 'resource' && (settings.resourcePack === undefined || settings.resourcePack === pack.id)) : []);
     const resourceOwnedByBehavior = owner.kind === 'resource' && candidates.some(pack => pack.kind === 'behavior' && pack.dependencies?.some(dependency => dependency.kind === 'local' && dependency.packId === owner.id));
     const needed = modules || (owner.kind === 'behavior' ? languages.get(owner.id) || resources.some(pack => languages.get(pack.id)) : !resourceOwnedByBehavior && languages.get(owner.id));
@@ -70,6 +73,23 @@ export async function run(context: BuildContext, settings: I18nSettings): Promis
   const compiled = [];
 
   for (const { owner, sourceDir } of selected) {
+    const ownerHeader = owner.manifest?.header as { name?: string; description?: string } | undefined;
+    const ownerMetadata = owner.manifest?.metadata as { authors?: string[] } | undefined;
+    let display: Record<string, string> = {};
+
+    try {
+      display = parseLang(await readFile(path.join(owner.path, 'texts/en_US.lang'), 'utf8'));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw error;
+      }
+    }
+
+    const metadata = context.project && {
+      name: display[ownerHeader?.name ?? ''] ?? (ownerHeader?.name === 'pack.name' ? context.project.name : ownerHeader?.name ?? context.project.name),
+      description: display[ownerHeader?.description ?? ''] ?? (ownerHeader?.description === 'pack.description' ? context.project.description : ownerHeader?.description ?? context.project.description),
+      creator: (ownerMetadata?.authors ?? context.project.authors).join(', '),
+    };
     const resource = settings.client === false ? undefined : resolveResourcePack(graph, owner, settings.resourcePack);
 
     if (settings.client === false && settings.resourcePack !== undefined) {
@@ -78,7 +98,7 @@ export async function run(context: BuildContext, settings: I18nSettings): Promis
 
     const routed = resource && resource.id !== owner.id ? [owner, resource] : [owner];
     const resourceOwners = resource && graph.filter(pack => pack.kind === 'behavior' && pack.dependencies?.some(dependency => dependency.kind === 'local' && dependency.packId === resource.id));
-    const resourceSources = resource && resource.id !== owner.id && await hasFiles(path.resolve(resource.path, settings.sourceDir ?? 'i18n'), '*.{ts,js,mts,mjs}', ['**/*.d.{ts,mts}']);
+    const resourceSources = resource && resource.id !== owner.id && await hasFiles(path.resolve(resource.path, settings.sourceDir ?? 'i18n'), '*.{ts,js,mts,mjs}', sourceExcludes);
     const inheritResourceMetadata = resourceOwners?.length === 1 && resourceOwners[0].id === owner.id && !resourceSources;
     const packs: TranslationPack[] = routed.map((pack) => {
       const header = pack.manifest?.header as { name?: string; description?: string } | undefined;
@@ -95,15 +115,20 @@ export async function run(context: BuildContext, settings: I18nSettings): Promis
       };
     });
     const declarationDir = path.join(context.projectRoot, '.bedrock-core/generated/i18n', owner.id);
+    const compilerContext: BuildContext = {
+      ...context,
+      pack: owner,
+      reuse: (id, options) => context.reuse(`${owner.id}:${id}`, options),
+    };
     const result = await compileI18n({
       ...settings,
       root: context.stagedRoot,
       sourceDir,
-      namespace: settings.namespace ?? context.namespace,
+      namespace: resolveNamespace(owner),
       packs,
       section: owner.id,
       moduleName: `@bedrock-core/generated/i18n/${owner.id}`,
-      ...(context.project ? { metadata: { name: context.project.name, description: context.project.description, creator: context.project.authors.join(', ') } } : {}),
+      ...(metadata ? { metadata } : {}),
       dependencyRoot: context.projectRoot,
       aliases: generatedAliases(context, {}, owner.id),
       declarationRoot: context.projectRoot,
@@ -112,7 +137,7 @@ export async function run(context: BuildContext, settings: I18nSettings): Promis
       typesDir: path.join(context.generatedDir, 'i18n-types', owner.id),
       cacheDir: path.join(context.projectRoot, '.bedrock-core/cache/i18n'),
       signal: context.signal,
-      compile: options => compileModule(context, options),
+      compile: options => compileModule(compilerContext, options),
       warn: message => context.logger.warn?.(`@bedrock-core/i18n:${owner.id}: ${message}`),
     });
 
@@ -120,6 +145,10 @@ export async function run(context: BuildContext, settings: I18nSettings): Promis
   }
 
   for (const { owner, sourceDir, routed, declarationDir, result } of compiled) {
+    if (result.entry && result.bundlePath) {
+      bindI18nSource(result.entry, result.bundlePath);
+    }
+
     for (const input of result.inputs) {
       if (within(context.stagedRoot, input)) {
         context.registerDependency(path.join(context.projectRoot, path.relative(context.stagedRoot, input)));

@@ -1,5 +1,6 @@
 {
   "format_version": 3,
+  "namespace": "builder_generator",
   "header": {
     "name": "@bedrock-core generator example",
     "description": "Typed loot templates and a shared JSON input",
@@ -16,7 +17,7 @@
     {
       "type": "script",
       "language": "javascript",
-      "entry": "scripts/main.js",
+      "entry": "scripts/main.ts",
       "uuid": "a2571a01-bbf9-481b-8b14-6478b02cf14e",
       "version": "1.0.0"
     }

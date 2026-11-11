@@ -22,7 +22,7 @@
 // fragment or call in a branch is left untouched (wrap it in an element to
 // make it compilable).
 
-import ts from 'typescript';
+import * as ts from './syntax.ts';
 
 interface Edit {
   start: number;
@@ -44,7 +44,8 @@ const isNullish = (expr: ts.Expression): boolean =>
 
 /** Rewrites every JSX conditional in `source`, or returns it verbatim. */
 export const desugarJsxConditionals = (source: string, fileName = 'screen.tsx'): string => {
-  const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  using parsed = ts.parseSource(fileName, source);
+  const file = parsed.file;
   const edits: Edit[] = [];
 
   /** The element's opening attributes, wherever the kind keeps them. */

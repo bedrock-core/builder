@@ -102,7 +102,7 @@ test('simple schema properties inline with documentation and document roots rema
   assert.match(block, /Sets the color on maps\.[\s\S]*?"minecraft:map_color"\?: unknown/);
   assert.match(block, /Controls the emitted light level\.[\s\S]*?"minecraft:light_emission"\?: number/);
   assert.doesNotMatch(block, /export type BlockMode/);
-  assert.match(block, /"example:mode"\?: \("solid" \| "transparent"\)/);
+  assert.match(block, /"example:mode"\?: "solid" \| "transparent";/);
   assert.match(block, /export interface BlockBehaviorDocument/);
   assert.deepEqual(diagnostics([path.join(result.outputPath, 'globals.d.ts')]), []);
 });

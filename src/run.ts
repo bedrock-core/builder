@@ -14,9 +14,9 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { validateConfig } from './config.ts';
-import { isStagingExcluded, stagingExclusions } from './staging.ts';
+import { isStagingExcluded, isStagingInput, stagingExclusions, stagingInputs } from './staging.ts';
 import { planBuild, type PlannedPlugin } from './plan.ts';
-import { resolveProject, generateProject } from './project.ts';
+import { resolveProject } from './project.ts';
 import { runNodeFilter, publishNodeData } from './regolith.ts';
 import { builtinPlugins } from './builtins.ts';
 import { loadPlugin, executePlugin } from './plugins.ts';
@@ -25,9 +25,9 @@ import type { StageName } from './config.ts';
 import type { BuildPlugin, BundleExtension, CacheOptions } from '@bedrock-core/builder-plugin';
 import { inspectPacks, type PackInfo } from './packs.ts';
 import { describePack, resolvePackGraph } from '@bedrock-core/builder-plugin';
-import { resolveManifest, resolveProjectManifests, type JsonObject } from '@bedrock-core/builder-manifest';
-import { validatePackManifests } from './manifest.ts';
-import { resolveExportPaths, withExportPaths } from './export.ts';
+import { resolveManifest, resolveProjectManifests, hasApiExports, type JsonObject } from '@bedrock-core/builder-manifest';
+import { finalizePackManifests, prepareAddonArtwork, validatePackManifests } from './manifest.ts';
+import { resolveExportPaths, resolveApiPackagePath, withExportPaths } from './export.ts';
 import { createHash } from 'node:crypto';
 import { createFileCache, trackLocations } from './file-cache.ts';
 import type { Artifact, BuildContext, BuildOptions, BuildResult } from './contract.d.ts';
@@ -110,13 +110,22 @@ export async function runBuild({
   }
 
   const outputPaths = Object.freeze(resolveExportPaths(project, config.packs, exportConfig));
+  const packageFile = path.join(project, 'package.json');
+  const packageMetadata: unknown = await exists(packageFile) ? JSON.parse(await readFile(packageFile, 'utf8')) : undefined;
+  const hasPublicApi = hasApiExports(packageMetadata);
+  const apiSelection = config.bedrockCore.profiles[profile]?.api;
+  const apiOutput = hasPublicApi && apiSelection !== false
+    ? resolveApiPackagePath(project, config.packs, outputPaths, apiSelection ?? 'dist/api')
+    : undefined;
   const outputs = Object.values(config.bedrockCore.profiles).flatMap((settings) => {
     if (!settings.export) {
       return [];
     }
 
     try {
-      return Object.values(resolveExportPaths(project, config.packs, settings.export));
+      const paths = resolveExportPaths(project, config.packs, settings.export);
+
+      return [...Object.values(paths), ...(hasPublicApi && settings.api !== false ? [resolveApiPackagePath(project, config.packs, paths, settings.api ?? 'dist/api')] : [])];
     } catch {
       return [];
     }
@@ -173,31 +182,27 @@ export async function runBuild({
     path.relative(output, file) === '' || normalized(file).startsWith(`${normalized(output)}.builder-`),
   );
 
-  // Reject symlinks before copying or publishing, including export parent directories.
-  async function inspect(directory: string, skipIgnored = true): Promise<void> {
+  const sources = await stagingInputs(project, config, profile, file, outputs, signal);
+
+  async function inspect(directory: string): Promise<void> {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       const source = path.join(directory, entry.name);
-
-      if (skipIgnored && (isOutput(source) || ignored.has(entry.name) || isStagingExcluded(source, exclusions))) {
-        continue;
-      }
 
       if (entry.isSymbolicLink()) {
         throw new Error(`Symlinks are unsupported in staged sources: ${source}`);
       }
 
       if (entry.isDirectory()) {
-        await inspect(source, skipIgnored);
+        await inspect(source);
       }
     }
   }
 
-  await inspect(project);
-
   return withExportPaths(outputPaths, async (publish) => {
     let workspace: string | undefined;
-    const dependencies = new Set([file, ...metadataInputs, ...modules.values()]);
+    const dependencies = new Set([file, ...sources, ...metadataInputs, ...modules.values(), ...(hasPublicApi ? [packageFile] : [])]);
     const artifacts = new Map<string, Artifact>();
+    const artifactFinalizers = new Map<string, (artifact: Artifact) => void | Promise<void>>();
     const generatedImports = new Map<string, string>();
     const packImports = new Map<string, Map<string, string>>();
     const exportExclusions = new Set<string>();
@@ -214,7 +219,7 @@ export async function runBuild({
       await cp(project, staged, {
         recursive: true,
         filter: source =>
-          !isOutput(source) && !ignored.has(path.basename(source)) && !isStagingExcluded(source, exclusions),
+          isStagingInput(source, sources) && !isOutput(source) && !ignored.has(path.basename(source)) && !isStagingExcluded(source, exclusions),
       });
       const generated = path.join(workspace, 'generated');
 
@@ -254,7 +259,7 @@ export async function runBuild({
           }
         }
 
-        const resolved = resolveProjectManifests(manifests, metadata);
+        const resolved = resolveProjectManifests(manifests, metadata, { dependencyRoot: project, registerDependency: input => dependencies.add(input) });
 
         return withDestinations(resolvePackGraph(Object.entries(stagedPacks).map(([id, directory]) => describePack(id, directory, resolved[id]))));
       }
@@ -288,7 +293,6 @@ export async function runBuild({
       });
       const context: BuildContext = Object.freeze({
         projectRoot: project,
-        namespace: metadata.namespace,
         project: metadata,
         stagedRoot: staged,
         generatedDir: generated,
@@ -329,6 +333,7 @@ export async function runBuild({
           const copy = Object.freeze({
             ...extension,
             ...(extension.packs ? { packs: Object.freeze([...extension.packs]) } : {}),
+            ...(extension.moduleNames ? { moduleNames: Object.freeze([...extension.moduleNames]) } : {}),
             ...(extension.inputs ? { inputs: Object.freeze([...extension.inputs]) } : {}),
             ...(extension.plugins ? { plugins: Object.freeze([...extension.plugins]) } : {}),
             ...(extension.resolveFromProject ? { resolveFromProject: Object.freeze([...extension.resolveFromProject]) } : {}),
@@ -340,6 +345,7 @@ export async function runBuild({
         allPacks: Object.freeze(stagedPacks),
         inspectPacks: currentPacks,
         outputPaths,
+        ...(apiOutput ? { apiOutput } : {}),
         profile,
         logger,
         signal,
@@ -402,6 +408,19 @@ export async function runBuild({
 
           artifacts.set(id, Object.freeze({ id, path: location, owner, ...(importAs ? { importAs } : {}), ...(pack ? { pack } : {}) }));
         },
+        finalizeArtifact(id: string, finalize: (artifact: Artifact) => void | Promise<void>) {
+          const artifact = artifacts.get(id);
+
+          if (!artifact || artifact.owner !== owner) {
+            throw new Error(`Artifact finalization requires an artifact owned by this invocation: ${id}`);
+          }
+
+          if (typeof finalize !== 'function' || artifactFinalizers.has(id)) {
+            throw new Error(`Artifact needs one finalizer function: ${id}`);
+          }
+
+          artifactFinalizers.set(id, finalize);
+        },
         artifact(id: string) {
           const artifact = artifacts.get(id);
 
@@ -434,8 +453,6 @@ export async function runBuild({
 
         return loadPlugin(url.href, step.plugin);
       }
-
-      await generateProject(context, metadata);
 
       for (const [index, step] of plan.entries()) {
         check(signal);
@@ -533,10 +550,25 @@ export async function runBuild({
             }
           }
 
+          await finalizePackManifests(stagedPacks);
+
+          for (const [id, finalize] of artifactFinalizers) {
+            check(signal);
+            await finalize(artifacts.get(id)!);
+            const file = await realpath(artifacts.get(id)!.path);
+
+            if (!inside(workspace, file) || !(await stat(file)).isFile()) {
+              throw new Error(`Invalid finalized artifact: ${id}`);
+            }
+          }
+
           await validatePackManifests(stagedPacks);
           await inspectPacks(stagedPacks);
+          const mode = config.bedrockCore.profiles[profile]?.validation ?? 'warn';
+
           validation = await validatePackContent({
             packs: await Promise.all(Object.keys(stagedPacks).map(id => context.inspectPack(id))),
+            mode,
             signal,
             async reuse(file, inputs, revision, validate) {
               const result = await cache.reuse(path.relative(staged, file).replaceAll('\\', '/'), {
@@ -552,20 +584,34 @@ export async function runBuild({
           });
           const checked = validation.files.filter(file => file.schema).length;
 
-          logger.info?.(`@bedrock-core/builder: validated ${checked} content documents against Mojang schemas ${validation.schemaVersion}; ${validation.files.length - checked} additional JSON documents checked for syntax`);
+          logger.info?.(mode === 'skip'
+            ? `@bedrock-core/builder: checked ${validation.files.length} JSON documents for syntax; content schema validation skipped`
+            : `@bedrock-core/builder: ${mode === 'warn' ? 'checked' : 'validated'} ${checked} content documents against Mojang schemas ${validation.schemaVersion}; ${validation.files.length - checked} additional JSON documents checked for syntax`);
           const schemaIssues = new Set(validation.files.flatMap(file => file.schemaIssue ? [file.schemaIssue] : []));
 
           for (const issue of schemaIssues) {
             logger.warn?.(`@bedrock-core/builder: ${issue}`);
           }
+
+          for (const { pack, file, pointer, message } of validation.files.flatMap(result => result.diagnostics)) {
+            logger.warn?.(`@bedrock-core/builder: ${pack}/${file}${pointer}: ${message}`);
+          }
         } else if (step.stage === 'export') {
           publishedPacks = [...withDestinations(await inspectPacks(stagedPacks))];
-          await inspect(staged, false);
+          await inspect(staged);
           check(signal);
-          await publishNodeData(context, () => publish(stagedPacks, signal));
+          const apiPackage = artifacts.get('api:package');
+
+          await publishNodeData(context, () => publish(stagedPacks, signal, apiPackage ? path.dirname(apiPackage.path) : undefined));
         } else if (step.stage !== 'prepare') {
           const plugin = await implementation(step.stage);
           const outcome = await executePlugin(plugin, context, step.settings ?? {}, step.mode);
+
+          if (step.stage === 'manifest') {
+            const ui = config.bedrockCore.profiles[profile]?.stages?.['ui-compiler'];
+
+            await prepareAddonArtwork(context, typeof ui === 'object' ? ui : {});
+          }
 
           stageResults.push({ stage: step.stage, ...outcome });
           logger.info?.(`@bedrock-core/builder: ${step.stage} ${outcome.status}${outcome.reason ? ` (${outcome.reason})` : ''}`);
@@ -584,6 +630,7 @@ export async function runBuild({
       const result = Object.freeze({
         validation: validation!,
         outputPaths,
+        ...(artifacts.has('api:package') ? { apiOutput } : {}),
         profile,
         stages: stageResults,
         dependencies: [...dependencies],
@@ -601,5 +648,5 @@ export async function runBuild({
         await rm(workspace, { recursive: true, force: true });
       }
     }
-  });
+  }, apiOutput);
 }

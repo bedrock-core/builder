@@ -1,6 +1,6 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { ProjectMetadata, BuildContext } from '@bedrock-core/builder-plugin';
+import type { ProjectMetadata } from '@bedrock-core/builder-plugin';
 import type { ProjectConfig } from './config.ts';
 import { isManifestVersion } from '@bedrock-core/builder-manifest';
 
@@ -62,7 +62,6 @@ export async function resolveProject(config: ProjectConfig, root: string, depend
   const url = [pkg.homepage, pkg.url].find((value): value is string => typeof value === 'string' && !!value.trim());
 
   return Object.freeze({
-    namespace: config.namespace,
     name: config.name,
     description: config.description ?? '',
     authors: Object.freeze(config.authors.map(author => typeof author === 'string' ? author : author.name)),
@@ -72,16 +71,4 @@ export async function resolveProject(config: ProjectConfig, root: string, depend
     ...(license ? { license } : {}),
     ...(url ? { url: url.trim() } : {}),
   });
-}
-
-/** Emit shared project metadata and literal editor declarations. */
-export async function generateProject(context: BuildContext, project: ProjectMetadata): Promise<void> {
-  const value = JSON.stringify(project);
-  const file = path.join(context.generatedDir, 'project.js');
-  const declarations = path.join(context.projectRoot, '.bedrock-core/generated/project.d.ts');
-
-  await writeFile(file, `export const project = ${value};\n`);
-  await mkdir(path.dirname(declarations), { recursive: true });
-  await writeFile(declarations, `declare module '@bedrock-core/generated/project' {\n  export const project: ${value};\n}\n`);
-  await context.registerArtifact('project:metadata', file, { importAs: '@bedrock-core/generated/project' });
 }

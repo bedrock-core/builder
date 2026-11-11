@@ -1,9 +1,12 @@
 import { readFile } from 'node:fs/promises';
-import ts from 'typescript';
+import * as ts from 'typescript-native/ast';
+import { API } from 'typescript-native/sync';
 import path from 'node:path';
 
 /** Recognize data expressions conservatively; arbitrary Node programs still execute. */
 export async function deterministicData(files: readonly string[]): Promise<boolean> {
+  using api = new API();
+
   for (const file of files) {
     const content = await readFile(file, 'utf8');
 
@@ -16,7 +19,8 @@ export async function deterministicData(files: readonly string[]): Promise<boole
       }
     }
 
-    const source = ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true);
+    using parsed = api.createSourceFile(file, content);
+    const source = parsed.sourceFile;
     const bindings = new Set<string>();
 
     for (const statement of source.statements) {
@@ -39,7 +43,7 @@ export async function deterministicData(files: readonly string[]): Promise<boole
 
         const clause = statement.importClause;
 
-        if (!clause.isTypeOnly && ts.isStringLiteral(statement.moduleSpecifier)
+        if (clause.phaseModifier !== ts.SyntaxKind.TypeKeyword && ts.isStringLiteral(statement.moduleSpecifier)
           && !statement.moduleSpecifier.text.startsWith('.') && !path.isAbsolute(statement.moduleSpecifier.text)) {
           return false;
         }

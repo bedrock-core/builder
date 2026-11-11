@@ -1,7 +1,6 @@
 {
   "$schema": "../../schemas/config.schema.json",
   "targetVersion": "1.26.50",
-  "namespace": "example_guides",
   "name": "@bedrock-core guides example",
   "authors": [],
   "packs": {
@@ -12,11 +11,6 @@
     "formatVersion": "1.0.0",
     "profiles": {
       "default": {
-        "stages": {
-          "guides": {
-            "compileScreens": false
-          }
-        },
         "export": {
           "logic": "./dist/BP",
           "assets": "./dist/RP"

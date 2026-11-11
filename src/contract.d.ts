@@ -25,6 +25,8 @@ export interface BuildResult {
   readonly validation: ContentValidationResult;
   /** Pack IDs mapped to their published absolute directories. */
   readonly outputPaths: Readonly<Record<string, string>>;
+  /** Published portable addon API package, when emitted by the provider build. */
+  readonly apiOutput?: string;
   /** Profile used for the build. */
   readonly profile: string;
   /** Participating stage statuses and optional explanations. */

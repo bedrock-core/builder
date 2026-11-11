@@ -1,5 +1,6 @@
 {
   "format_version": 3,
+  "namespace": "builder_i18n",
   "header": {
     "name": "pack.name",
     "description": "pack.description",

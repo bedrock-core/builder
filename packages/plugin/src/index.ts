@@ -43,7 +43,7 @@ export interface PackSelector {
   readonly modules?: readonly string[];
 }
 
-export { describePack, resolvePackGraph, inspectPack, inspectPacks, selectPacks, resolvePackOwner, resolveResourcePack, resolveFeaturePacks, type FeatureRouting } from './packs.ts';
+export { describePack, resolvePackGraph, inspectPack, inspectPacks, selectPacks, resolvePackOwner, resolveResourcePack, resolveFeaturePacks, resolveNamespace, type FeatureRouting } from './packs.ts';
 
 /** Indentation for generated JSON. */
 export interface JsonFormatting {
@@ -111,6 +111,8 @@ export interface BundleExtension {
   readonly version: string;
   /** Pack IDs receiving this extension; omission applies to all packs. */
   readonly packs?: readonly string[];
+  /** Authored external module dependencies, scoped to the selected packs. */
+  readonly moduleNames?: readonly string[];
   /** Source files and resolution candidates that invalidate bundle reuse. */
   readonly inputs?: readonly string[];
   /** esbuild plugins, applied in registration order before the host resolver. */
@@ -127,8 +129,6 @@ export interface BundleExtension {
 export interface BuildContext {
   /** Absolute directory containing the authored configuration. */
   readonly projectRoot: string;
-  /** Configured project namespace. */
-  readonly namespace: string;
   /** Shared package and display metadata; absent in standalone adapter hosts. */
   readonly project?: ProjectMetadata;
   /** Temporary project copy; apply pack edits here. */
@@ -151,6 +151,8 @@ export interface BuildContext {
   readonly linkedPacks?: LinkedPacks;
   /** Absolute export destinations, restricted for targeted invocations. */
   readonly outputPaths: Readonly<Record<string, string>>;
+  /** Reserved portable API package destination; absent when the project has no public API or disables emission. */
+  readonly apiOutput?: string;
   /** Selected profile. */
   readonly profile: string;
   /** Build output sink. */
@@ -167,6 +169,8 @@ export interface BuildContext {
   readonly inputDirectories?: readonly string[];
   /** Register an existing staged file; duplicate IDs/import names fail. */
   registerArtifact(id: string, file: string, options?: { importAs?: string; pack?: string }): Promise<void>;
+  /** Update a registered producer-owned sidecar after all hooks and input exclusions, before final validation. */
+  finalizeArtifact?(id: string, finalize: (artifact: Artifact) => void | Promise<void>): void;
   /** Read an earlier artifact; missing IDs fail. */
   artifact(id: string): Artifact;
   /** Read a configured pack's current staged manifest. */

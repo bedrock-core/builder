@@ -2,8 +2,9 @@ import { watch, type FSWatcher } from 'node:fs';
 import { lstat, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { validateConfig, type ProjectConfig } from './config.ts';
-import { isStagingExcluded, stagingExclusions } from './staging.ts';
-import { resolveExportPaths } from './export.ts';
+import { isStagingExcluded, isStagingInput, stagingExclusions, stagingInputs } from './staging.ts';
+import { resolveExportPaths, resolveApiPackagePath } from './export.ts';
+import { hasApiExports } from '@bedrock-core/builder-manifest';
 import { runBuild } from './run.ts';
 import { inputLocations } from './file-cache.ts';
 import { observeSourceWrites } from './source-writes.ts';
@@ -42,12 +43,14 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
   const project = path.dirname(configPath);
   const external = new Map<string, FSWatcher>();
   const recursiveExternal = new Map<string, boolean>();
+  const externalIdentities = new Map<string, string>();
   let externalTargets = new Map<string, Set<string>>();
   let outputRoots = new Set<string>();
   let extraPaths: string[] = [];
   let exclusions: string[] = [];
   let dependencies: string[] = [];
   let dependencyLocations: ReadonlySet<string> = new Set();
+  let sourceRoots = [configPath, path.join(project, 'package.json'), path.join(project, 'tsconfig.json')];
   let debounceMs = 100;
   let dirty = false;
   let stopped = false;
@@ -59,8 +62,17 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
 
   let removeAbortListener = () => {};
 
-  function exportRoots(config: ProjectConfig): string[] {
+  async function exportRoots(config: ProjectConfig): Promise<string[]> {
     const selected = config.bedrockCore.profiles[profile];
+    let metadata: unknown;
+
+    try {
+      metadata = JSON.parse(await readFile(path.join(project, 'package.json'), 'utf8'));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw error;
+      }
+    }
 
     if (selected?.export) {
       resolveExportPaths(project, config.packs, selected.export);
@@ -72,7 +84,9 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
       }
 
       try {
-        return Object.values(resolveExportPaths(project, config.packs, settings.export));
+        const paths = resolveExportPaths(project, config.packs, settings.export);
+
+        return [...Object.values(paths), ...(hasApiExports(metadata) && settings.api !== false ? [resolveApiPackagePath(project, config.packs, paths, settings.api ?? 'dist/api')] : [])];
       } catch {
         return [];
       }
@@ -98,7 +112,8 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
       }
     }
 
-    return false;
+    return file !== project && !isStagingInput(file, sourceRoots)
+      && !dependencies.some(dependency => dependency !== project && contains(dependency, file));
   }
 
   function report(error: unknown): void {
@@ -130,7 +145,9 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
   }
 
   async function updateExternalWatchers(): Promise<void> {
-    const targets = new Set([...extraPaths, ...dependencies].filter(file => !contains(project, file) || path.relative(project, file).split(path.sep).includes('node_modules')));
+    const targets = new Set([...sourceRoots, ...extraPaths, ...dependencies].filter(file =>
+      !contains(project, file) || path.relative(project, file).split(path.sep).includes('node_modules') || !ignored(file),
+    ));
     const directories = new Map<string, Set<string>>();
 
     for (const target of targets) {
@@ -163,13 +180,17 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
         watcher.close();
         external.delete(directory);
         recursiveExternal.delete(directory);
+        externalIdentities.delete(directory);
       }
     }
 
     for (const directory of externalTargets.keys()) {
-      const recursive = [...externalTargets.get(directory)!].some(target => target === directory && !dependencyLocations.has(target));
+      const recursive = [...externalTargets.get(directory)!].some(target => target === directory && !dependencyLocations.has(target)
+        && (directory !== project || sourceRoots.includes(project)));
+      const info = await stat(directory);
+      const identity = `${info.dev}:${info.ino}`;
 
-      if (external.has(directory) && recursiveExternal.get(directory) === recursive) {
+      if (external.has(directory) && recursiveExternal.get(directory) === recursive && externalIdentities.get(directory) === identity) {
         continue;
       }
 
@@ -179,7 +200,11 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
         const relevant = [...(externalTargets.get(directory) ?? [])].some(target => contains(target, changed) || contains(changed, target));
 
         if (relevant && ![...outputRoots].some(root => contains(root, changed))) {
-          requestBuild();
+          if (contains(project, changed) && !path.relative(project, changed).split(path.sep).includes('node_modules')) {
+            void changedInput(changed).catch(report);
+          } else {
+            requestBuild();
+          }
         }
       });
 
@@ -187,10 +212,12 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
         watcher.close();
         external.delete(directory);
         recursiveExternal.delete(directory);
+        externalIdentities.delete(directory);
         report(error);
       });
       external.set(directory, watcher);
       recursiveExternal.set(directory, recursive);
+      externalIdentities.set(directory, identity);
     }
   }
 
@@ -206,7 +233,7 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
           throw new Error(`Unknown profile: ${profile}`);
         }
 
-        const roots = new Set(exportRoots(config));
+        const roots = new Set(await exportRoots(config));
 
         exclusions = stagingExclusions(project, config, configPath);
 
@@ -218,6 +245,7 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
 
         // Retain former outputs as ignored paths after profile edits.
         outputRoots = new Set([...outputRoots, ...roots]);
+        sourceRoots = await stagingInputs(project, config, profile, configPath, [...outputRoots], signal);
         debounceMs = settings.watch?.debounceMs ?? 100;
         extraPaths = (settings.watch?.paths ?? []).map(file => path.resolve(project, file));
         await updateExternalWatchers();
@@ -259,7 +287,7 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
           visible.push(`${entry.name}:${entry.isDirectory() ? 'directory' : 'file'}`);
         }
 
-        return visible.sort().join('|');
+        return visible.length ? `${info.ino}:${visible.sort().join('|')}` : '';
       }
 
       return `${info.mtimeNs}:${info.size}:${info.ino}`;
@@ -290,7 +318,7 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
     }
   }
 
-  async function changed(file: string): Promise<void> {
+  async function changedInput(file: string): Promise<void> {
     // Windows may emit unchanged directory events while recursive watches are attached.
     file = file.startsWith('\\\\?\\') ? file.slice(4) : file;
 
@@ -307,7 +335,7 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
     const previous = signatures.get(file);
 
     // A new empty directory may contain only ignored output paths.
-    if (current === '' && (previous === undefined || previous === 'missing')) {
+    if (current === '' && (previous === undefined || previous === 'missing') && !sourceRoots.some(root => contains(file, root))) {
       signatures.set(file, current);
 
       return;
@@ -325,9 +353,11 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
 
     exclusions = stagingExclusions(project, config, configPath);
 
-    for (const directory of exportRoots(config)) {
+    for (const directory of await exportRoots(config)) {
       outputRoots.add(directory);
     }
+
+    sourceRoots = await stagingInputs(project, config, profile, configPath, [...outputRoots], signal);
 
     const generator = settings?.stages?.generator;
 
@@ -339,10 +369,10 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
   }
 
   await snapshot(project);
-  const watcher = watch(project, { recursive: true }, (_event, filename) => {
+  const watcher = watch(project, { recursive: false }, (_event, filename) => {
     const file = filename ? path.resolve(project, filename.toString()) : project;
 
-    void changed(file).catch(report);
+    void changedInput(file).catch(report);
   });
 
   const stopObservingWrites = observeSourceWrites(project, (writes) => {
@@ -364,6 +394,8 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
           await snapshot(directory);
           signatures.set(path.dirname(directory), await signature(path.dirname(directory)));
         }
+
+        await updateExternalWatchers();
 
         if ((await Promise.all(writes.map(write => write.matches()))).some(matches => !matches)) {
           requestBuild();

@@ -4,8 +4,8 @@ import { readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { runBuild } from '../src/run.ts';
 import { validateConfig } from '../src/config.ts';
-import { projectFor } from '../test-support/project.js';
-import { translationsFor, put } from '../test-support/i18n.js';
+import { projectFor, put } from '../test-support/project.js';
+import { translationsFor } from '../test-support/i18n.js';
 import { seedSchemas } from '../test-support/schemas.js';
 
 const status = (result, stage) => result.stages.find(entry => entry.stage === stage)?.status;
@@ -40,11 +40,25 @@ test('omitted stages detect script-only inputs without fetching generator schema
   assert.equal(await exportedValue(project), 1);
 });
 
+test('automatic UI detection reads only the selected script entry', async (t) => {
+  const project = await projectFor(t);
+
+  await automatic(project);
+  project.behavior.modules[0].entry = 'scripts/main.js';
+  await put(project.project, 'packs/gameplay/manifest.json', JSON.stringify(project.behavior));
+  await put(project.project, 'packs/gameplay/scripts/main.js', 'export const value = 7;');
+  await put(project.project, 'packs/gameplay/scripts/main.ts', 'import "@bedrock-core/generated/ui";');
+  const result = await runBuild({ configPath: project.configPath, logger: {} });
+
+  assert.equal(status(result, 'ui-compiler'), 'skipped');
+  assert.equal(await exportedValue(project), 7);
+});
+
 test('nested manifest script entries and their helpers are excluded from template detection', async (t) => {
   const project = await projectFor(t);
 
   await automatic(project);
-  project.behavior.modules[0].entry = 'scripts/runtime/main.js';
+  project.behavior.modules[0].entry = 'scripts/runtime/main.ts';
   await put(project.project, 'packs/gameplay/manifest.json', JSON.stringify(project.behavior));
   await put(project.project, 'packs/gameplay/scripts/runtime/main.ts', `import { value } from './helper.ts'; export { value };`);
   await put(project.project, 'packs/gameplay/scripts/runtime/helper.ts', 'export const value = 12;');

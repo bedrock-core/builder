@@ -3,6 +3,15 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { manifestFor } from './manifest.js';
 
+export async function put(root, relative, content) {
+  const file = path.join(root, relative);
+
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, content);
+
+  return file;
+}
+
 export async function projectFor(t, { cleanup = true } = {}) {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'builder-flow-')));
   const dispose = () => rm(root, { recursive: true, force: true });
@@ -12,8 +21,11 @@ export async function projectFor(t, { cleanup = true } = {}) {
   }
 
   const project = path.join(root, 'project');
-  const behavior = manifestFor('script');
+  const behavior = manifestFor('script', 'scripts/main.ts');
   const resources = manifestFor('resources');
+
+  behavior.namespace = 'flow_test';
+  resources.namespace = 'flow_test';
 
   behavior.dependencies = [{ uuid: resources.header.uuid, version: resources.header.version }];
 
@@ -23,7 +35,7 @@ export async function projectFor(t, { cleanup = true } = {}) {
   await writeFile(path.join(project, 'packs/gameplay/manifest.test.json'), JSON.stringify({
     extends: './manifest.json',
     header: { name: 'Test pack' },
-    modules: behavior.modules.map(module => ({ ...module, entry: 'scripts/tests.js' })),
+    modules: behavior.modules.map(module => ({ ...module, entry: 'scripts/tests.ts' })),
   }));
   await writeFile(path.join(project, 'packs/visuals/manifest.json'), JSON.stringify(resources));
   await writeFile(path.join(project, 'packs/gameplay/scripts/main.ts'), 'export const value: number = 1;');
@@ -31,7 +43,7 @@ export async function projectFor(t, { cleanup = true } = {}) {
   await writeFile(path.join(project, 'packs/visuals/asset.json'), '{"value":1}');
   const config = {
     name: 'Build flow', authors: [], targetVersion: '1.26.50',
-    namespace: 'flow_test', packs: { gameplay: './packs/gameplay', visuals: './packs/visuals' },
+    packs: { gameplay: './packs/gameplay', visuals: './packs/visuals' },
     bedrockCore: { formatVersion: '1.0.0', profiles: {
       default: { stages: { manifest: true, bundler: { debug: true } }, export: { gameplay: './dist/gameplay', visuals: './dist/visuals' } },
       tests: {

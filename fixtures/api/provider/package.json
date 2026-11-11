@@ -1,0 +1,12 @@
+{
+  "name": "@bedrock-core/api-provider",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./packs/BP/api/index.ts",
+    "./math": "./packs/BP/api/math.ts",
+    "./values": "./packs/BP/api/values.ts",
+    "./manifest.json": "./packs/BP/manifest.json"
+  }
+}

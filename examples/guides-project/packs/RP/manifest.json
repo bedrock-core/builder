@@ -1,5 +1,6 @@
 {
   "format_version": 3,
+  "namespace": "example_guides",
   "header": {
     "name": "@bedrock-core guides example assets",
     "description": "Localized guide prose",

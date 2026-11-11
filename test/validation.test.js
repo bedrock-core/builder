@@ -15,15 +15,15 @@ async function fixture(t) {
   await writeFile(path.join(root, 'packs/BP/manifest.json'), JSON.stringify(manifestFor('data')));
   const source = path.join(root, 'packs/BP/loot_tables/example.json');
   const config = {
-    name: 'Validation', authors: [], namespace: 'validation',
+    name: 'Validation', authors: [],
     targetVersion: '1.26.50', packs: { gameplay: './packs/BP' },
-    bedrockCore: { formatVersion: '1.0.0', profiles: { default: { export: { gameplay: './dist/BP' } } } },
+    bedrockCore: { formatVersion: '1.0.0', profiles: { default: { validation: 'strict', export: { gameplay: './dist/BP' } } } },
   };
   const configPath = path.join(root, 'config.json');
 
   await writeFile(configPath, JSON.stringify(config));
 
-  return { root, source, config, configPath, packs: [{ id: 'gameplay', path: path.join(root, 'packs/BP'), kind: 'behavior' }] };
+  return { root, source, config, configPath, mode: 'strict', packs: [{ id: 'gameplay', path: path.join(root, 'packs/BP'), kind: 'behavior' }] };
 }
 
 test('content validation follows nested official schema references and supports JSON comments', async (t) => {
@@ -73,7 +73,7 @@ test('official terrain atlas validation accepts single paths and path arrays whi
   const project = await fixture(t);
   const resource = path.join(project.root, 'packs/RP');
   const file = path.join(resource, 'textures/terrain_texture.json');
-  const options = { packs: [{ id: 'assets', path: resource, kind: 'resource' }] };
+  const options = { mode: 'strict', packs: [{ id: 'assets', path: resource, kind: 'resource' }] };
   const atlas = { resource_pack_name: 'validation', texture_name: 'atlas.terrain', texture_data: {
     stone: { textures: 'textures/blocks/stone' },
     variants: { textures: ['textures/blocks/stone', 'textures/blocks/dirt'] },
@@ -111,7 +111,7 @@ test('custom terrain atlas schemas retain their declared texture types', async (
       textures: { type: 'array', items: { type: 'string' } },
     } } },
   } }));
-  const options = { schemaRoot, packs: [{ id: 'assets', path: resource, kind: 'resource' }] };
+  const options = { mode: 'strict', schemaRoot, packs: [{ id: 'assets', path: resource, kind: 'resource' }] };
 
   await writeFile(file, JSON.stringify({ texture_data: { stone: { textures: 'textures/blocks/stone' } } }));
   await assert.rejects(validatePackContent(options), ContentValidationError);
@@ -150,6 +150,82 @@ test('unknown JSON receives syntax validation and reports schema coverage accura
   assert.equal(result.files[0].schema, undefined);
   await writeFile(unknown, '{"custom":}');
   await assert.rejects(validatePackContent(project), /gameplay\/custom.json/);
+});
+
+test('validation profiles warn or skip schema errors while invalid JSON stays fatal', async (t) => {
+  const project = await fixture(t);
+  const warnings = [];
+  const options = { configPath: project.configPath, logger: { warn: message => warnings.push(message) } };
+
+  const setMode = async (mode) => {
+    project.config.bedrockCore.profiles.default.validation = mode;
+    await writeFile(project.configPath, JSON.stringify(project.config));
+  };
+
+  await writeFile(project.source, '{"pools":[{"rolls":"invalid","entries":[]}]}');
+  await setMode('warn');
+  const warned = await runBuild(options);
+
+  assert.ok(warned.validation.files[0].diagnostics.some(issue => issue.kind === 'schema' && issue.pointer === '/pools/0/rolls'));
+  assert.ok(warnings.some(message => message.includes('gameplay/loot_tables/example.json/pools/0/rolls')));
+  await setMode('strict');
+  await assert.rejects(runBuild(options), ContentValidationError);
+  await setMode('skip');
+  const skipped = await runBuild(options);
+
+  assert.equal(skipped.validation.schemaVersion, '');
+  assert.equal(skipped.validation.files[0].schema, undefined);
+  assert.deepEqual(skipped.validation.files[0].diagnostics, []);
+  await validatePackContent({ ...project, mode: 'skip', schemaRoot: path.join(project.root, 'missing-schemas') });
+  await writeFile(project.source, '{"pools":}');
+  await assert.rejects(runBuild(options), ContentValidationError);
+  await setMode('warn');
+  await assert.rejects(runBuild(options), ContentValidationError);
+});
+
+test('schema diagnostics warn by default in the runner and standalone API while syntax and manifests stay fatal', async (t) => {
+  const project = await fixture(t);
+  const warnings = [];
+
+  delete project.mode;
+  delete project.config.bedrockCore.profiles.default.validation;
+  await writeFile(project.configPath, JSON.stringify(project.config));
+  await writeFile(project.source, '{"pools":[{"rolls":"invalid","entries":[]}]}');
+  const result = await validatePackContent(project);
+
+  assert.ok(result.files[0].diagnostics.some(issue => issue.kind === 'schema'));
+  const built = await runBuild({ configPath: project.configPath, logger: { warn: message => warnings.push(message) } });
+
+  assert.ok(warnings.some(message => message.includes('/pools/0/rolls')));
+  assert.equal(await readFile(path.join(built.outputPaths.gameplay, 'loot_tables/example.json'), 'utf8'), '{"pools":[{"rolls":"invalid","entries":[]}]}');
+  await assert.rejects(validatePackContent({ ...project, mode: 'strict' }), ContentValidationError);
+  await writeFile(project.source, '{invalid JSON');
+  await assert.rejects(validatePackContent(project), ContentValidationError);
+  await assert.rejects(runBuild({ configPath: project.configPath, logger: {} }), ContentValidationError);
+  await writeFile(project.source, '{"pools":[]}');
+  await writeFile(path.join(project.packs[0].path, 'manifest.json'), '{"header":{}}');
+  await assert.rejects(runBuild({ configPath: project.configPath, logger: {} }), /needs an authored header and modules/);
+});
+
+test('pinned sound definitions accept path strings and validate named sound objects', async (t) => {
+  const project = await fixture(t);
+  const resource = path.join(project.root, 'packs/RP');
+  const file = path.join(resource, 'sounds/sound_definitions.json');
+  const options = { mode: 'strict', packs: [{ id: 'assets', path: resource, kind: 'resource' }] };
+  const write = sounds => writeFile(file, JSON.stringify({ format_version: '1.14.0', sound_definitions: {
+    'ui.example': { category: 'ui', sounds },
+  } }));
+
+  await mkdir(path.dirname(file), { recursive: true });
+  await write(['sounds/ui/example', { name: 'sounds/ui/other', volume: 0.5, pitch: [0.9, 1] }]);
+  const result = await validatePackContent(options);
+
+  assert.match(result.files[0].schema, /rp\/sounds\/index/);
+
+  for (const invalid of [17, '', { volume: 1 }, { name: 'sounds/ui/other', pitch: 'high' }]) {
+    await write([invalid]);
+    await assert.rejects(validatePackContent(options), ContentValidationError);
+  }
 });
 
 test('final validation rejects hook output, preserves previous exports and recovers on repair', async (t) => {
@@ -214,7 +290,7 @@ test('official client entities accept mixed render-controller entries without ac
   const resource = path.join(project.root, 'packs/RP');
   const file = path.join(resource, 'entity/display.entity.json');
   const entity = { 'format_version': '1.10.0', 'minecraft:client_entity': { description: { identifier: 'validation:display', render_controllers: ['controller.render.main', { 'controller.render.outline': 'q.property(\'validation:selected\') == 1' }] } } };
-  const options = { packs: [{ id: 'assets', path: resource, kind: 'resource' }] };
+  const options = { mode: 'strict', packs: [{ id: 'assets', path: resource, kind: 'resource' }] };
 
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, JSON.stringify(entity));
@@ -229,7 +305,7 @@ test('official geometry accepts numeric and expression vectors while rejecting o
   const resource = path.join(project.root, 'packs/RP');
   const file = path.join(resource, 'models/blocks/housing.geo.json');
   const geometry = { 'format_version': '1.16.0', 'minecraft:geometry': [{ description: { identifier: 'geometry.validation', texture_width: 16, texture_height: 16, visible_bounds_offset: [0, 0.5, 0] }, bones: [{ name: 'housing', pivot: [8, 0, 8], cubes: [{ origin: [0, 0, 0], size: [16, 4, 16], uv: [0, 0] }] }] }] };
-  const options = { packs: [{ id: 'assets', path: resource, kind: 'resource' }] };
+  const options = { mode: 'strict', packs: [{ id: 'assets', path: resource, kind: 'resource' }] };
 
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, JSON.stringify(geometry));

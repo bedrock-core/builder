@@ -7,7 +7,7 @@
  *   was given.
  * - `catalog`, `config` and `guides` are the bedrock-core apps: each registers
  *   its own command under this addon's namespace and serves its own screens.
- * - A button push opens this addon's own custom UI (./UI/screens/home.screen).
+ * - A button push opens this addon's own custom UI (../UI/screens/home.screen).
  */
 import { render } from '@bedrock-core/ui';
 import { core } from '@bedrock-core/server';
@@ -17,20 +17,14 @@ import { registerGuides } from '@bedrock-core/guides';
 import { ButtonPushAfterEvent, Entity, Player, world } from '@minecraft/server';
 import { MinecraftEntityTypes } from '@minecraft/vanilla-data';
 import { configDef } from './config';
-import { i18n } from './UI/i18n';
-import homeScreen from './UI/screens/home.screen';
+import { i18n } from '../i18n';
+import homeScreen from '../UI/screens/home.screen';
+import manifest from '../manifest.json';
 
 const isPlayer = (entity: Entity): entity is Player => entity.typeId === MinecraftEntityTypes.Player;
 
 const { config } = core.register({
-  manifest: {
-    creator: '{{CREATOR_ID}}',
-    pack: '{{PACK_ID}}',
-    packName: i18n.key($ => $.pack.name),
-    creatorName: i18n.key($ => $.pack.creator),
-    version: '1.0.0',
-    description: i18n.key($ => $.pack.description),
-  },
+  manifest,
   catalog: registerCatalog(),
   config: registerConfig(configDef),
   guides: registerGuides(),

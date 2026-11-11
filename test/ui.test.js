@@ -1,13 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { manifestFor } from '../test-support/manifest.js';
 import { installUi } from '../test-support/ui.js';
 import { runBuild } from '../src/run.ts';
+import { run as runUi } from '../packages/ui-compiler/src/plugin.ts';
 
 const json = async file => JSON.parse(await readFile(file, 'utf8'));
 
@@ -19,14 +20,16 @@ async function fixture(t) {
   await mkdir(path.join(root, 'packs/BP/scripts'), { recursive: true });
   await mkdir(path.join(root, 'packs/RP/ui'), { recursive: true });
   const resource = manifestFor('resources');
-  const behavior = manifestFor('script', 'scripts/start.js');
+  const behavior = manifestFor('script', 'scripts/start.ts');
+
+  behavior.namespace = 'test';
 
   behavior.dependencies = [{ uuid: resource.header.uuid, version: resource.header.version }];
   await writeFile(path.join(root, 'packs/BP/manifest.json'), JSON.stringify(behavior));
   await writeFile(path.join(root, 'packs/RP/manifest.json'), JSON.stringify(resource));
   await writeFile(path.join(root, 'packs/BP/scripts/start.ts'), 'export const value = 1;');
   const config = {
-    name: 'UI', authors: [], targetVersion: '1.26.50', namespace: 'test',
+    name: 'UI', authors: [], targetVersion: '1.26.50',
     packs: { logic: './packs/BP', assets: './packs/RP' },
     bedrockCore: { formatVersion: '1.0.0', profiles: { default: { export: { logic: './dist/BP', assets: './dist/RP' } } } },
   };
@@ -38,9 +41,10 @@ async function fixture(t) {
     root, config, configPath,
     options: { configPath, logger: {} },
     async save() { await writeFile(configPath, JSON.stringify(config)); },
-    async screen(name, body = '<Text>Hello</Text>', prefix = '') {
-      const file = path.join(root, `packs/BP/scripts/${name}.screen.tsx`);
+    async screen(name, body = '<Text>Hello</Text>', prefix = '', directory = 'scripts') {
+      const file = path.join(root, `packs/BP/${directory}/${name}.screen.tsx`);
 
+      await mkdir(path.dirname(file), { recursive: true });
       await writeFile(file, `import { Screen, Text } from '@bedrock-core/ui'; ${prefix} export default function Page() { return <Screen>${body}</Screen>; }`);
 
       return file;
@@ -50,6 +54,196 @@ async function fixture(t) {
 
 const screenChecks = result => result.compilations.filter(item => item.id.startsWith('ui-compiler/screen:'));
 const executed = result => screenChecks(result).filter(item => item.status === 'executed').map(item => item.id.split(':').at(-1)).sort();
+
+test('automatically marks ordinary components in build evaluation and shipped code', async (t) => {
+  const project = await fixture(t);
+  const source = await project.screen('cached', '<Row label="One" />', 'import { Button, useState } from "@bedrock-core/ui"; export function Row({ label }) { return <Text>{label}</Text>; } export function Handler({ onPress }) { return <Button onPress={onPress} />; } export function Events({ value }) { return <Handler onPress={() => value} />; } export function Derived({ prefix }) { const [count] = useState(1); const label = `${prefix}:${count}`; return <Text>{label}</Text>; }');
+  const original = await readFile(source, 'utf8');
+
+  await writeFile(path.join(project.root, 'packs/BP/scripts/start.ts'), 'export { Row, Events, Handler, Derived } from "./cached.screen";');
+  project.config.bedrockCore.profiles.default.stages = { bundler: true };
+  await project.save();
+  let modules = [];
+  const result = await runBuild({ ...project.options, stages: {
+    'ui-compiler': async (context, settings) => {
+      const result = await runUi(context, settings);
+      const directory = path.join(context.generatedDir, 'ui');
+      const files = (await readdir(directory)).filter(file => file.startsWith('module-') && file.endsWith('.mjs'));
+
+      modules = await Promise.all(files.map(file => readFile(path.join(directory, file), 'utf8')));
+
+      return result;
+    },
+  } });
+
+  assert(modules.some(code => code.includes('@bedrock-core/ui/compiler/pure')));
+  assert(modules.some(code => code.includes('__cacheCallback')));
+  assert(modules.some(code => code.includes('__cacheValue')));
+  assert(modules.some(code => code.includes('@bedrock-core/ui/compiler/callback-props')));
+  const output = await readFile(path.join(result.outputPaths.logic, 'scripts/start.js'), 'utf8');
+
+  assert.match(output, /@bedrock-core\/ui\/compiler\/pure/);
+  assert.match(output, /__cacheCallback/);
+  assert.match(output, /__cacheValue/);
+  assert.match(output, /@bedrock-core\/ui\/compiler\/callback-props/);
+  const executable = path.join(project.root, 'verify-cache.mjs');
+
+  await writeFile(executable, output);
+  const previousScreens = globalThis.uiScreens;
+
+  try {
+    globalThis.uiScreens = [];
+    const module = await import(pathToFileURL(executable));
+
+    assert.equal(module.Row[Symbol.for('@bedrock-core/ui/compiler/pure')], true);
+    assert.deepEqual(module.Handler[Symbol.for('@bedrock-core/ui/compiler/callback-props')], ['onPress']);
+    assert.equal(module.Events({ value: 'latest' }).props.onPress(), 'latest');
+    assert.equal(module.Derived({ prefix: 'Rows' }).props.children, 'Rows:1');
+  } finally {
+    if (previousScreens === undefined) {
+      delete globalThis.uiScreens;
+    } else {
+      globalThis.uiScreens = previousScreens;
+    }
+  }
+
+  assert.equal(await readFile(source, 'utf8'), original);
+});
+
+test('test metadata requires an artifact-finalizing host', async (t) => {
+  const project = await fixture(t);
+
+  await project.screen('host');
+  project.config.bedrockCore.profiles.default.stages = { 'ui-compiler': { testMetadata: true } };
+  await project.save();
+  await assert.rejects(runBuild({ ...project.options, stages: {
+    'ui-compiler': (context, settings) => runUi({ ...context, finalizeArtifact: undefined }, settings),
+  } }), /artifact finalization support/);
+});
+
+test('invalid plugin metadata prevents publication', async (t) => {
+  const project = await fixture(t);
+
+  await project.screen('metadata');
+  project.config.bedrockCore.plugins = { invalid: { module: './invalid.ts' } };
+  project.config.bedrockCore.profiles.default.stages = { 'ui-compiler': { testMetadata: true } };
+  project.config.bedrockCore.profiles.default.steps = [{ plugin: 'invalid', before: 'export' }];
+  await writeFile(path.join(project.root, 'invalid.ts'), `
+    import { writeFile } from 'node:fs/promises';
+    import path from 'node:path';
+    export async function run(context) {
+      await writeFile(path.join(context.packs.assets, 'bedrock-core/test-metadata.json'), '[]');
+    }
+  `);
+  await project.save();
+  await assert.rejects(runBuild(project.options), /Invalid UI test metadata manifest/);
+});
+
+for (const [pretty, plugin] of [false, { indent: 'space', size: 2 }, { indent: 'tab' }].flatMap(pretty => ['module', 'script'].map(plugin => [pretty, plugin]))) {
+  test(`metadata hashes describe final ${plugin} plugin output with ${JSON.stringify(pretty)} formatting`, async (t) => {
+    const project = await fixture(t);
+
+    await project.screen('digest', '<Text>Authored</Text>', '', 'UI');
+    project.config.bedrockCore.plugins = { decorate: { [plugin]: './decorate.mjs' } };
+    project.config.bedrockCore.profiles.default.pretty = pretty;
+    project.config.bedrockCore.profiles.default.stages = { 'ui-compiler': { testMetadata: true } };
+    project.config.bedrockCore.profiles.default.steps = [{ plugin: 'decorate', before: 'export' }];
+    await writeFile(path.join(project.root, 'decorate.mjs'), `
+      import { readFile, writeFile, unlink } from 'node:fs/promises';
+      import path from 'node:path';
+      export async function run(context) {
+        const root = context.packs.assets;
+        const screen = path.join(root, 'ui/core-ui/screens/test/digest.json');
+        const document = JSON.parse(await readFile(screen, 'utf8'));
+        document.plugin = { decorated: true };
+        await writeFile(screen, JSON.stringify(document, null, 4) + '\\n');
+        await writeFile(path.join(root, 'ui/plugin-added.json'), '{"namespace":"plugin"}');
+        await unlink(path.join(root, 'ui/discard.json'));
+        const sidecar = path.join(root, 'bedrock-core/test-metadata.json');
+        const metadata = JSON.parse(await readFile(sidecar, 'utf8'));
+        metadata.extension = 'preserved';
+        await writeFile(sidecar, JSON.stringify(metadata));
+      }
+      ${plugin === 'script' ? 'await run({ packs: { assets: path.resolve(\'RP\') } });' : ''}
+    `);
+    await writeFile(path.join(project.root, 'packs/RP/ui/discard.json'), '{"namespace":"discard"}');
+    await project.save();
+
+    for (const status of ['executed', 'cached']) {
+      const result = await runBuild(project.options);
+      const metadata = await json(path.join(result.outputPaths.assets, 'bedrock-core/test-metadata.json'));
+
+      assert.equal(result.stages.find(stage => stage.stage === 'ui-compiler').status, status);
+      assert.equal(metadata.extension, 'preserved');
+      assert.equal(metadata.screens.find(screen => screen.metadata)?.source, 'packs/BP/UI/digest.screen.tsx');
+      assert.ok(metadata.files.some(file => file.path === 'ui/plugin-added.json'));
+      assert.ok(!metadata.files.some(file => file.path === 'ui/discard.json'));
+
+      for (const file of metadata.files) {
+        const actual = createHash('sha256').update(await readFile(path.join(result.outputPaths.assets, file.path))).digest('hex');
+
+        assert.equal(file.sha256, actual, file.path);
+      }
+    }
+  });
+}
+
+test('pack UI sources share runtime imports, editor keys and cached output with script screens', async (t) => {
+  const project = await fixture(t);
+
+  t.after(() => {
+    delete globalThis.uiScreens;
+    delete globalThis.authoredUi;
+  });
+  const source = await project.screen('current', '<Text>{caption}</Text>', 'import caption from \'@ui/caption\';', 'UI/screens');
+  const caption = path.join(project.root, 'packs/BP/UI/caption.ts');
+  const entry = path.join(project.root, 'packs/BP/scripts/start.ts');
+
+  await project.screen('legacy', '<Text>Legacy</Text>', '', 'scripts/UI');
+  await writeFile(caption, 'import { suffix } from \'../scripts/shared\'; export default \'Current \' + suffix;');
+  await writeFile(path.join(project.root, 'packs/BP/UI/unused.ts'), 'export default { private: true };');
+  await writeFile(path.join(project.root, 'packs/BP/scripts/shared.ts'), 'export const suffix = \'caption\';');
+  await writeFile(path.join(project.root, 'tsconfig.json'), JSON.stringify({ compilerOptions: {
+    paths: { '@ui/*': ['./packs/BP/UI/*'] }, jsx: 'react-jsx', jsxImportSource: '@bedrock-core/ui',
+  } }));
+  await writeFile(entry, `import Page from '../UI/screens/current.screen'; import { render } from '@bedrock-core/ui'; globalThis.authoredUi = render(Page);`);
+  const original = await readFile(source, 'utf8');
+
+  for (const expected of ['executed', 'cached']) {
+    const result = await runBuild(project.options);
+    const script = path.join(project.root, `verify-ui-${expected}.mjs`);
+
+    assert.equal(result.stages.find(stage => stage.stage === 'generator').status, 'skipped');
+    assert.equal(result.stages.find(stage => stage.stage === 'ui-compiler').status, expected);
+    assert.match(await readFile(path.join(result.outputPaths.assets, 'ui/core-ui/screens/test/current.json'), 'utf8'), /Current caption/);
+    assert.match(await readFile(path.join(project.root, '.bedrock-core/generated/ui/screens.generated.d.ts'), 'utf8'), /"test:current": true/);
+    await assert.rejects(readdir(path.join(result.outputPaths.logic, 'UI')), { code: 'ENOENT' });
+    assert.equal(await readFile(source, 'utf8'), original);
+    await writeFile(script, await readFile(path.join(result.outputPaths.logic, 'scripts/start.js')));
+    await import(pathToFileURL(script));
+    assert.deepEqual([...globalThis.uiScreens].sort(), ['test:current', 'test:legacy']);
+    assert.equal(globalThis.authoredUi.children.text, 'Current caption');
+    delete globalThis.uiScreens;
+    delete globalThis.authoredUi;
+  }
+
+  await writeFile(caption, 'export default \'Updated caption\';');
+  assert.deepEqual(executed(await runBuild(project.options)), ['current']);
+  await rm(source);
+  await writeFile(entry, 'export const value = 1;');
+  const removed = await runBuild(project.options);
+
+  assert.doesNotMatch(await readFile(path.join(project.root, '.bedrock-core/generated/ui/screens.generated.d.ts'), 'utf8'), /test:current/);
+  await assert.rejects(readFile(path.join(removed.outputPaths.assets, 'ui/core-ui/screens/test/current.json')), { code: 'ENOENT' });
+});
+
+test('duplicate screen names across UI and scripts fail before export', async (t) => {
+  const project = await fixture(t);
+
+  await project.screen('duplicate');
+  await project.screen('duplicate', '<Text>Duplicate</Text>', '', 'UI');
+  await assert.rejects(runBuild(project.options), /Two UI screens are named duplicate/);
+});
 
 test('isolates host detection between component roots with retained state', async (t) => {
   const project = await fixture(t);
@@ -260,7 +454,8 @@ for (const location of ['entry', 'imported module', 'GameTest entry']) {
     import { Screen, Text } from '@bedrock-core/ui';
     export default { home: () => <Screen><Text>Home</Text></Screen> };
     export function shape(declared, manifest) {
-      return { [declared.page]: () => <Screen><Text>{manifest.packName}</Text></Screen> };
+      if (manifest.namespace !== 'test' || manifest.metadata.authors[0] !== 'Fixture' || manifest.header.version !== '1.0.0') throw new Error('Authored manifest metadata was not retained');
+      return { [declared.page]: () => <Screen><Text>{manifest.header.name}</Text></Screen> };
     }
   `);
     const entry = path.join(project.root, 'packs/BP/scripts/start.ts');
@@ -279,13 +474,25 @@ for (const location of ['entry', 'imported module', 'GameTest entry']) {
       await writeFile(entry, `import './registration'; import { register } from '@minecraft/server-gametest'; register('fixture', 'ready', () => {});`);
     }
 
-    await writeFile(registration, `import { core } from '@bedrock-core/server-runtime'; core.register({ manifest: { packName: 'First' }, feature: { app: 'fixture', compiled: 'fixture-app', page: 'declared' } });`);
+    const declaredManifest = { ...manifestFor('script'), namespace: 'test', metadata: { authors: ['Fixture'] } };
+
+    declaredManifest.header.name = 'First';
+    declaredManifest.header.version = '1.0.0';
+
+    await writeFile(registration, `import { core } from '@bedrock-core/server-runtime'; core.register({ manifest: ${JSON.stringify(declaredManifest)}, feature: { app: 'fixture', compiled: 'fixture-app', page: 'declared' } });`);
+    project.config.bedrockCore.profiles.default.stages = { 'ui-compiler': { testMetadata: true } };
+    await project.save();
     const initial = await runBuild(project.options);
 
     assert.deepEqual(executed(initial), ['declared', 'home']);
     assert.match(await readFile(path.join(initial.outputPaths.assets, 'ui/core-ui/screens/test/declared.json'), 'utf8'), /First/);
+    const metadata = await json(path.join(initial.outputPaths.assets, 'bedrock-core/test-metadata.json'));
+
+    assert.equal(metadata.screens.find(screen => screen.file.endsWith('/declared.json')).source, 'packs/BP/scripts/start.ts');
+    assert.equal(metadata.screens.find(screen => screen.file.endsWith('/home.json')).source, 'fixture-app');
     assert.deepEqual(executed(await runBuild(project.options)), []);
-    await writeFile(registration, `import { core } from '@bedrock-core/server-runtime'; core.register({ manifest: { packName: 'Second' }, feature: { app: 'fixture', compiled: 'fixture-app', page: 'declared' } });`);
+    declaredManifest.header.name = 'Second';
+    await writeFile(registration, `import { core } from '@bedrock-core/server-runtime'; core.register({ manifest: ${JSON.stringify(declaredManifest)}, feature: { app: 'fixture', compiled: 'fixture-app', page: 'declared' } });`);
     const changed = await runBuild(project.options);
 
     assert.deepEqual(executed(changed), ['declared']);
@@ -295,7 +502,7 @@ for (const location of ['entry', 'imported module', 'GameTest entry']) {
 
 test('removing the last screen refreshes editor keys and removes generated UI from the exported pack', async (t) => {
   const project = await fixture(t);
-  const source = await project.screen('last');
+  const source = await project.screen('last', '<Text>Hello</Text>', '', 'UI');
 
   await runBuild(project.options);
   await rm(source);

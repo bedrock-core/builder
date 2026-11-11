@@ -9,13 +9,14 @@
     "./plugin": "./src/plugin.ts"
   },
   "engines": {
-    "node": ">=22.18"
+    "node": ">=26.13.0"
   },
   "dependencies": {
     "@bedrock-core/builder-bundler": "workspace:*",
     "@bedrock-core/builder-plugin": "workspace:*",
     "json-schema-to-typescript": "15.0.4",
-    "typescript": "5.9.3"
+    "prettier": "^3.2.5",
+    "typescript-native": "npm:typescript@7.1.0-beta"
   },
   "license": "MIT",
   "files": [

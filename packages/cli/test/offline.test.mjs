@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile, access, mkdtemp, rm, writeFile, realpath, readdir } from 'node:fs/promises';
+import { readFile, access, mkdir, mkdtemp, rm, writeFile, realpath, readdir } from 'node:fs/promises';
 import { test } from 'node:test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { EventEmitter } from 'node:events';
 import https from 'node:https';
-import ts from 'typescript';
+import { createRequire, stripTypeScriptTypes } from 'node:module';
 import { projectNameError } from '../src/prompts.ts';
 import { replaceVariables } from '../src/utils.ts';
 import { configurePackageManager, createProject, initializeGitRepository, installDependencies } from '../src/generator.ts';
@@ -42,7 +42,21 @@ async function scaffold(t, options = {}) {
     process.chdir(previous);
   }
 
-  return path.join(root, 'quoted-scaffold');
+  const project = path.join(root, 'quoted-scaffold');
+  const pkg = JSON.parse(await readFile(path.join(project, 'package.json'), 'utf8'));
+
+  for (const name of ['@minecraft/server', '@minecraft/server-ui', '@minecraft/server-gametest']) {
+    const version = pkg.dependencies?.[name] ?? pkg.devDependencies?.[name];
+
+    if (version) {
+      const directory = path.join(project, 'node_modules', name);
+
+      await mkdir(directory, { recursive: true });
+      await writeFile(path.join(directory, 'package.json'), JSON.stringify({ name, version }));
+    }
+  }
+
+  return project;
 }
 
 for (const preset of ['script', 'resource']) {
@@ -54,9 +68,16 @@ for (const preset of ['script', 'resource']) {
     assert.equal(pkg.devDependencies['eslint-plugin-react-hooks'], undefined);
     assert.doesNotMatch(await readFile(path.join(root, 'eslint.config.mjs'), 'utf8'), /@bedrock-core\/ui\/eslint/);
     await assert.rejects(access(path.join(root, 'eslint.base.mjs')));
+    await assert.rejects(access(path.join(root, 'packs/BP/UI')));
 
     assert.equal(config.name, 'Human Name');
-    assert.equal(config.namespace, 'stable_identity');
+    assert.equal(config.namespace, undefined);
+    const authored = await JSON.parse(await readFile(path.join(root, preset === 'script' ? 'packs/BP/manifest.json' : 'packs/RP/manifest.json'), 'utf8'));
+    const exported = createRequire(path.join(root, 'package.json')).resolve(`${pkg.name}/manifest.json`);
+
+    assert.equal(await realpath(exported), await realpath(path.join(root, preset === 'script' ? 'packs/BP/manifest.json' : 'packs/RP/manifest.json')));
+    assert.equal(authored.namespace, 'stable_identity');
+    assert.ok(!authored.dependencies?.some(dependency => dependency.namespace));
     assert.equal(Object.hasOwn(config.bedrockCore, 'addon'), false);
     assert.equal(pkg.name, 'quoted-scaffold');
     assert.ok(Object.keys(pkg.dependencies).every(name => !name.startsWith('@bedrock-core/')));
@@ -70,7 +91,8 @@ for (const preset of ['script', 'resource']) {
     assert.ok(pkg.devDependencies['@bedrock-core/bds-runner']);
 
     if (preset === 'script') {
-      assert.equal(pkg.scripts.typecheck, 'tsc --noEmit');
+      assert.equal(pkg.scripts.typecheck, 'node node_modules/typescript-native/bin/tsc --noEmit');
+      assert.equal(pkg.devDependencies['typescript-native'], 'npm:typescript@7.1.0-beta');
       assert.match(await readFile(path.join(result.outputPaths.behaviorPack, 'scripts/main.js'), 'utf8'), /Human Name/);
       const tested = await runBuild({ configPath: path.join(root, 'config.json'), profile: 'build-test', logger: {} });
       const manifest = JSON.parse(await readFile(path.join(tested.outputPaths.behaviorPack, 'manifest.json'), 'utf8'));
@@ -101,11 +123,21 @@ test('generated starter validates all builder profiles and escaped metadata', as
   const root = await scaffold(t);
   const config = JSON.parse(await readFile(path.join(root, 'config.json'), 'utf8'));
   const pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+  const exported = createRequire(path.join(root, 'package.json')).resolve(`${pkg.name}/manifest.json`);
+  const behavior = JSON.parse(await readFile(path.join(root, 'packs/BP/manifest.json'), 'utf8'));
+  const resources = JSON.parse(await readFile(path.join(root, 'packs/RP/manifest.json'), 'utf8'));
+  const tested = JSON.parse(await readFile(path.join(root, 'packs/BP/manifest.test.json'), 'utf8'));
 
+  assert.equal(await realpath(exported), await realpath(path.join(root, 'packs/BP/manifest.json')));
+  assert.equal(behavior.namespace, resources.namespace);
+  assert.deepEqual(behavior.dependencies.find(dependency => dependency.namespace), { namespace: behavior.namespace });
+  assert.deepEqual(resources.dependencies, [{ namespace: behavior.namespace }]);
+  assert.deepEqual(tested.dependencies.find(dependency => dependency.namespace), { namespace: behavior.namespace });
   validateConfig(config);
   assert.deepEqual(config.authors, ['O\'Brien']);
   assert.equal(config.description, 'Quoted "title", a \\ path and literal $&.');
-  assert.equal(config.namespace, 'o_brien_quoted_scaffold');
+  assert.equal(config.namespace, undefined);
+  assert.equal(JSON.parse(await readFile(path.join(root, 'packs/BP/manifest.json'), 'utf8')).namespace, 'o_brien_quoted_scaffold');
   assert.equal(Object.hasOwn(config.bedrockCore, 'addon'), false);
   assert.equal(config.regolith, undefined);
   assert.equal(pkg.scripts['regolith-install'], undefined);
@@ -119,18 +151,26 @@ test('generated starter validates all builder profiles and escaped metadata', as
   const bds = JSON.parse(await readFile(path.join(root, 'bds-runner.json'), 'utf8'));
 
   assert.equal(bds.version, '1.26.51.1');
-  const home = await readFile(path.join(root, 'packs/BP/scripts/UI/screens/home.screen.tsx'), 'utf8');
-  const plan = await readFile(path.join(root, 'packs/BP/scripts/UI/screens/plan.tsx'), 'utf8');
+  const home = await readFile(path.join(root, 'packs/BP/UI/screens/home.screen.tsx'), 'utf8');
+  const plan = await readFile(path.join(root, 'packs/BP/UI/screens/plan.tsx'), 'utf8');
 
   assert.match(home, /createStaticNavigation\(RootStack\)/);
   assert.match(home, /screen=\{'Plan'\}/);
-  assert.match(home, /Profile: `\$\{project\.namespace\}:profile_form`/);
+  assert.match(home, /Profile: `\$\{manifest\.namespace\}:profile_form`/);
   assert.match(plan, /CommonActions\.goBack\(\)/);
   const registration = await readFile(path.join(root, 'packs/BP/scripts/main.ts'), 'utf8');
 
-  assert.match(registration, /creator: 'o_brien'/);
-  assert.match(registration, /pack: 'quoted_scaffold'/);
-  assert.match(registration, /version: '1\.0\.0'/);
+  assert.match(registration, /import manifest from '\.\.\/manifest\.json'/);
+  assert.match(registration, /manifest,/);
+  assert.match(registration, /from '\.\.\/UI\/screens\/home\.screen'/);
+  assert.match(registration, /from '\.\.\/i18n'/);
+  assert.match(home, /from '\.\.\/\.\.\/i18n'/);
+  const translations = await readFile(path.join(root, 'packs/BP/i18n/index.ts'), 'utf8');
+
+  assert.match(translations, /export const i18n = createI18n\(\{ en_US \}\)/);
+  assert.doesNotMatch(translations, /@bedrock-core\/generated/);
+  await assert.rejects(access(path.join(root, 'packs/BP/UI/i18n.ts')));
+  await assert.rejects(access(path.join(root, 'packs/BP/scripts/UI')));
 
   for (const profile of ['build', 'build-optimized', 'default', 'test', 'build-test']) {
     const stages = planBuild(config, profile).filter(step => step.kind === 'stage').map(step => step.stage);
@@ -145,10 +185,11 @@ test('generated starter validates all builder profiles and escaped metadata', as
 
   assert.equal(tsconfig.compilerOptions.paths, undefined);
   assert.ok(tsconfig.include.includes('.bedrock-core/generated/**/*.d.ts'));
+  assert.ok(tsconfig.include.includes('packs/BP/UI/**/*'));
   await access(path.join(root, 'packs/BP/guides/en_US/intro.mdx'));
   await assert.rejects(access(path.join(root, 'guides')));
   const localeSource = await readFile(path.join(root, 'packs/BP/i18n/en_US.ts'), 'utf8');
-  const localeJs = ts.transpileModule(localeSource, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
+  const localeJs = stripTypeScriptTypes(localeSource);
   const locale = (await import(`data:text/javascript;base64,${Buffer.from(localeJs).toString('base64')}`)).default;
 
   assert.equal(locale.meta, undefined);
@@ -168,6 +209,11 @@ test('builder selects and bundles the scaffold normal and GameTest manifest entr
   await writeFile(configFile, JSON.stringify(config));
   await writeFile(path.join(root, 'packs/BP/scripts/main.ts'), 'export const entry = "scaffold-normal";\n');
   await writeFile(path.join(root, 'packs/BP/scripts/gametest.ts'), 'import "@minecraft/server-gametest";\nexport const entry = "scaffold-test";\n');
+  const authored = JSON.parse(await readFile(path.join(root, 'packs/BP/manifest.json'), 'utf8'));
+  const authoredTest = JSON.parse(await readFile(path.join(root, 'packs/BP/manifest.test.json'), 'utf8'));
+
+  assert.equal(authored.modules.find(module => module.type === 'script').entry, 'scripts/main.ts');
+  assert.equal(authoredTest.modules.find(module => module.type === 'script').entry, 'scripts/gametest.ts');
   const normal = await runBuild({ configPath: configFile, profile: 'build', logger: {} });
   const normalPack = normal.outputPaths.behaviorPack;
   const normalManifest = JSON.parse(await readFile(path.join(normalPack, 'manifest.json'), 'utf8'));

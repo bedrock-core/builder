@@ -26,11 +26,11 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - run: corepack enable
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
-          cache: yarn
+          node-version: '26.13.0'
+      - run: npm install --global corepack@0.36.0
+      - run: corepack enable
       - run: yarn install --immutable
       - uses: changesets/action@v2
         with:
@@ -48,19 +48,21 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - run: corepack enable
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
-          cache: yarn
+          node-version: '26.13.0'
           registry-url: https://registry.npmjs.org
+      - run: npm install --global corepack@0.36.0
+      - run: corepack enable
       - run: yarn install --immutable
       - name: Configure CLI evidence paths
         if: inputs.scope == 'cli'
         run: |
           echo "BEDROCK_CLI_TARBALL=$RUNNER_TEMP/bedrock-core-cli.tgz" >> "$GITHUB_ENV"
           echo "BEDROCK_CLI_SMOKE_SUMMARY=$RUNNER_TEMP/cli-smoke-summary.json" >> "$GITHUB_ENV"
-          echo "BC_BDS_HOME=$RUNNER_TEMP/cli-smoke-bds" >> "$GITHUB_ENV"
+          echo "BC_BDS_HOME=$GITHUB_WORKSPACE/.bds" >> "$GITHUB_ENV"
+      - name: Install acceptance fixture dependencies
+        run: npm install --prefix fixtures/acceptance --ignore-scripts --package-lock=false
       - name: Verify release archives
         run: yarn release
       - name: Pack CLI candidate

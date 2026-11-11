@@ -20,6 +20,8 @@ export interface ContentPack {
 
 /** Validation failure located by pack, file and JSON pointer. */
 export interface ContentDiagnostic {
+  /** Whether the parser or a content schema reported the problem. */
+  kind?: 'syntax' | 'schema';
   /** Configured pack ID. */
   pack: string;
   /** JSON file path relative to the pack directory, using forward slashes. */
@@ -46,16 +48,21 @@ export interface ContentFileResult {
 
 /** Schema catalog version and validation coverage for all checked files. */
 export interface ContentValidationResult {
-  /** Resolved Mojang schema catalog version. */
+  /** Resolved Mojang schema catalog version, or an empty string when schema checks are skipped. */
   schemaVersion: string;
   /** Per-file checks and schema coverage. */
   files: ContentFileResult[];
 }
 
+/** How to handle schema checks. Invalid JSON syntax always fails. */
+export type ContentValidationMode = 'strict' | 'warn' | 'skip';
+
 /** Pack selection, schema catalog and optional validation-reuse integration. */
 export interface ContentValidationOptions {
   /** Final pack directories to validate. */
   packs: readonly ContentPack[];
+  /** Schema validation mode, defaulting to warn. */
+  mode?: ContentValidationMode;
   /** Custom installed Mojang schema catalog directory. */
   schemaRoot?: string;
   /** Cooperative validation cancellation. */
@@ -98,22 +105,25 @@ function within(root: string, file: string): boolean {
 }
 
 /**
- * Validate every JSON document; catalog matches additionally receive schema checks.
+ * Validate JSON syntax and apply content schemas according to the selected mode.
  * @param options Project inputs, settings and optional integrations for this operation.
- * @returns Schema catalog version and per-file coverage; invalid documents throw ContentValidationError.
+ * @returns Per-file coverage and diagnostics. Syntax errors and strict schema errors throw ContentValidationError.
  */
 export async function validatePackContent(options: ContentValidationOptions): Promise<ContentValidationResult> {
+  const mode = options.mode ?? 'warn';
+  const skip = mode === 'skip';
   const require = createRequire(import.meta.url);
-  const root = await realpath(options.schemaRoot ?? path.dirname(require.resolve('@minecraft/bedrock-schemas/catalog.json')));
+  const root = skip ? '' : await realpath(options.schemaRoot ?? path.dirname(require.resolve('@minecraft/bedrock-schemas/catalog.json')));
   const catalogFile = path.join(root, 'catalog.json');
-  const catalog = JSON.parse(await readFile(catalogFile, 'utf8')) as { schemas: CatalogEntry[] };
+  const catalog: { schemas: CatalogEntry[] } = skip ? { schemas: [] } : JSON.parse(await readFile(catalogFile, 'utf8'));
   const metadataFile = path.join(root, 'package.json');
-  const metadata = JSON.parse(await readFile(metadataFile, 'utf8')) as { version: string };
+  const metadata: { version: string } = skip ? { version: '' } : JSON.parse(await readFile(metadataFile, 'utf8'));
+  const catalogInputs = skip ? [] : [catalogFile, metadataFile];
   const validators = new Map<string, { validate: ValidateFunction; inputs: string[] }>();
   const unavailable = new Map<string, string>();
   const documents = new Map<string, SchemaDocument>();
   const referencesByFile = new Map<string, Set<string>>();
-  const ajv = new Ajv({ allErrors: true, strict: false, validateFormats: false, logger: false });
+  const ajv = skip ? undefined : new Ajv({ allErrors: true, strict: false, validateFormats: false, logger: false });
 
   async function load(file: string, inputs: Set<string>): Promise<SchemaDocument> {
     options.signal?.throwIfAborted();
@@ -150,6 +160,15 @@ export async function validatePackContent(options: ContentValidationOptions): Pr
     }
 
     if (!options.schemaRoot && metadata.version === '1.26.50') {
+      if (file === path.join(root, 'schemas/rp/sounds/index.schema.json')) {
+        // Sound definitions accept bare paths and objects with a file name and playback settings.
+        const fields = document.properties as Record<string, SchemaDocument>;
+        const events = fields.sound_definitions.additionalProperties as { properties: Record<string, SchemaDocument> };
+        const sounds = events.properties.sounds;
+
+        sounds.items = { anyOf: [{ type: 'string', minLength: 1 }, { ...sounds.items as SchemaDocument, required: ['name'] }] };
+      }
+
       if (file === path.join(root, 'schemas/bp/entities/entity_minecraft_spell_effects.schema.json')) {
         // Effects accept numeric seconds or the documented infinite duration.
         // https://learn.microsoft.com/minecraft/creator/reference/content/entityreference/examples/entitycomponents/minecraftcomponent_spell_effects
@@ -241,24 +260,24 @@ export async function validatePackContent(options: ContentValidationOptions): Pr
     return document;
   }
 
-  async function validator(file: string) {
+  async function validator(file: string, compiler: Ajv) {
     const previous = validators.get(file);
 
     if (previous) {
       return previous;
     }
 
-    const inputs = new Set([catalogFile, metadataFile]);
+    const inputs = new Set(catalogInputs);
     const document = await load(file, inputs);
 
     for (const schema of documents.values()) {
       // Register the complete graph before compiling cyclic or shared references.
-      if (!ajv.schemas[schema.$id as string]) {
-        ajv.addSchema(schema);
+      if (!compiler.schemas[schema.$id as string]) {
+        compiler.addSchema(schema);
       }
     }
 
-    const validate = ajv.getSchema(document.$id as string) ?? ajv.compile(document);
+    const validate = compiler.getSchema(document.$id as string) ?? compiler.compile(document);
     const result = { validate, inputs: [...inputs] };
 
     validators.set(file, result);
@@ -301,13 +320,13 @@ export async function validatePackContent(options: ContentValidationOptions): Pr
         let compiled: { validate: ValidateFunction; inputs: string[] } | undefined;
         let schemaIssue = selected ? unavailable.get(selected.url) : undefined;
 
-        if (pack.kind === 'resource' && relative === 'texts/languages.json') {
+        if (ajv && pack.kind === 'resource' && relative === 'texts/languages.json') {
           const file = fileURLToPath(new URL('../schemas/languages.schema.json', import.meta.url));
 
-          compiled = { validate: ajv.compile(JSON.parse(await readFile(file, 'utf8'))), inputs: [file, catalogFile, metadataFile] };
-        } else if (selected && !schemaIssue) {
+          compiled = { validate: ajv.compile(JSON.parse(await readFile(file, 'utf8'))), inputs: [file, ...catalogInputs] };
+        } else if (ajv && selected && !schemaIssue) {
           try {
-            compiled = await validator(path.resolve(root, selected.url));
+            compiled = await validator(path.resolve(root, selected.url), ajv);
           } catch (error) {
             options.signal?.throwIfAborted();
             // A broken upstream schema cannot establish content validity.
@@ -316,12 +335,13 @@ export async function validatePackContent(options: ContentValidationOptions): Pr
           }
         }
 
-        const inputs = compiled?.inputs ?? [catalogFile, metadataFile];
+        const inputs = compiled?.inputs ?? catalogInputs;
 
         async function check(): Promise<ContentFileResult> {
           const errors: ParseError[] = [];
           const document: unknown = parse(await readFile(source, 'utf8'), errors, { allowTrailingComma: true });
           const diagnostics: ContentDiagnostic[] = errors.map(error => ({
+            kind: 'syntax',
             pack: pack.id,
             file: relative,
             pointer: '',
@@ -330,7 +350,7 @@ export async function validatePackContent(options: ContentValidationOptions): Pr
 
           if (!errors.length && compiled && !compiled.validate(document)) {
             for (const error of compiled.validate.errors ?? []) {
-              diagnostics.push({ pack: pack.id, file: relative, pointer: error.instancePath, message: error.message ?? error.keyword });
+              diagnostics.push({ kind: 'schema', pack: pack.id, file: relative, pointer: error.instancePath, message: error.message ?? error.keyword });
             }
           }
 
@@ -343,7 +363,7 @@ export async function validatePackContent(options: ContentValidationOptions): Pr
           };
         }
 
-        const fileRevision = createHash('sha256').update(JSON.stringify({ revision, pack: pack.id, relative, schema: selected?.url, schemaIssue })).digest('hex');
+        const fileRevision = createHash('sha256').update(JSON.stringify({ revision, pack: pack.id, relative, skip, schema: selected?.url, schemaIssue })).digest('hex');
 
         files.push(await (options.reuse?.(source, inputs, fileRevision, check) ?? check()));
       }
@@ -352,7 +372,7 @@ export async function validatePackContent(options: ContentValidationOptions): Pr
     await visit(packRoot);
   }
 
-  const diagnostics = files.flatMap(file => file.diagnostics);
+  const diagnostics = files.flatMap(file => file.diagnostics).filter(issue => mode !== 'warn' || issue.kind !== 'schema');
 
   if (diagnostics.length) {
     throw new ContentValidationError(diagnostics);

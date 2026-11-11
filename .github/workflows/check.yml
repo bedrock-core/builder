@@ -9,15 +9,16 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
-        node: ['22.18.0', '24']
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          node-version: '26.13.0'
+      - run: npm install --global corepack@0.36.0
       - run: corepack enable
       - run: yarn install --immutable
+      - run: npm install --prefix fixtures/acceptance --ignore-scripts --package-lock=false
       - run: yarn check
       - run: yarn acceptance
       - run: yarn pack-release
