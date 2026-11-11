@@ -25,7 +25,7 @@ test('UI watch reuses screens for script and asset edits, rebuilds affected scre
   const results = [];
   const errors = [];
   const scripts = path.join(project.project, 'packs/gameplay/scripts');
-  const ui = path.join(project.project, 'packs/gameplay/UI');
+  const ui = path.join(project.project, 'packs/gameplay/ui');
 
   await installUi(project.project);
   await mkdir(ui);
@@ -53,6 +53,7 @@ test('UI watch reuses screens for script and asset edits, rebuilds affected scre
 
   await waitFor(() => results.length === 1 || errors.length > 0);
   assert.deepEqual(errors, []);
+  assert.deepEqual(rebuilt(results[0]).sort(), ['ui-compiler/screen:affected', 'ui-compiler/screen:unrelated']);
   await writeFile(path.join(scripts, 'main.ts'), 'export const value = 2;');
   await waitFor(() => results.length >= 2);
   assert.deepEqual(rebuilt(results.at(-1)), []);
