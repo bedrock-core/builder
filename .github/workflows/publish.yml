@@ -75,6 +75,8 @@ jobs:
       - uses: changesets/action@v2
         with:
           publish-script: yarn publish:ci
+        env:
+          NPM_CONFIG_LOGLEVEL: verbose
       - name: Keep Builder verification
         if: always() && inputs.scope == 'builder'
         uses: actions/upload-artifact@v7
