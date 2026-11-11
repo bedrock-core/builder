@@ -15,7 +15,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '26.13.0'
-      - run: npm install --global corepack@0.36.0
+      - run: npm install --global corepack@0.36.0 --force
       - run: corepack enable
       - run: yarn install --immutable
       - uses: ./.github/actions/acceptance
