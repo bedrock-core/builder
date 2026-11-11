@@ -251,7 +251,10 @@ try {
 
     script('build');
     const releaseBp = join(project, 'build', `${name}_bp`);
-    const namespace = json(join(project, 'config.json')).namespace;
+    const releaseManifest = json(join(releaseBp, 'manifest.json'));
+    const namespace = json(join(project, 'packs/BP/manifest.json')).namespace;
+
+    assert.ok(typeof namespace === 'string' && namespace.length > 0, 'The authored behavior pack declares its namespace');
     const screens = join(project, 'build', `${name}_rp`, 'ui/core-ui/screens', namespace);
     const controls = [];
 
@@ -276,7 +279,7 @@ try {
     assert.ok(!existsSync(join(screens, 'plan.json')), 'Plan is a resident page of Home');
     assert.ok(existsSync(join(screens, 'profile_form.json')), 'Profile remains a native modal form');
 
-    assert.ok(!json(join(releaseBp, 'manifest.json')).dependencies.some(dep => dep.module_name === '@minecraft/server-gametest'));
+    assert.ok(!releaseManifest.dependencies.some(dep => dep.module_name === '@minecraft/server-gametest'));
     assert.ok(!readFileSync(join(releaseBp, 'scripts/main.js'), 'utf8').includes('@minecraft/server-gametest'));
     script('build:test');
     const testManifest = json(join(project, 'build/test/BP/manifest.json'));

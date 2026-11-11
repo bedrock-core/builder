@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { appendFile, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractTgz } from '../packages/generator/src/tar.ts';
@@ -40,7 +40,12 @@ async function snapshot(source: string, name: 'ui' | 'apps'): Promise<string> {
   const config = JSON.parse(await readFile(configFile, 'utf8'));
 
   await writeFile(configFile, JSON.stringify({ ...config, changelog: false, commit: false }, null, 2) + '\n');
-  execFileSync(process.execPath, [fileURLToPath(import.meta.resolve('@changesets/cli/bin.js')), 'version'], { cwd: directory, stdio: 'inherit' });
+  const pending = (await readdir(path.dirname(configFile))).some(file => file.endsWith('.md') && file !== 'README.md');
+
+  if (pending) {
+    execFileSync(process.execPath, [fileURLToPath(import.meta.resolve('@changesets/cli/bin.js')), 'version'], { cwd: directory, stdio: 'inherit' });
+  }
+
   console.log(`@bedrock-core/builder: prepared ${name} candidate from ${commit}`);
 
   return directory;
