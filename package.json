@@ -42,6 +42,7 @@
     "prepare-release": "node scripts/prepare-release.ts",
     "pack-release": "yarn prepare-release && node scripts/pack-release.ts",
     "test:packages": "node scripts/verify-packages.ts",
+    "prepare:acceptance": "node scripts/prepare-acceptance.ts",
     "acceptance": "node scripts/acceptance.ts",
     "acceptance:native": "node scripts/acceptance.ts --native",
     "acceptance:api": "node scripts/api-acceptance.ts",
@@ -56,7 +57,7 @@
     "changeset:status": "changeset status --verbose",
     "version:packages": "changeset version && node scripts/sync-cli-template.mjs --builder-only && yarn install --mode=update-lockfile",
     "tag-release": "node scripts/tag-release.ts",
-    "test:release": "node --test scripts/publish-release.test.ts scripts/cli-artifact.test.mjs scripts/sync-cli-template.test.mjs scripts/release-versions.test.ts",
+    "test:release": "node --test scripts/publish-release.test.ts scripts/cli-artifact.test.mjs scripts/sync-cli-template.test.mjs scripts/release-versions.test.ts scripts/acceptance-archives.test.ts",
     "publish:ci": "yarn publish-release --scope \"$RELEASE_SCOPE\" && yarn tag-release --scope \"$RELEASE_SCOPE\""
   },
   "engines": {

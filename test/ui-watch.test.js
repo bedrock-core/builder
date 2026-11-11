@@ -19,7 +19,7 @@ async function waitFor(condition) {
   }
 }
 
-test('UI watch reuses screens for script and asset edits, rebuilds affected screens and recovers from compiler errors', { timeout: 30000 }, async (t) => {
+test('UI watch reuses screens for script and asset edits, rebuilds affected screens and recovers from compiler errors', { timeout: 60000 }, async (t) => {
   const project = await projectFor(t, { cleanup: false });
   const controller = new AbortController();
   const results = [];

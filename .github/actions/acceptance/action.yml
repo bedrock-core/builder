@@ -1,0 +1,29 @@
+name: Acceptance dependencies
+description: Install published fixture dependencies or build checked UI and Guides candidate archives.
+inputs:
+  mode:
+    description: candidates for Builder checks, registry for CLI publication
+    default: candidates
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v7
+      if: inputs.mode == 'candidates'
+      with:
+        repository: bedrock-core/ui
+        path: .bedrock-core/acceptance-ui-source
+        persist-credentials: false
+    - uses: actions/checkout@v7
+      if: inputs.mode == 'candidates'
+      with:
+        repository: bedrock-core/apps
+        path: .bedrock-core/acceptance-apps-source
+        persist-credentials: false
+    - name: Prepare candidate fixture dependencies
+      if: inputs.mode == 'candidates'
+      shell: bash
+      run: yarn prepare:acceptance --ui .bedrock-core/acceptance-ui-source --apps .bedrock-core/acceptance-apps-source
+    - name: Install published fixture dependencies
+      if: inputs.mode == 'registry'
+      shell: bash
+      run: npm install --prefix fixtures/acceptance --ignore-scripts --package-lock=false

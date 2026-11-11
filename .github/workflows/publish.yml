@@ -61,8 +61,9 @@ jobs:
           echo "BEDROCK_CLI_TARBALL=$RUNNER_TEMP/bedrock-core-cli.tgz" >> "$GITHUB_ENV"
           echo "BEDROCK_CLI_SMOKE_SUMMARY=$RUNNER_TEMP/cli-smoke-summary.json" >> "$GITHUB_ENV"
           echo "BC_BDS_HOME=$GITHUB_WORKSPACE/.bds" >> "$GITHUB_ENV"
-      - name: Install acceptance fixture dependencies
-        run: npm install --prefix fixtures/acceptance --ignore-scripts --package-lock=false
+      - uses: ./.github/actions/acceptance
+        with:
+          mode: ${{ inputs.scope == 'cli' && 'registry' || 'candidates' }}
       - name: Verify release archives
         run: yarn release
       - name: Pack CLI candidate
@@ -74,6 +75,15 @@ jobs:
       - uses: changesets/action@v2
         with:
           publish-script: yarn publish:ci
+      - name: Keep Builder verification
+        if: always() && inputs.scope == 'builder'
+        uses: actions/upload-artifact@v7
+        with:
+          name: builder-release-verification
+          path: |
+            .bedrock-core/release/tarballs/verified*.json
+            .bedrock-core/acceptance/candidate-*/archives/index.json
+          if-no-files-found: ignore
       - name: Keep CLI smoke evidence
         if: always() && inputs.scope == 'cli'
         uses: actions/upload-artifact@v7

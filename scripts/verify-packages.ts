@@ -9,13 +9,17 @@ import { extractTgz } from '../packages/generator/src/tar.ts';
 import { yarn } from './yarn.ts';
 import { validateConfig } from '../src/config.ts';
 import { acceptanceDependencies, installedPackage, linkAcceptanceDependencies, type AcceptanceDependencies } from '../test-support/acceptance.ts';
+import { acceptanceArchives, acceptanceYarnConfig } from './acceptance-archives.ts';
 
 const repository = fileURLToPath(new URL('../', import.meta.url));
 const directory = path.join(repository, '.bedrock-core/release/tarballs');
+
+await Promise.all(['verified.json', 'verified-local.json'].map(file => rm(path.join(directory, file), { force: true })));
 const packages = JSON.parse(await readFile(path.join(directory, 'index.json'), 'utf8')) as { name: string; version: string; file: string }[];
 const files = Object.fromEntries(packages.map(pkg => [pkg.name, `file:${path.join(directory, pkg.file).replaceAll('\\', '/')}`]));
 const fixturePackage = JSON.parse(await readFile(path.join(repository, 'fixtures/acceptance/package.json'), 'utf8')) as { dependencies: Record<string, string> };
-const dependencies = process.env.BUILDER_ACCEPTANCE_DEPENDENCY_ROOT ? acceptanceDependencies(repository) : undefined;
+const fixtureArchives = await acceptanceArchives(process.env.BUILDER_ACCEPTANCE_ARCHIVES);
+const dependencies = process.env.BUILDER_ACCEPTANCE_DEPENDENCY_ROOT && !fixtureArchives.evidence ? acceptanceDependencies(repository) : undefined;
 const toolchain = { root: repository, modules: path.join(repository, 'node_modules') };
 const archives = new Map<string, { contents: Map<string, Buffer>; dependencies: Record<string, string> }>();
 const root = await mkdtemp(path.join(tmpdir(), 'builder-package-check-'));
@@ -101,9 +105,9 @@ try {
 
   await writeFile(path.join(root, 'package.json'), JSON.stringify({
     name: 'builder-package-check', private: true, type: 'module', packageManager: 'yarn@4.16.0',
-    dependencies: { ...fixturePackage.dependencies, '@bedrock-core/builder': files['@bedrock-core/builder'], 'typescript-native': 'npm:typescript@7.1.0-beta' }, resolutions: files,
+    dependencies: { ...fixturePackage.dependencies, '@bedrock-core/builder': files['@bedrock-core/builder'], 'typescript-native': 'npm:typescript@7.1.0-beta' }, resolutions: { ...fixtureArchives.resolutions, ...files },
   }, null, 2));
-  await writeFile(path.join(root, '.yarnrc.yml'), 'nodeLinker: node-modules\nenableGlobalCache: true\n');
+  await writeFile(path.join(root, '.yarnrc.yml'), acceptanceYarnConfig);
 
   if (dependencies) {
     const external = [...new Set([...archives.values()].flatMap(archive => Object.keys(archive.dependencies)))];
@@ -258,7 +262,7 @@ try {
         name: 'builder-standalone-check', private: true, type: 'module', packageManager: 'yarn@4.16.0',
         dependencies: { [pkg.name]: files[pkg.name] }, resolutions: files,
       }));
-      await writeFile(path.join(standalone, '.yarnrc.yml'), 'nodeLinker: node-modules\nenableGlobalCache: true\n');
+      await writeFile(path.join(standalone, '.yarnrc.yml'), acceptanceYarnConfig);
 
       if (dependencies) {
         await stageArchives(standalone, [pkg.name], dependencies);
@@ -335,10 +339,10 @@ try {
 
   const evidence = dependencies
     ? { node: process.versions.node, integrities, registryBacked: false, dependencyRoot: dependencies.root, toolchainRoot: toolchain.root }
-    : { node: process.versions.node, integrities };
+    : { node: process.versions.node, integrities, ...fixtureArchives.evidence && { fixtureCandidates: fixtureArchives.evidence } };
 
   await writeFile(path.join(directory, dependencies ? 'verified-local.json' : 'verified.json'), `${JSON.stringify(evidence, null, 2)}\n`);
-  console.log(`@bedrock-core/builder: archived APIs, CLI, workers and declarations passed with ${dependencies ? 'explicit installed dependencies' : 'registry-installed dependencies'}`);
+  console.log(`@bedrock-core/builder: archived APIs, CLI, workers and declarations passed with ${dependencies ? 'explicit installed dependencies' : fixtureArchives.evidence ? 'installed fixture candidate archives' : 'registry-installed dependencies'}`);
 } finally {
   await removeTemporary(root, 'builder-package-check-');
 }

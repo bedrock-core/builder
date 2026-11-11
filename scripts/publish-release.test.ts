@@ -83,6 +83,28 @@ test('CLI scope publishes only the exact smoke-tested CLI archive', async (t) =>
   assert.equal(path.basename(f.published[0][1]), 'cli.tgz');
   assert.deepEqual(f.packed, ['@bedrock-core/cli']);
 });
+
+test('Builder publication accepts checked archives validated with fixture candidates', async (t) => {
+  const f = await fixture(t);
+  const file = path.join(f.directory, 'verified.json');
+  const verification = JSON.parse(await readFile(file, 'utf8'));
+
+  await writeFile(file, JSON.stringify({ ...verification, fixtureCandidates: { packages: ['@bedrock-core/ui'] } }));
+  await publishRelease(f.root, publishOptions(['--scope', 'builder']), f.io);
+  assert.deepEqual(f.published.map(args => path.basename(args[1])), ['plugin.tgz', 'builder.tgz']);
+});
+
+test('CLI publication refuses fixture candidates before packaging or publishing', async (t) => {
+  const f = await fixture(t);
+  const file = path.join(f.directory, 'verified.json');
+  const verification = JSON.parse(await readFile(file, 'utf8'));
+
+  await writeFile(file, JSON.stringify({ ...verification, fixtureCandidates: { packages: ['@bedrock-core/ui'] } }));
+  await assert.rejects(publishRelease(f.root, publishOptions(['--scope', 'cli']), f.io), /registry-only acceptance dependencies/);
+  assert.equal(f.packed.length, 0);
+  assert.equal(f.published.length, 0);
+  assert.equal(f.requests.length, 0);
+});
 test('dry runs make no registry requests, publishes or authentication attempts', async (t) => {
   const f = await fixture(t);
 

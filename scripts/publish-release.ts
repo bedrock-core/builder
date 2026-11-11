@@ -88,7 +88,13 @@ export async function publishRelease(root: string, options: PublishOptions, serv
   const packages = JSON.parse(await readFile(path.join(directory, 'index.json'), 'utf8')) as ReleasePackage[];
   const verification = JSON.parse(await readFile(path.join(directory, 'verified.json'), 'utf8')) as {
     integrities: Record<string, string>;
+    fixtureCandidates?: unknown;
   };
+
+  if (options.scope === 'cli' && !options.dryRun && verification.fixtureCandidates) {
+    throw new Error('CLI publication requires registry-only acceptance dependencies');
+  }
+
   const selected = selectRelease(packages, options.scope);
   const io: PublishServices = services ?? {
     pack: (pkg, file): void => yarn(['workspace', pkg.name, 'pack', '--out', file], root),

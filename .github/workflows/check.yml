@@ -18,10 +18,19 @@ jobs:
       - run: npm install --global corepack@0.36.0
       - run: corepack enable
       - run: yarn install --immutable
-      - run: npm install --prefix fixtures/acceptance --ignore-scripts --package-lock=false
+      - uses: ./.github/actions/acceptance
       - run: yarn check
       - run: yarn acceptance
       - run: yarn pack-release
       - run: yarn test:packages
+      - name: Keep package verification
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: builder-check-verification-${{ matrix.os }}
+          path: |
+            .bedrock-core/release/tarballs/verified*.json
+            .bedrock-core/acceptance/candidate-*/archives/index.json
+          if-no-files-found: ignore
       - name: Verify release preparation leaves source clean
         run: node -e "const {execFileSync}=require('node:child_process'); const changed=execFileSync('git',['status','--porcelain=v1'],{encoding:'utf8'}).trim(); if(changed){console.error(changed);process.exit(1)}"
