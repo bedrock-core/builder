@@ -1,5 +1,26 @@
 # @bedrock-core/builder-generator
 
+## 0.2.0
+
+### Minor Changes
+
+- 930de95: Require Node.js 26.13.0 or newer for Builder packages, the CLI, and new projects.
+  
+  Use TypeScript 7.1 for Builder's source analysis, declaration emission, and release compilation. New script and full projects use TypeScript 7.1 for typechecking and retain a compatible compiler for ESLint.
+
+### Patch Changes
+
+- Updated dependencies [930de95]
+- Updated dependencies [930de95]
+- Updated dependencies [930de95]
+- Updated dependencies [930de95]
+- Updated dependencies [930de95]
+- Updated dependencies [930de95]
+- Updated dependencies [930de95]
+- Updated dependencies [930de95]
+  - @bedrock-core/builder-plugin@0.2.0
+  - @bedrock-core/builder-bundler@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes
