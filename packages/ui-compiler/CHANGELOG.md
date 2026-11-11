@@ -1,5 +1,47 @@
 # @bedrock-core/builder-ui
 
+## 0.3.0
+
+### Minor Changes
+
+- 930de95: Discover authored screens in behavior-pack `ui/` directories, reserve their helpers from content generation and omit UI sources from exported packs. Continue compiling screens under `scripts/` through the same pipeline.
+  
+  Scaffold UI sources directly in `packs/BP/ui/` with matching runtime imports and TypeScript includes. Match the starter's exact UI dependency to its shared render-pack requirement.
+  
+  Keep the shared translation instance in `packs/BP/i18n/index.ts` and exclude runtime index modules from locale compilation and detection.
+- 930de95: Infer inline callback dependencies with TypeScript 7.1 semantic symbols and generate per-component callback cache sites. Preserve mutable captures, forward references, loops and unsupported cases, and keep older JSX runtimes compatible.
+- 930de95: Automatically mark pure JSX components for runtime output caching in both UI compilation and script bundling. Keep calls, hooks, mutable globals and unsupported syntax unoptimized, and fingerprint the analysis for incremental builds.
+- 930de95: Own addon namespaces and metadata in authored manifests, resolve native addon dependencies, prepare pack artwork and client display aliases, and expose an authored-manifest editor schema.
+  
+  Generate typed clients from public addon package exports and bind provider APIs in their owning behavior packs without evaluating or bundling provider implementations in consumers.
+- 930de95: Require Node.js 26.13.0 or newer for Builder packages, the CLI, and new projects.
+  
+  Use TypeScript 7.1 for Builder's source analysis, declaration emission, and release compilation. New script and full projects use TypeScript 7.1 for typechecking and retain a compatible compiler for ESLint.
+
+### Patch Changes
+
+- 930de95: Infer dependencies for local template expressions in stateful JSX components using native TypeScript analysis. Emit component-owned value cache sites with a fallback for runtimes without value cache support.
+- 930de95: Add producer-owned artifact finalization after plugin hooks and source exclusions, before final pack validation.
+  
+  Refresh UI metadata hashes against final exported files and preserve stable script-entry provenance for shaped application screens.
+- 930de95: Require script manifest entries to name their authored source files and publish TypeScript entries as JavaScript paths. Report missing sources and conflicting outputs in build diagnostics.
+  
+  Configure content schema validation as strict, warn, or skip while retaining manifest and JSON syntax checks. Validate sound definitions with bare paths and named sound objects.
+- 930de95: Run UI source transforms with the TypeScript 7.1 native compiler API, including explicit source/snapshot disposal and native symbol resolution. Include the analysis backend in compilation cache fingerprints.
+- 930de95: Record which pure component props are only forwarded as handlers. Keep function inspection, render-value use, whole-props escapes and unverified aliases outside callback prop reuse.
+- 930de95: Share installed Ore styled surfaces across screen compilation while preserving optional packages, nested dependencies, and explicit aliases.
+- Updated dependencies [930de95]
+- Updated dependencies [930de95]
+- Updated dependencies [930de95]
+- Updated dependencies [930de95]
+- Updated dependencies [930de95]
+- Updated dependencies [930de95]
+- Updated dependencies [930de95]
+- Updated dependencies [930de95]
+  - @bedrock-core/builder-plugin@0.2.0
+  - @bedrock-core/builder-bundler@0.2.0
+  - @bedrock-core/builder-manifest@0.2.0
+
 ## 0.2.1
 
 ### Patch Changes

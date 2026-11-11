@@ -1,5 +1,31 @@
 # @bedrock-core/cli
 
+## 0.13.0
+
+### Minor Changes
+
+- 930de95: Discover authored screens in behavior-pack `ui/` directories, reserve their helpers from content generation and omit UI sources from exported packs. Continue compiling screens under `scripts/` through the same pipeline.
+  
+  Scaffold UI sources directly in `packs/BP/ui/` with matching runtime imports and TypeScript includes. Match the starter's exact UI dependency to its shared render-pack requirement.
+  
+  Keep the shared translation instance in `packs/BP/i18n/index.ts` and exclude runtime index modules from locale compilation and detection.
+- 930de95: Own addon namespaces and metadata in authored manifests, resolve native addon dependencies, prepare pack artwork and client display aliases, and expose an authored-manifest editor schema.
+  
+  Generate typed clients from public addon package exports and bind provider APIs in their owning behavior packs without evaluating or bundling provider implementations in consumers.
+- 930de95: Require Node.js 26.13.0 or newer for Builder packages, the CLI, and new projects.
+  
+  Use TypeScript 7.1 for Builder's source analysis, declaration emission, and release compilation. New script and full projects use TypeScript 7.1 for typechecking and retain a compatible compiler for ESLint.
+- 09ade29: Configure full addon starters with the Core hook lint preset and its tooling peers. Script and resource starters use the shared lint configuration independently of UI tooling.
+  
+  Select the shared resource-pack download from its manifest dependency so unchanged UI patches reuse the compatible asset release.
+
+### Patch Changes
+
+- 930de95: Use hosted beta schema URLs for starter projects, pack manifests and BDS runner options. Server-specific properties can use the runner's generated local schema.
+- 930de95: Use the matching registry dependencies in generated addon projects.
+- 930de95: Install the styling and UI runtime peers required by Guides in the full starter.
+- 930de95: Synchronize the starter's Observable dependency with its owning package version.
+
 ## 0.12.1
 
 ### Patch Changes

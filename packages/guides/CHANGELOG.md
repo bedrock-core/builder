@@ -1,5 +1,23 @@
 # @bedrock-core/builder-guides
 
+## 0.2.0
+
+### Minor Changes
+
+- 930de95: Own addon namespaces and metadata in authored manifests, resolve native addon dependencies, prepare pack artwork and client display aliases, and expose an authored-manifest editor schema.
+  
+  Generate typed clients from public addon package exports and bind provider APIs in their owning behavior packs without evaluating or bundling provider implementations in consumers.
+- 930de95: Require Node.js 26.13.0 or newer for Builder packages, the CLI, and new projects.
+  
+  Use TypeScript 7.1 for Builder's source analysis, declaration emission, and release compilation. New script and full projects use TypeScript 7.1 for typechecking and retain a compatible compiler for ESLint.
+
+### Patch Changes
+
+- Updated dependencies [930de95]
+- Updated dependencies [930de95]
+- Updated dependencies [930de95]
+  - @bedrock-core/builder-plugin@0.2.0
+
 ## 0.1.1
 
 ### Patch Changes
