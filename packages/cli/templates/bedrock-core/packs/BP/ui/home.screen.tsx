@@ -9,8 +9,8 @@ import {
 } from '@bedrock-core/ui/ore-styled';
 import { Fragment, type JSX, Panel, Screen, Text, useState } from '@bedrock-core/ui';
 import { Link, createStackNavigator, createStaticNavigation } from '@bedrock-core/navigation';
-import { i18n } from '../../i18n';
-import manifest from '../../manifest.json';
+import { i18n } from '../i18n';
+import manifest from '../manifest.json';
 import planPage from './plan';
 
 const { fontColor, spacing } = theme.tokens;

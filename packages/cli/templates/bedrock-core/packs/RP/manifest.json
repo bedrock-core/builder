@@ -1,4 +1,5 @@
 {
+	"$schema": "https://bedrock-core.drav.dev/schemas/builder/beta/pack-manifest.schema.json",
   "format_version": 3,
   "namespace": "{{CREATOR_ID}}_{{PACK_ID}}",
   "header": {

@@ -143,7 +143,7 @@ for (const [pretty, plugin] of [false, { indent: 'space', size: 2 }, { indent: '
   test(`metadata hashes describe final ${plugin} plugin output with ${JSON.stringify(pretty)} formatting`, async (t) => {
     const project = await fixture(t);
 
-    await project.screen('digest', '<Text>Authored</Text>', '', 'UI');
+    await project.screen('digest', '<Text>Authored</Text>', '', 'ui');
     project.config.bedrockCore.plugins = { decorate: { [plugin]: './decorate.mjs' } };
     project.config.bedrockCore.profiles.default.pretty = pretty;
     project.config.bedrockCore.profiles.default.stages = { 'ui-compiler': { testMetadata: true } };
@@ -175,7 +175,7 @@ for (const [pretty, plugin] of [false, { indent: 'space', size: 2 }, { indent: '
 
       assert.equal(result.stages.find(stage => stage.stage === 'ui-compiler').status, status);
       assert.equal(metadata.extension, 'preserved');
-      assert.equal(metadata.screens.find(screen => screen.metadata)?.source, 'packs/BP/UI/digest.screen.tsx');
+      assert.equal(metadata.screens.find(screen => screen.metadata)?.source, 'packs/BP/ui/digest.screen.tsx');
       assert.ok(metadata.files.some(file => file.path === 'ui/plugin-added.json'));
       assert.ok(!metadata.files.some(file => file.path === 'ui/discard.json'));
 
@@ -195,18 +195,18 @@ test('pack UI sources share runtime imports, editor keys and cached output with 
     delete globalThis.uiScreens;
     delete globalThis.authoredUi;
   });
-  const source = await project.screen('current', '<Text>{caption}</Text>', 'import caption from \'@ui/caption\';', 'UI/screens');
-  const caption = path.join(project.root, 'packs/BP/UI/caption.ts');
+  const source = await project.screen('current', '<Text>{caption}</Text>', 'import caption from \'@ui/caption\';', 'ui');
+  const caption = path.join(project.root, 'packs/BP/ui/caption.ts');
   const entry = path.join(project.root, 'packs/BP/scripts/start.ts');
 
   await project.screen('legacy', '<Text>Legacy</Text>', '', 'scripts/UI');
   await writeFile(caption, 'import { suffix } from \'../scripts/shared\'; export default \'Current \' + suffix;');
-  await writeFile(path.join(project.root, 'packs/BP/UI/unused.ts'), 'export default { private: true };');
+  await writeFile(path.join(project.root, 'packs/BP/ui/unused.ts'), 'export default { private: true };');
   await writeFile(path.join(project.root, 'packs/BP/scripts/shared.ts'), 'export const suffix = \'caption\';');
   await writeFile(path.join(project.root, 'tsconfig.json'), JSON.stringify({ compilerOptions: {
-    paths: { '@ui/*': ['./packs/BP/UI/*'] }, jsx: 'react-jsx', jsxImportSource: '@bedrock-core/ui',
+    paths: { '@ui/*': ['./packs/BP/ui/*'] }, jsx: 'react-jsx', jsxImportSource: '@bedrock-core/ui',
   } }));
-  await writeFile(entry, `import Page from '../UI/screens/current.screen'; import { render } from '@bedrock-core/ui'; globalThis.authoredUi = render(Page);`);
+  await writeFile(entry, `import Page from '../ui/current.screen'; import { render } from '@bedrock-core/ui'; globalThis.authoredUi = render(Page);`);
   const original = await readFile(source, 'utf8');
 
   for (const expected of ['executed', 'cached']) {
@@ -217,7 +217,7 @@ test('pack UI sources share runtime imports, editor keys and cached output with 
     assert.equal(result.stages.find(stage => stage.stage === 'ui-compiler').status, expected);
     assert.match(await readFile(path.join(result.outputPaths.assets, 'ui/core-ui/screens/test/current.json'), 'utf8'), /Current caption/);
     assert.match(await readFile(path.join(project.root, '.bedrock-core/generated/ui/screens.generated.d.ts'), 'utf8'), /"test:current": true/);
-    await assert.rejects(readdir(path.join(result.outputPaths.logic, 'UI')), { code: 'ENOENT' });
+    await assert.rejects(readdir(path.join(result.outputPaths.logic, 'ui')), { code: 'ENOENT' });
     assert.equal(await readFile(source, 'utf8'), original);
     await writeFile(script, await readFile(path.join(result.outputPaths.logic, 'scripts/start.js')));
     await import(pathToFileURL(script));
@@ -241,7 +241,7 @@ test('duplicate screen names across UI and scripts fail before export', async (t
   const project = await fixture(t);
 
   await project.screen('duplicate');
-  await project.screen('duplicate', '<Text>Duplicate</Text>', '', 'UI');
+  await project.screen('duplicate', '<Text>Duplicate</Text>', '', 'ui');
   await assert.rejects(runBuild(project.options), /Two UI screens are named duplicate/);
 });
 
@@ -502,7 +502,7 @@ for (const location of ['entry', 'imported module', 'GameTest entry']) {
 
 test('removing the last screen refreshes editor keys and removes generated UI from the exported pack', async (t) => {
   const project = await fixture(t);
-  const source = await project.screen('last', '<Text>Hello</Text>', '', 'UI');
+  const source = await project.screen('last', '<Text>Hello</Text>', '', 'ui');
 
   await runBuild(project.options);
   await rm(source);

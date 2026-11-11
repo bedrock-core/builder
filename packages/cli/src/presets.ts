@@ -23,7 +23,7 @@ export async function applyPreset(root: string, preset: ProjectPreset): Promise<
     .replace(/^\s*coreHooks\.configs\.recommended,\r?\n/m, ''));
   delete pkg.devDependencies['eslint-plugin-react-hooks'];
 
-  for (const directory of ['packs/BP/guides', 'packs/BP/i18n', 'packs/BP/UI', 'packs/BP/blocks', 'packs/BP/entities']) {
+  for (const directory of ['packs/BP/guides', 'packs/BP/i18n', 'packs/BP/ui', 'packs/BP/blocks', 'packs/BP/entities']) {
     await fs.remove(path.join(root, directory));
   }
 

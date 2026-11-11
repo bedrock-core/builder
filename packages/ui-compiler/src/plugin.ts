@@ -34,7 +34,7 @@ import { refreshTestMetadata, writeTestMetadata } from './metadata.ts';
 import { prepareOreAssets } from './ore-assets.ts';
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
-const screenPatterns = ['UI/**/*.screen.tsx', 'scripts/**/*.screen.tsx'];
+const screenPatterns = ['ui/**/*.screen.tsx', 'scripts/**/*.screen.tsx'];
 
 async function implementation(files: string[], bundler = false): Promise<string> {
   const sources = files.map(file => new URL(file.replace(/\.ts$/, new URL(import.meta.url).pathname.endsWith('.ts') ? '.ts' : '.js'), import.meta.url));
@@ -67,7 +67,7 @@ export async function inputDirectories(context: BuildContext, settings: UiSettin
 
   for (const [id, directory] of Object.entries(context.packs)) {
     if ((settings.owner === undefined || id === settings.owner) && (await context.inspectPack(id)).kind === 'behavior') {
-      directories.push(path.join(directory, 'UI'));
+      directories.push(path.join(directory, 'ui'));
     }
   }
 
@@ -91,7 +91,7 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
       resources.push(pack.path);
     } else if (pack.kind === 'behavior') {
       behaviors.push(pack.path);
-      context.excludeFromExport?.(path.join(pack.path, 'UI'));
+      context.excludeFromExport?.(path.join(pack.path, 'ui'));
 
       for (const entry of await readScriptEntries(id, pack.path)) {
         scriptEntries.push(await scriptSource(id, path.resolve(pack.path, entry), pack.path));
@@ -447,7 +447,7 @@ export async function detect(context: BuildContext, settings: UiSettings = {}): 
 
   if (!needed) {
     needed = await hasFiles(context.stagedRoot, patterns);
-    input = 'screen modules in pack UI or scripts';
+    input = 'screen modules in pack ui/ or scripts/';
 
     if (!needed) {
       needed = await hasFiles(context.projectRoot, '.bedrock-core/generated/ui/screens.generated.d.ts');

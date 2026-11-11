@@ -68,7 +68,7 @@ for (const preset of ['script', 'resource']) {
     assert.equal(pkg.devDependencies['eslint-plugin-react-hooks'], undefined);
     assert.doesNotMatch(await readFile(path.join(root, 'eslint.config.mjs'), 'utf8'), /@bedrock-core\/ui\/eslint/);
     await assert.rejects(access(path.join(root, 'eslint.base.mjs')));
-    await assert.rejects(access(path.join(root, 'packs/BP/UI')));
+    await assert.rejects(access(path.join(root, 'packs/BP/ui')));
 
     assert.equal(config.name, 'Human Name');
     assert.equal(config.namespace, undefined);
@@ -151,8 +151,9 @@ test('generated starter validates all builder profiles and escaped metadata', as
   const bds = JSON.parse(await readFile(path.join(root, 'bds-runner.json'), 'utf8'));
 
   assert.equal(bds.version, '1.26.51.1');
-  const home = await readFile(path.join(root, 'packs/BP/UI/screens/home.screen.tsx'), 'utf8');
-  const plan = await readFile(path.join(root, 'packs/BP/UI/screens/plan.tsx'), 'utf8');
+  assert.ok((await readdir(path.join(root, 'packs/BP'))).includes('ui'));
+  const home = await readFile(path.join(root, 'packs/BP/ui/home.screen.tsx'), 'utf8');
+  const plan = await readFile(path.join(root, 'packs/BP/ui/plan.tsx'), 'utf8');
 
   assert.match(home, /createStaticNavigation\(RootStack\)/);
   assert.match(home, /screen=\{'Plan'\}/);
@@ -162,14 +163,14 @@ test('generated starter validates all builder profiles and escaped metadata', as
 
   assert.match(registration, /import manifest from '\.\.\/manifest\.json'/);
   assert.match(registration, /manifest,/);
-  assert.match(registration, /from '\.\.\/UI\/screens\/home\.screen'/);
+  assert.match(registration, /from '\.\.\/ui\/home\.screen'/);
   assert.match(registration, /from '\.\.\/i18n'/);
-  assert.match(home, /from '\.\.\/\.\.\/i18n'/);
+  assert.match(home, /from '\.\.\/i18n'/);
   const translations = await readFile(path.join(root, 'packs/BP/i18n/index.ts'), 'utf8');
 
   assert.match(translations, /export const i18n = createI18n\(\{ en_US \}\)/);
   assert.doesNotMatch(translations, /@bedrock-core\/generated/);
-  await assert.rejects(access(path.join(root, 'packs/BP/UI/i18n.ts')));
+  await assert.rejects(access(path.join(root, 'packs/BP/ui/i18n.ts')));
   await assert.rejects(access(path.join(root, 'packs/BP/scripts/UI')));
 
   for (const profile of ['build', 'build-optimized', 'default', 'test', 'build-test']) {
@@ -185,7 +186,7 @@ test('generated starter validates all builder profiles and escaped metadata', as
 
   assert.equal(tsconfig.compilerOptions.paths, undefined);
   assert.ok(tsconfig.include.includes('.bedrock-core/generated/**/*.d.ts'));
-  assert.ok(tsconfig.include.includes('packs/BP/UI/**/*'));
+  assert.ok(tsconfig.include.includes('packs/BP/ui/**/*'));
   await access(path.join(root, 'packs/BP/guides/en_US/intro.mdx'));
   await assert.rejects(access(path.join(root, 'guides')));
   const localeSource = await readFile(path.join(root, 'packs/BP/i18n/en_US.ts'), 'utf8');

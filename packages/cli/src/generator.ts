@@ -112,9 +112,9 @@ async function copyTemplate(
     'packs/BP/manifest.test.json',
     'packs/BP/texts/en_US.lang',
     'packs/BP/scripts/main.ts',
-    'packs/BP/UI/screens/home.screen.tsx',
-    'packs/BP/UI/screens/plan.tsx',
-    'packs/BP/UI/screens/profile_form.screen.tsx',
+    'packs/BP/ui/home.screen.tsx',
+    'packs/BP/ui/plan.tsx',
+    'packs/BP/ui/profile_form.screen.tsx',
     'packs/BP/blocks/tutorial.block.ts',
     'packs/BP/entities/training_dummy.entity.ts',
     'packs/RP/manifest.json',
@@ -424,7 +424,7 @@ function displayNextSteps(
   console.info(chalk.gray('  packs/BP/blocks and packs/BP/entities autocomplete once it has run.'));
 
   console.info(
-    chalk.gray('  See packs/BP/UI/screens/ to explore the starter screens and navigation.'),
+    chalk.gray('  See packs/BP/ui/ to explore the starter screens and navigation.'),
   );
 
   console.info('\n' + chalk.bold('Render pack:') + '\n');
