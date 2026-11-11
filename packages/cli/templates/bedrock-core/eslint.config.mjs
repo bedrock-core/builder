@@ -127,6 +127,8 @@ export default defineConfig([
         { selector: ['objectLiteralProperty', 'typeProperty'], modifiers: ['requiresQuotes'], format: null },
         // Config group metadata keys ($label, $description)
         { selector: ['objectLiteralProperty', 'typeProperty'], filter: { regex: '^\\$[a-z][a-zA-Z0-9]*$', match: true }, format: null },
+        // Locale identifiers match resource filenames (en_US).
+        { selector: ['import', 'objectLiteralProperty', 'typeProperty'], filter: { regex: '^[a-z]{2,3}_[A-Z]{2}$', match: true }, format: null },
         // i18n plural leaves: camelCase base + CLDR category suffix (stock_one, keyGiven_other)
         { selector: ['objectLiteralProperty', 'typeProperty'], filter: { regex: '^[a-z][a-zA-Z0-9]*_(zero|one|two|few|many|other)$', match: true }, format: null },
         { selector: 'typeLike', format: ['PascalCase'] },
