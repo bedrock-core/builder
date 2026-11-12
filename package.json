@@ -43,6 +43,10 @@
     "pack-release": "yarn prepare-release && node scripts/pack-release.ts",
     "test:packages": "node scripts/verify-packages.ts",
     "prepare:acceptance": "node scripts/prepare-acceptance.ts",
+    "registry": "node scripts/local-registry.mjs",
+    "local:publish": "node scripts/local-packages.mjs publish",
+    "local:check": "node scripts/local-packages.mjs check",
+    "test:local-packages": "node --test scripts/local-registry.test.mjs scripts/local-packages.test.mjs",
     "acceptance": "node scripts/acceptance.ts",
     "acceptance:native": "node scripts/acceptance.ts --native",
     "acceptance:api": "node scripts/api-acceptance.ts",
@@ -83,7 +87,8 @@
     "eslint": "10.5.0",
     "globals": "17.7.0",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.62.0"
+    "typescript-eslint": "8.62.0",
+    "verdaccio": "7.1.0"
   },
   "workspaces": [
     ".",

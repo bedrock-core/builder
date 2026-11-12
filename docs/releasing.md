@@ -10,6 +10,10 @@ versions. Unaffected plugins keep their current versions.
 Publication and tagging skip versions with existing package release tags. Fetch
 all release tags before running these commands.
 
+For unpublished cross-repository builds, use the
+[local package workflow](local-packages.md). It publishes source snapshots to the
+project-owned loopback registry and checks isolated installed consumers.
+
 ## Version and verify
 
 Apply queued Changesets, update the lockfile, and commit the resulting versions
