@@ -14,9 +14,10 @@ interface Host {
  * @param packs Configured pack IDs mapped to their directories.
  * @param linked Complete linked screen data for the current build.
  * @param settings UI output formatting and optional metadata settings.
+ * @param owner Behavior pack receiving virtual-container protocol items.
  * @returns Paths of generated behavior-pack host/protocol definitions.
  */
-export async function writeUiHosts(packs: string[], linked: LinkedUi, settings: UiSettings): Promise<string[]> {
+export async function writeUiHosts(packs: string[], linked: LinkedUi, settings: UiSettings, owner = packs[0]): Promise<string[]> {
   if (!linked.screens.some(screen => screen.host)) {
     return [];
   }
@@ -51,6 +52,16 @@ export async function writeUiHosts(packs: string[], linked: LinkedUi, settings: 
 
   for (const screen of linked.screens) {
     if (!screen.host) {
+      continue;
+    }
+
+    if (screen.host.kind === 'virtual') {
+      if (owner === undefined) {
+        throw new Error(`Virtual screen ${screen.name} requires an owning behavior pack`);
+      }
+
+      itemPacks.set(screen.addon, owner);
+
       continue;
     }
 

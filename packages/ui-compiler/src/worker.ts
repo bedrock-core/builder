@@ -27,7 +27,9 @@ port.on('message', async (request: UiRequest) => {
       value = Object.fromEntries(Object.entries(library).map(([name, exports]) => [name, Object.keys(exports)]));
     } else if (request.kind === 'link') {
       const screens = request.screens;
-      const namespaces = new Set(screens.flatMap(screen => screen.host ? [screen.host.type.split(':')[0]] : []));
+      const namespaces = new Set(screens.flatMap(screen => screen.host?.kind === 'virtual'
+        ? [screen.addon]
+        : screen.host ? [screen.host.type.split(':')[0]] : []));
 
       value = {
         ...library.compiler.buildUiPack(screens, request.namespace),
@@ -51,17 +53,9 @@ port.on('message', async (request: UiRequest) => {
 
         const spec = { name: request.name, namespace: request.namespace, testMetadata: request.testMetadata === true };
         const host = library.runtime.hostFor(library.runtime.buildScreenTree(component)).id;
-        let compiled: CompiledScreenData;
-
-        if (host === 'experimental-ore-ui') {
-          if (!library.compiler.compileExperimentalOreScreen) {
-            throw new Error('The selected UI compiler does not support Experimental_OreUI.');
-          }
-
-          compiled = library.compiler.compileExperimentalOreScreen(component, spec);
-        } else {
-          compiled = host === 'chest' ? library.compiler.compileScreen(component, spec) : library.compiler.compileFormScreen(component, spec);
-        }
+        const compiled: CompiledScreenData = host === 'chest'
+          ? library.compiler.compileScreen(component, spec)
+          : library.compiler.compileFormScreen(component, spec);
 
         let parameters = loaded.parameters;
 
@@ -89,7 +83,7 @@ port.on('message', async (request: UiRequest) => {
           }
         }
 
-        if (!compiled.host && host !== 'experimental-ore-ui') {
+        if (!compiled.host) {
           compiled.kind = host === 'form-modal' ? 'modal' : 'action';
         }
 

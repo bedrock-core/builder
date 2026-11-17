@@ -78,6 +78,14 @@ test('links item-name text runtimes without a character-table API', async (t) =>
   assert.equal(linked.blockSlotLimit, 54);
 });
 
+test('links virtual-container protocol items under the addon namespace', async (t) => {
+  const { evaluator } = await fixture(t);
+  const linked = await evaluator.request({ kind: 'link', screens: [{ name: 'virtual', addon: 'example', host: { kind: 'virtual' } }], namespace: 'example' });
+
+  assert.deepEqual(linked.items, { example: [] });
+  assert.equal(linked.screens[0].host.kind, 'virtual');
+});
+
 test('reports worker failures and continues serving sequential requests', async (t) => {
   const { evaluator, module } = await fixture(t);
 

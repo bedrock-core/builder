@@ -31,7 +31,6 @@ import {
   type UiSettings,
 } from './internal.ts';
 import { refreshTestMetadata, writeTestMetadata } from './metadata.ts';
-import { prepareOreAssets } from './ore-assets.ts';
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 const screenPatterns = ['ui/**/*.screen.tsx', 'scripts/**/*.screen.tsx'];
@@ -130,7 +129,6 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
   let evaluator: UiEvaluator | undefined;
   let reused = 0;
   let compiledModules = 0;
-  let oreClient: string | undefined;
   const moduleSources = new Set(settings.screens ?? []);
   const shapedSources = new Set<string>();
   const declarations = new Map<string, string>();
@@ -297,7 +295,7 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
               testMetadata: settings.testMetadata,
             });
 
-            if (settings.testMetadata && screen.ore === undefined && !screen.testMetadata) {
+            if (settings.testMetadata && !screen.testMetadata) {
               throw new Error('The installed @bedrock-core UI compiler does not support testMetadata');
             }
 
@@ -326,22 +324,10 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
         ? path.relative(context.stagedRoot, entry.source).replaceAll('\\', '/')
         : entry.source),
     }));
-    const files = await writeUiHosts(behaviors, linked, settings);
+    const files = await writeUiHosts(behaviors, linked, settings, routed[0].path);
 
     for (const pack of resources) {
       files.push(...await writeUiResource(pack, linked, metadataEntries, namespace, settings));
-      const layouts = (linked.resources ?? []).filter(resource => /^hbui\/core-ore\/[A-Za-z0-9_-]+\.json$/.test(resource.file)).map(resource => resource.file);
-
-      if (linked.screens.some(screen => screen.ore !== undefined)) {
-        const prepared = await prepareOreAssets({
-          pack, layouts, projectRoot: context.projectRoot, stagedRoot: context.stagedRoot,
-          targetVersion: context.project?.targetVersion, settings: settings.experimentalOre,
-          registerDependency: file => context.registerDependency(file),
-        });
-
-        files.push(...prepared.files);
-        oreClient = prepared.version;
-      }
     }
 
     for (const file of new Set(files)) {
@@ -425,8 +411,8 @@ export async function run(context: BuildContext, settings: UiSettings): Promise<
   }
 
   return {
-    cached: compiledModules === 0 && reused === entries.length && oreClient === undefined,
-    reason: `${compiledModules} modules bundled; ${entries.length - reused} screens compiled, ${reused} reused${oreClient ? `; Ore assets for ${oreClient}` : ''}`,
+    cached: compiledModules === 0 && reused === entries.length,
+    reason: `${compiledModules} modules bundled; ${entries.length - reused} screens compiled, ${reused} reused`,
   };
 }
 
