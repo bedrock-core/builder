@@ -1,0 +1,43 @@
+{
+  "name": "@bedrock-core/bedrock-types",
+  "version": "26.50.5",
+  "type": "module",
+  "description": "Schema-derived native Bedrock document types",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bedrock-core/builder.git",
+    "directory": "packages/bedrock-types"
+  },
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/**",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node src/build.ts",
+    "prepack": "node src/build.ts",
+    "typecheck": "node src/build.ts && tsc -p tsconfig.json",
+    "test": "node --test test/*.test.ts",
+    "audit": "node src/audit.ts"
+  },
+  "devDependencies": {
+    "@types/node": "25.9.9",
+    "json-schema-to-typescript": "15.0.4",
+    "jsonc-parser": "3.3.1",
+    "prettier": "^3.2.5",
+    "typescript": "5.9.3",
+    "typescript-native": "npm:typescript@7.1.0-beta",
+    "yauzl": "3.4.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

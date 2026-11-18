@@ -1,0 +1,18 @@
+{
+  "26.50.5": {
+    "schemaTag": "v1.26.50.26",
+    "schemaVersion": "1.26.50",
+    "schemaCommit": "17bbe729936f5c8e29d3eba16b41cd939969ca5a",
+    "schemaIntegrity": "sha512-ar8op/3APdGVKg7SA6shJ5HH1k8H/TQ6Oosry9you1tfj04/ynO3zVfHVWHcaxAfRAhtJIGHbTMDrCb07uV7vQ==",
+    "samplesTag": "v1.26.50.4",
+    "samplesSha256": "c0b6151f5f9a0c31ebe3c909dfc82d97f12473ed2c6e039aa7e22d667042026c"
+  },
+  "26.60.5": {
+    "schemaTag": "v1.26.60.5",
+    "schemaVersion": "1.26.60",
+    "schemaCommit": "3ab2bf017ce0b988a7e500936cdd6e7545e828f6",
+    "schemaIntegrity": "sha512-KC/7W10aS2EsO1uqS1qROu6H3DUJjEmDxjHoahv9uAwrW9Qh6Ri5ZGyRRV/CAOjZ4Db+KupNf2wiDni9KVDAhQ==",
+    "samplesTag": "v1.26.60.5",
+    "samplesSha256": "d93dea9aa1fb241a3184cc9f9a074a2ff34bd1b3c00d859b09c24b4b9e4e9adf"
+  }
+}

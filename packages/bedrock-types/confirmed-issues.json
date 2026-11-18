@@ -1,0 +1,129 @@
+{
+  "26.50.5": [
+    {
+      "reason": "Vanilla behavior entities use legacy range and event shapes or component fields absent from the SDK-derived authoring definitions.",
+      "issues": [
+        "05a23888d55f360f6a24",
+        "09236ecd56c395ded891",
+        "0e42b6d3ed32649deead",
+        "12641631a15d07952f0c",
+        "22a11c54683d03600ee0",
+        "2519b6313c9357052078",
+        "2aa594bad251607cf0e3",
+        "31a0ade1a07c7c148767",
+        "395f883fc08647038652",
+        "438af54149c3038808fc",
+        "516d914c2b811a7b83ae",
+        "5f92dfdaeee999ac0edd",
+        "7be24bc7bb0cde787eb3",
+        "856f5bffe060bdbc920f",
+        "8f3a549bfd4c993e522a",
+        "9ca904a69d024f237a1b",
+        "a224d344babfe6291936",
+        "ab26106794237c3e34e0",
+        "aefcd54f1fb959ef7ebb",
+        "be915463aea1b798fbe1",
+        "c030c15f50f8c3db0692",
+        "cb67e13d2a7aea398a39",
+        "e284ac35a961a3c0934c",
+        "e61f50a175c23ed726a9",
+        "e62378bc931083ff64f2",
+        "f014bfcf89764c481730"
+      ]
+    },
+    {
+      "reason": "Vanilla silverfish event removals use group names as keys. The authoring format uses a component_groups array.",
+      "issues": [
+        "fbe583bd2600e5db87a5"
+      ]
+    },
+    {
+      "reason": "Vanilla village chest loot tables contain an extra type field at the document root.",
+      "issues": [
+        "09019573e15d4f8b280b",
+        "48bdcb987d643c5c4592",
+        "56feead36705e19253d5",
+        "6a5a525f9c468117e08d",
+        "ae4ac6219dfd45213b4d",
+        "de6a4860f78d39433cdd"
+      ]
+    },
+    {
+      "reason": "Vanilla item entries place count directly on the entry. The loot format defines item counts on the set_count function.",
+      "issues": [
+        "20fc75b67299668db243",
+        "6313a9cdfafdb40a0d25",
+        "87859952ee5a74861b72",
+        "ccb8d98ac5473e4d7f46"
+      ]
+    },
+    {
+      "reason": "Vanilla amethyst bud sound entries contain the literal key pitch: instead of pitch.",
+      "issues": [
+        "ae89ef651ce26ddd33d3"
+      ]
+    }
+  ],
+  "26.60.5": [
+    {
+      "reason": "Vanilla silverfish event removals use group names as keys. The authoring format uses a component_groups array.",
+      "issues": [
+        "fbe583bd2600e5db87a5"
+      ]
+    },
+    {
+      "reason": "Vanilla behavior entities use legacy range and event shapes or component fields absent from the SDK-derived authoring definitions.",
+      "issues": [
+        "05a23888d55f360f6a24",
+        "0e42b6d3ed32649deead",
+        "12641631a15d07952f0c",
+        "22a11c54683d03600ee0",
+        "2519b6313c9357052078",
+        "31a0ade1a07c7c148767",
+        "395f883fc08647038652",
+        "516d914c2b811a7b83ae",
+        "7be24bc7bb0cde787eb3",
+        "856f5bffe060bdbc920f",
+        "8f3a549bfd4c993e522a",
+        "9ca904a69d024f237a1b",
+        "a224d344babfe6291936",
+        "a99593743e539a6bf7dc",
+        "ab26106794237c3e34e0",
+        "be915463aea1b798fbe1",
+        "c030c15f50f8c3db0692",
+        "cb67e13d2a7aea398a39",
+        "d966b25906e516d288a0",
+        "e284ac35a961a3c0934c",
+        "e61f50a175c23ed726a9",
+        "e62378bc931083ff64f2",
+        "f014bfcf89764c481730"
+      ]
+    },
+    {
+      "reason": "Vanilla village chest loot tables contain an extra type field at the document root.",
+      "issues": [
+        "09019573e15d4f8b280b",
+        "48bdcb987d643c5c4592",
+        "56feead36705e19253d5",
+        "6a5a525f9c468117e08d",
+        "ae4ac6219dfd45213b4d",
+        "de6a4860f78d39433cdd"
+      ]
+    },
+    {
+      "reason": "Vanilla item entries place count directly on the entry. The loot format defines item counts on the set_count function.",
+      "issues": [
+        "20fc75b67299668db243",
+        "6313a9cdfafdb40a0d25",
+        "87859952ee5a74861b72",
+        "ccb8d98ac5473e4d7f46"
+      ]
+    },
+    {
+      "reason": "Vanilla amethyst bud sound entries contain the literal key pitch: instead of pitch.",
+      "issues": [
+        "8b0d5b04011cf3b7197f"
+      ]
+    }
+  ]
+}
