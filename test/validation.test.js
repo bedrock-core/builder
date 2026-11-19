@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { validatePackContent, ContentValidationError } from '../packages/validation/src/index.ts';
+import { prepareCheckedDocument } from '../packages/validation/src/document-rules.ts';
 import { runBuild } from '../src/run.ts';
 import { manifestFor } from '../test-support/manifest.js';
 
@@ -24,6 +25,15 @@ async function fixture(t) {
   await writeFile(configPath, JSON.stringify(config));
 
   return { root, source, config, configPath, mode: 'strict', packs: [{ id: 'gameplay', path: path.join(root, 'packs/BP'), kind: 'behavior' }] };
+}
+
+async function writeDocument(project, file, document) {
+  const target = path.join(project.packs[0].path, file);
+
+  await mkdir(path.dirname(target), { recursive: true });
+  await writeFile(target, JSON.stringify(document));
+
+  return target;
 }
 
 test('document validation checks nested types and supports JSON comments', async (t) => {
@@ -72,6 +82,171 @@ test('block validation registers declaration inputs and rejects invalid componen
     description: { identifier: 'validation:owned_container' }, components: { 'minecraft:friction': 'invalid' },
   } }));
   await assert.rejects(validatePackContent(project), ContentValidationError);
+});
+
+test('block state definitions check their value type, uniqueness, integer bounds and cardinality', async (t) => {
+  const project = await fixture(t);
+  const document = {
+    'format_version': '1.26.50',
+    'minecraft:block': {
+      description: { identifier: 'validation:stateful', states: { 'validation:level': { values: { min: -4, max: 11 } }, 'validation:open': [false, true] } },
+    },
+  };
+
+  await writeDocument(project, 'blocks/stateful.json', document);
+  await validatePackContent(project);
+
+  document['minecraft:block'].description.states = {
+    'validation:duplicate': [1, 1],
+    'validation:fraction': [1.5],
+    'validation:mixed': [true, 'open'],
+    'validation:too_many': Array.from({ length: 17 }, (_, index) => index),
+    'validation:wide_range': { values: { min: 0, max: 16 } },
+  };
+  await writeDocument(project, 'blocks/stateful.json', document);
+  const result = await validatePackContent({ ...project, mode: 'warn' });
+
+  for (const key of Object.keys(document['minecraft:block'].description.states)) {
+    assert.ok(result.files[0].diagnostics.some(issue => issue.pointer.startsWith('/minecraft:block/description/states/' + key)), key);
+  }
+});
+
+test('block rules enforce root placement and numeric limits while accepting legacy ambient occlusion', async (t) => {
+  const project = await fixture(t);
+  const components = {
+    'minecraft:material_instances': { '*': { texture: 'stone', ambient_occlusion: true } },
+  };
+  const block = (version, overrides) => ({
+    'format_version': version,
+    'minecraft:block': { description: { identifier: 'validation:block' }, components: overrides },
+  });
+  const legacy = block('1.21.80', components);
+  const legacyPath = await writeDocument(project, 'blocks/legacy.json', legacy);
+
+  await validatePackContent(project);
+  assert.deepEqual(JSON.parse(await readFile(legacyPath, 'utf8')), legacy);
+  await writeDocument(project, 'blocks/boolean.json', block('1.26.50', components));
+  const invalid = block('1.26.50', {
+    'minecraft:material_instances': { '*': { texture: 'stone', ambient_occlusion: 11 } },
+    'minecraft:redstone_consumer': { min_power: 15.5 },
+  });
+
+  invalid['minecraft:block'].permutations = [{ condition: '1', components: { 'minecraft:flower_pottable': {}, 'minecraft:redstone_consumer': {} } }];
+  await writeDocument(project, 'blocks/invalid.json', invalid);
+  const result = await validatePackContent({ ...project, mode: 'warn' });
+
+  assert.deepEqual(result.files.find(file => file.file === 'blocks/invalid.json').diagnostics.map(issue => issue.pointer).sort(), [
+    '/minecraft:block/components/minecraft:material_instances/*/ambient_occlusion',
+    '/minecraft:block/components/minecraft:redstone_consumer/min_power',
+    '/minecraft:block/permutations/0/components/minecraft:flower_pottable',
+    '/minecraft:block/permutations/0/components/minecraft:redstone_consumer',
+  ]);
+  assert.equal(result.files.find(file => file.file === 'blocks/boolean.json').diagnostics[0].pointer,
+    '/minecraft:block/components/minecraft:material_instances/*/ambient_occlusion');
+});
+
+test('custom V2 component registrations preserve native checks in items and block permutations', async (t) => {
+  const project = await fixture(t);
+  const block = {
+    'format_version': '1.26.50',
+    'minecraft:block': {
+      description: { identifier: 'validation:block' },
+      components: { 'validation:registered': {}, 'validation:nullable': null },
+      permutations: [{ condition: '1', components: { 'validation:registered': { amount: 2 }, 'minecraft:friction': 0.5 } }],
+    },
+  };
+  const item = {
+    'format_version': '1.26.50',
+    'minecraft:item': { description: { identifier: 'validation:item' }, components: { 'validation:registered': { values: [[1, 2]], nullable: null } } },
+  };
+
+  await writeDocument(project, 'blocks/custom.json', block);
+  await writeDocument(project, 'items/custom.json', item);
+  const valid = await validatePackContent(project);
+
+  assert.equal(valid.files.length, 2);
+  block['minecraft:block'].permutations[0].components['minecraft:friction'] = 'wrong';
+  block['minecraft:block'].permutations[0].components['validation:registered'] = { a: { b: { c: 1 } } };
+  item['minecraft:item'].components['validation:registered'] = { values: [[{ amount: 1 }]] };
+  item['minecraft:item'].components['minecraft:unknown_component'] = {};
+  item['minecraft:item'].components['validation:nullable'] = null;
+  await writeDocument(project, 'blocks/custom.json', block);
+  await writeDocument(project, 'items/custom.json', item);
+  const result = await validatePackContent({ ...project, mode: 'warn' });
+
+  assert.deepEqual(result.files.flatMap(file => file.diagnostics.map(issue => issue.pointer)).sort(), [
+    '/minecraft:block/permutations/0/components/minecraft:friction',
+    '/minecraft:block/permutations/0/components/validation:registered/a/b',
+    '/minecraft:item/components/minecraft:unknown_component',
+    '/minecraft:item/components/validation:nullable',
+    '/minecraft:item/components/validation:registered/values/0/0',
+  ]);
+});
+
+test('neighbor directions permit duplicates, require one to six entries and separate all from individual faces', () => {
+  const cases = [
+    [[], false],
+    [['all'], true],
+    [['all', 'all'], true],
+    [['all', 'north'], false],
+    [['north', 'north'], true],
+    [['north', 'south', 'east', 'west', 'up', 'down', 'north'], false],
+  ];
+
+  for (const [neighbor_directions, valid] of cases) {
+    const issues = [];
+
+    prepareCheckedDocument('bp/blocks', {
+      'format_version': '1.26.60',
+      'minecraft:block': { components: { 'minecraft:neighbor_change': { neighbor_directions } } },
+    }, pointer => issues.push(pointer));
+    assert.deepEqual(issues, valid ? [] : ['/minecraft:block/components/minecraft:neighbor_change/neighbor_directions']);
+  }
+});
+
+test('checks authoring shapes for the supplemental behavior pack documents', async (t) => {
+  const project = await fixture(t);
+  const description = { identifier: 'validation:definition' };
+  const cases = [
+    ['cameras/presets/test.json', 'minecraft:camera_preset', { identifier: description.identifier, inherit_from: 'minecraft:free', rot_x: 10 }],
+    ['dimensions/test.json', 'minecraft:dimension', { description, components: { 'minecraft:generation': { generator_type: 'void' } } }],
+    ['item_catalog/crafting_item_catalog.json', 'minecraft:crafting_items_catalog', { categories: [{ category_name: 'items', groups: [{ items: ['minecraft:stick'] }] }] }],
+    ['sounds/server_sound_definitions.json', 'minecraft:server_sound_definitions', [{ sound_event_name: 'validation.sound', duration_info: { mode: 'game_time', seconds: 2 } }]],
+    ['worldgen/jigsaw_structures/test.json', 'minecraft:jigsaw', { description, start_pool: 'validation:pool', start_height: { type: 'constant', value: { absolute: 64 } }, max_depth: 6, step: 'surface_structures' }],
+    ['worldgen/processors/test.json', 'minecraft:processor_list', { description, processors: [{ processor_type: 'minecraft:block_ignore', blocks: ['minecraft:air'] }] }],
+    ['worldgen/structure_sets/test.json', 'minecraft:structure_set', { description, placement: { type: 'minecraft:random_spread', spacing: 30, separation: 9, salt: 5 }, structures: [{ structure: 'validation:structure', weight: 1 }] }],
+    ['worldgen/template_pools/test.json', 'minecraft:template_pool', { description, elements: [{ element: { element_type: 'minecraft:single_pool_element', location: 'validation:wood' } }] }],
+  ];
+
+  for (const [file, key, payload] of cases) {
+    await writeDocument(project, file, { format_version: '1.26.50', [key]: payload });
+  }
+
+  await writeDocument(project, 'cameras/presets/aim.json', { 'minecraft:aim_assist_preset': { identifier: 'validation:aim' } });
+  const valid = await validatePackContent(project);
+
+  assert.equal(valid.files.filter(file => file.category).length, cases.length);
+  assert.equal(valid.files.find(file => file.file.endsWith('/aim.json')).category, undefined);
+
+  for (const [file, key] of cases) {
+    const payload = key === 'minecraft:dimension'
+      ? { description, components: {
+          'minecraft:dimension_height': { min_y: -511, height_range: 1024 },
+          'minecraft:clouds': { height: 513 },
+        } }
+      : false;
+
+    await writeDocument(project, file, { format_version: '1.26.50', [key]: payload });
+  }
+
+  const invalid = await validatePackContent({ ...project, mode: 'warn' });
+
+  assert.equal(invalid.files.filter(file => file.diagnostics.length > 0).length, cases.length);
+  assert.deepEqual(invalid.files.find(file => file.file === 'dimensions/test.json').diagnostics.map(issue => issue.pointer), [
+    '/minecraft:dimension/components/minecraft:generation',
+    '/minecraft:dimension/components/minecraft:dimension_height',
+    '/minecraft:dimension/components/minecraft:clouds/height',
+  ]);
 });
 
 test('entity version checks require contiguous versions and names in the upgrade handler map', async (t) => {

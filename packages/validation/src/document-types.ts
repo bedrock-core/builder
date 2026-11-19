@@ -6,6 +6,8 @@ import { ModuleKind, ModuleResolutionKind, type API, type Diagnostic, type RawCo
 
 const exactCategories: Record<string, string> = {
   'bp/functions/tick.json': 'bp/functions/tick',
+  'bp/item_catalog/crafting_item_catalog.json': 'bp/item_catalog/crafting_item_catalog',
+  'bp/sounds/server_sound_definitions.json': 'bp/sounds/server_sound_definitions',
   'rp/blocks.json': 'rp/textures/blocks_resource',
   'rp/sounds.json': 'rp/sounds/events',
   'rp/sounds/sound_definitions.json': 'rp/sounds',
@@ -18,11 +20,15 @@ const exactCategories: Record<string, string> = {
 const deferred = new Set(['lighting', 'color_grading', 'atmospherics', 'pbr', 'point_lights', 'shadows', 'water']);
 
 export function documentCategory(kind: 'behavior' | 'resource', file: string): string {
-  const folder = file.split('/')[0];
+  const [folder, section] = file.split('/', 2);
   const prefix = kind === 'behavior' ? 'bp' : 'rp';
 
   if (kind === 'behavior' && folder === 'shapes') {
     return 'bp/voxel_shapes';
+  }
+
+  if (kind === 'behavior' && (folder === 'cameras' || folder === 'worldgen')) {
+    return 'bp/' + folder + '/' + section;
   }
 
   if (kind === 'resource' && file.endsWith('.texture_set.json')) {

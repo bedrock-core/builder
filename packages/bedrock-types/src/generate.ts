@@ -3,7 +3,7 @@ import { setTimeout } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { exists, files, hash, safe } from './files.ts';
-import { categoryKey, documentAliases, documents } from './layout.ts';
+import { authoredDocuments, categoryKey, documentAliases, documents } from './layout.ts';
 import { metadataSchemas, type MetadataSource } from './inputs/metadata.ts';
 import { normalizeBehaviorEntities, normalizeEntities } from './fixes/entities.ts';
 import { normalizeGeometry } from './fixes/geometry.ts';
@@ -60,10 +60,14 @@ export async function generateTypes(options: GenerateOptions): Promise<GenerateR
   const output = options.outputPath ?? path.join(root, 'dist');
   const cache = path.join(root, '.bedrock-core/cache/schema-types');
   const authored = path.join(root, 'types');
+  const local = (await Promise.all(Object.entries(authoredDocuments).map(async ([key, definition]) =>
+    await exists(path.join(authored, definition.file + '.d.ts')) ? { key, ...definition } : undefined,
+  ))).filter(entry => entry !== undefined);
   const catalog = JSON.parse(await readFile(path.join(options.schemaRoot, 'catalog.json'), 'utf8')) as { schemas: { url: string }[] };
   const declared = catalog.schemas.map(entry => categoryKey(entry.url)).filter(key => Object.hasOwn(documents, key));
   const requested = (options.categories ?? [
     ...declared,
+    ...local.map(entry => entry.key),
     ...(declared.includes('bp/blocks') ? ['assets/block-components'] : []),
     ...(declared.includes('rp/sounds') ? ['rp/sounds/events'] : []),
     ...(declared.includes('rp/textures/terrain_texture') ? ['rp/textures/texture_list'] : []),
@@ -267,7 +271,12 @@ export async function generateTypes(options: GenerateOptions): Promise<GenerateR
       }
     }
 
-    const compiled = await compileCatalog({ source, output: candidate, categories, log });
+    const supplemental = local.filter(entry => categories.includes(entry.key));
+    const generated = categories.filter(key => !supplemental.some(entry => entry.key === key));
+    const compiled = [
+      ...await compileCatalog({ source, output: candidate, categories: generated, log }),
+      ...supplemental,
+    ].sort((left, right) => left.file.localeCompare(right.file));
 
     await emitEntryPoints(candidate, compiled, authored);
     await emitFilterValues(source, candidate);

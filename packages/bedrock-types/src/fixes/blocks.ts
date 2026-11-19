@@ -19,6 +19,17 @@ export async function normalizeBlocks(source: string, componentVersion: string):
   }
 
   const wrapper = path.join(source, 'schemas/assets/block-components/index.schema.json');
+  const descriptionFile = path.join(source, 'schemas/bp/blocks/block_description.schema.json');
+
+  if (await exists(descriptionFile)) {
+    const description = JSON.parse(await readFile(descriptionFile, 'utf8')) as SchemaNode;
+    const states = object(object(description.properties)?.states);
+
+    if (states) {
+      states.tsType = 'BlockStates';
+      await writeFile(descriptionFile, JSON.stringify(description));
+    }
+  }
 
   await mkdir(path.dirname(wrapper), { recursive: true });
   await writeFile(
@@ -103,7 +114,9 @@ async function normalizeSdkBlocks(file: string, target: string): Promise<void> {
             render_method: {
               enum: ['opaque', 'double_sided', 'blend', 'alpha_test', 'alpha_test_single_sided', 'blend_to_opaque', 'alpha_test_to_opaque', 'alpha_test_single_sided_to_opaque'],
             },
-            ambient_occlusion: { type: ['boolean', 'number'] },
+            // Boolean values are accepted only by legacy block formats.
+            // https://learn.microsoft.com/minecraft/creator/reference/content/blockreference/examples/blockcomponents/minecraftblock_material_instances
+            ambient_occlusion: { type: 'number' },
             face_dimming: { type: 'boolean' },
             isotropic: { type: 'boolean' },
             alpha_masked_tint: { type: 'boolean' },

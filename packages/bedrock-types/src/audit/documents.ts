@@ -3,6 +3,7 @@ import path from 'node:path';
 import { parse, printParseErrorCode, type ParseError } from 'jsonc-parser';
 import { API } from 'typescript-native/sync';
 import { createDocumentChecker, declaredCategories, documentCategory, documentLiteral } from '../../../validation/src/document-types.ts';
+import { matchesDocumentType, prepareCheckedDocument } from '../../../validation/src/document-rules.ts';
 import { hash } from '../files.ts';
 import { readSampleEntries } from '../inputs/metadata.ts';
 import { object } from '../schema/normalize.ts';
@@ -149,7 +150,8 @@ export async function auditDocuments(archive: string, distribution: string): Pro
     const excluded = relative === 'manifest.json' || category === 'bp/dialogue' || category === 'bp/functions/tick'
       || /^resource_pack\/(ui|texts|particles|textures\/ui)\//.test(file)
       || (file.startsWith('resource_pack/items/') && literal?.format_version === '1.10.0')
-      || path.posix.basename(file) === '__molang_version.json';
+      || path.posix.basename(file) === '__molang_version.json'
+      || !matchesDocumentType(category, literal);
     const result: AuditedDocument = {
       path: file,
       category: categories.has(category) ? category : compatibility,
@@ -177,6 +179,10 @@ export async function auditDocuments(archive: string, distribution: string): Pro
         result.ignoredProperties = ignored;
       }
 
+      prepareCheckedDocument(result.category, literal, (pointer, message) => {
+        result.status = 'type-error';
+        result.diagnostics.push({ code: 'CONTENT_RULE', message: pointer + ': ' + message });
+      });
       pending.push({ result, category: compatibility ?? result.category, literal: documentLiteral(literal) });
     } else {
       result.status = 'uncovered';
@@ -204,7 +210,7 @@ export async function auditDocuments(archive: string, distribution: string): Pro
   for (const [index, { result }] of pending.entries()) {
     if (findings[index].length) {
       result.status = 'type-error';
-      result.diagnostics = findings[index].map(({ code, message }) => ({ code, message }));
+      result.diagnostics.push(...findings[index].map(({ code, message }) => ({ code, message })));
     }
   }
 

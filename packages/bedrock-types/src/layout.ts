@@ -1,5 +1,18 @@
+/** Public declarations for documents without roots in the pinned Mojang schema catalog. */
+export const authoredDocuments = {
+  'bp/cameras/presets': { file: 'cameras/preset', name: 'CameraPresetDocument' },
+  'bp/dimensions': { file: 'worldgen/dimension', name: 'DimensionDocument' },
+  'bp/item_catalog/crafting_item_catalog': { file: 'items/catalog', name: 'CraftingItemCatalogDocument' },
+  'bp/sounds/server_sound_definitions': { file: 'sounds/server-definitions', name: 'ServerSoundDefinitionsDocument' },
+  'bp/worldgen/jigsaw_structures': { file: 'worldgen/jigsaw', name: 'JigsawDocument' },
+  'bp/worldgen/processors': { file: 'worldgen/processor-list', name: 'ProcessorListDocument' },
+  'bp/worldgen/structure_sets': { file: 'worldgen/structure-set', name: 'StructureSetDocument' },
+  'bp/worldgen/template_pools': { file: 'worldgen/template-pool', name: 'TemplatePoolDocument' },
+} as const;
+
 /** Stable public document names and files, independent of upstream schema titles. */
 export const documents: Readonly<Record<string, { file: string; name: string; names?: readonly string[] }>> = {
+  ...authoredDocuments,
   'bp/entities': { file: 'entities/behavior', name: 'EntityDocument' },
   'bp/blocks': { file: 'blocks/document', name: 'BlockDocument' },
   'bp/items': { file: 'items/document', name: 'ItemDocument' },

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { findNodeAtOffset, getNodePath, parse, parseTree, printParseErrorCode, type ParseError } from 'jsonc-parser';
 import { validateWithCreatorTools, type CreatorToolsResult, type CreatorToolsValidationOptions } from './creator-tools.ts';
+import { matchesDocumentType, prepareCheckedDocument } from './document-rules.ts';
 import type { openTypesRelease, TypeSelection } from './types-release.ts';
 
 export type { CreatorToolsDiagnostic, CreatorToolsResult, CreatorToolsValidationOptions } from './creator-tools.ts';
@@ -228,8 +229,11 @@ async function checkBatch(
       }));
       const result: ContentFileResult = { pack, file, diagnostics };
 
-      if (types && category && !errors.length) {
+      if (types && category && !errors.length && matchesDocumentType(category, document)) {
         result.category = category;
+        prepareCheckedDocument(category, document, (pointer, message) => {
+          diagnostics.push({ kind: 'type', pack, file, pointer, message });
+        });
 
         if (category === 'bp/entities') {
           diagnostics.push(...entityUpgradeDiagnostics(document, pack, file));
@@ -303,7 +307,11 @@ export async function validatePackContent(options: ContentValidationOptions): Pr
     }
   }
 
-  const implementation = [new URL(import.meta.url), ...(backend?.typeImplementation ?? [])];
+  const implementation = [
+    new URL(import.meta.url),
+    new URL('./document-rules' + path.extname(new URL(import.meta.url).pathname), import.meta.url),
+    ...(backend?.typeImplementation ?? []),
+  ];
   const revision = options.reuse
     ? createHash('sha256').update(backend?.checkerVersion ?? '').update(Buffer.concat(await Promise.all(implementation.map(file => readFile(file))))).digest('hex')
     : '';

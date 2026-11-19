@@ -22,9 +22,11 @@ export async function emitEntryPoints(output: string, categories: readonly Categ
     const parts = (await readdir(path.join(authored, group)).catch(() => []))
       .filter(file => file.endsWith('.d.ts') && file !== 'index.d.ts')
       .sort();
-    const lines = entries.map(
-      entry => `export type { ${entry.names?.join(', ') ?? entry.name} } from './${entry.file.split('/').slice(1).join('/')}';`,
-    );
+    const lines = entries.flatMap((entry) => {
+      const part = entry.file.slice(group.length + 1);
+
+      return parts.includes(part + '.d.ts') ? [] : [`export type { ${entry.names?.join(', ') ?? entry.name} } from './${part}';`];
+    });
 
     lines.push(...parts.map(file => `export type * from './${file.replace(/\.d\.ts$/, '')}';`));
     await writeFile(path.join(output, group, 'index.d.ts'), lines.join('\n') + '\n');

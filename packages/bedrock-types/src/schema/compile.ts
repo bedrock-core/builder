@@ -24,7 +24,7 @@ interface CompileOptions {
 
 const preambles: Record<string, string> = {
   'bp/items': 'import type { ItemComponents } from \'./registry\';',
-  'bp/blocks': 'import type { BlockComponents } from \'./registry\';',
+  'bp/blocks': 'import type { BlockComponents } from \'./registry\';\nimport type { BlockStates } from \'./parts\';',
   'bp/entities': 'import type { EntityComponents } from \'./registry\';\nimport type { EntityDescription } from \'./description\';\nimport type { EntityEventAction } from \'./events\';',
   'assets/entity-components': 'import type { EntityComponents } from \'./registry\';\nimport type { FilterGroup } from \'../common/filters\';',
   'bp/features': 'import type { ScatterDistribution } from \'./parts\';',
