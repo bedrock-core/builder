@@ -1,6 +1,5 @@
 import { migrateRegolithProject, writeMigration } from '../src/migrate.ts';
-import type { FilterKind, MigrationOptions } from '../src/migrate.ts';
-import { stages } from '../src/plan.ts';
+import type { MigrationOptions } from '../src/migrate.ts';
 
 const help = `@bedrock-core Regolith configuration migration
 
@@ -13,7 +12,6 @@ Preview is the default. Filters, shell commands and expressions are never execut
   --profile name             Select a profile (repeatable; default: all)
   --target-version value     Supply missing targetVersion
   --export profile:pack=path  Set exact destinations (repeat for every pack)
-  --filter id=stage          Map a verified local filter or fork to a stage or core
   --json                     Print config, diagnostics and readiness as JSON
   --help                     Show this help
 `;
@@ -69,15 +67,6 @@ try {
         ...options.exports,
         [profile]: { ...options.exports?.[profile], [pack]: directory },
       };
-    } else if (flag === '--filter') {
-      const value = argument(index++);
-      const match = /^([^=]+)=([^=]+)$/.exec(value);
-
-      if (!match || (match[2] !== 'core' && !stages.some(stage => stage === match[2]))) {
-        throw new Error(`--filter expects id=core or id=${stages.join('|')}`);
-      }
-
-      options.filters = { ...options.filters, [match[1]]: match[2] as FilterKind };
     } else if (flag.startsWith('-') || configPath !== undefined) {
       throw new Error(`Unknown argument: ${flag}`);
     } else {

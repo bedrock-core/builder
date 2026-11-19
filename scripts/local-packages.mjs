@@ -4,7 +4,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { extractTgz } from '../packages/generator/src/tar.ts';
+import { extractTgz } from '../packages/bedrock-types/src/inputs/tar.ts';
 import { yarn, yarnOutput } from './yarn.ts';
 import { defaultRegistryDirectory, registryOrigin, requireRegistry } from './local-registry.mjs';
 

@@ -16,6 +16,20 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@bedrock-core/bedrock-types@workspace:*, @bedrock-core/bedrock-types@workspace:packages/bedrock-types":
+  version: 0.0.0-use.local
+  resolution: "@bedrock-core/bedrock-types@workspace:packages/bedrock-types"
+  dependencies:
+    "@types/node": "npm:25.9.9"
+    json-schema-to-typescript: "npm:15.0.4"
+    jsonc-parser: "npm:3.3.1"
+    prettier: "npm:^3.2.5"
+    typescript: "npm:5.9.3"
+    typescript-native: "npm:typescript@7.1.0-beta"
+    yauzl: "npm:3.4.0"
+  languageName: unknown
+  linkType: soft
+
 "@bedrock-core/builder-bundler@workspace:*, @bedrock-core/builder-bundler@workspace:packages/bundler":
   version: 0.0.0-use.local
   resolution: "@bedrock-core/builder-bundler@workspace:packages/bundler"
@@ -33,8 +47,6 @@ __metadata:
   dependencies:
     "@bedrock-core/builder-bundler": "workspace:*"
     "@bedrock-core/builder-plugin": "workspace:*"
-    json-schema-to-typescript: "npm:15.0.4"
-    prettier: "npm:^3.2.5"
     typescript-native: "npm:typescript@7.1.0-beta"
   languageName: unknown
   linkType: soft
@@ -101,11 +113,9 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@bedrock-core/builder-validation@workspace:packages/validation"
   dependencies:
-    "@minecraft/bedrock-schemas": "npm:1.26.50"
-    "@types/picomatch": "npm:^4.0.2"
-    ajv: "npm:8.17.1"
+    "@bedrock-core/bedrock-types": "workspace:*"
     jsonc-parser: "npm:3.3.1"
-    picomatch: "npm:^4.0.2"
+    typescript-native: "npm:typescript@7.1.0-beta"
   languageName: unknown
   linkType: soft
 
@@ -128,6 +138,7 @@ __metadata:
     ajv: "npm:8.17.1"
     eslint: "npm:10.5.0"
     globals: "npm:17.7.0"
+    import-meta-resolve: "npm:^4.2.0"
     typescript: "npm:5.9.3"
     typescript-eslint: "npm:8.62.0"
     typescript-native: "npm:typescript@7.1.0-beta"
@@ -707,13 +718,6 @@ __metadata:
     tinyglobby: "npm:^0.2.13"
     yaml: "npm:^2.9.0"
   checksum: 10c0/05c8ece3b3b3ff170765ecf230f0a5408543f1ad43f8b5dc97651adff0ffed3d860dabdd1e2d1068aa247832d473c4de583791675b8f3d07568da4cab2a0ebc3
-  languageName: node
-  linkType: hard
-
-"@minecraft/bedrock-schemas@npm:1.26.50":
-  version: 1.26.50
-  resolution: "@minecraft/bedrock-schemas@npm:1.26.50"
-  checksum: 10c0/d98241130a466837567d0a7b2a67f719af735f4c4056888578759efb60a9f0c23a1f3ef3507717312dba605a690a97b5415f9e28798e3a6d81c477529f77f45f
   languageName: node
   linkType: hard
 
@@ -4578,6 +4582,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"pend@npm:~1.2.0":
+  version: 1.2.0
+  resolution: "pend@npm:1.2.0"
+  checksum: 10c0/8a87e63f7a4afcfb0f9f77b39bb92374afc723418b9cb716ee4257689224171002e07768eeade4ecd0e86f1fa3d8f022994219fb45634f2dbd78c6803e452458
+  languageName: node
+  linkType: hard
+
 "picocolors@npm:^1.1.1":
   version: 1.1.1
   resolution: "picocolors@npm:1.1.1"
@@ -5744,6 +5755,15 @@ __metadata:
   bin:
     yaml: bin.mjs
   checksum: 10c0/9d06676ef02b89559a8b10a71882bd2cdae81e8393dc8dbc871615c3259475d9609ad973d19cb3c9e71e72d6206e3d1e7aa241c7e55f3d16fd2e77db305827d6
+  languageName: node
+  linkType: hard
+
+"yauzl@npm:3.4.0":
+  version: 3.4.0
+  resolution: "yauzl@npm:3.4.0"
+  dependencies:
+    pend: "npm:~1.2.0"
+  checksum: 10c0/17a98c42c0065e8af429eb8a61f7a0e4562181ed54080366b838f34f741b6829f167f804787c86b7646bb042707f35871739f053de0548285e405a2eae4da025
   languageName: node
   linkType: hard
 

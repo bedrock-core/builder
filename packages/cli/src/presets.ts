@@ -47,6 +47,10 @@ export async function applyPreset(root: string, preset: ProjectPreset): Promise<
     delete pkg.scripts['build:test'];
     delete pkg.scripts['watch:test'];
     delete pkg.scripts['test:mc'];
+    delete pkg.scripts['test:mc:debug'];
+    delete pkg.scripts['test:mc:profile'];
+    await fs.remove(path.join(root, '.vscode/launch.json'));
+    await fs.remove(path.join(root, '.vscode/tasks.json'));
     delete pkg.scripts.typecheck;
     delete pkg.devDependencies['typescript-native'];
     delete pkg.devDependencies['@minecraft/server-gametest'];

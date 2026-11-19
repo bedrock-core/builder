@@ -4,9 +4,9 @@ import { fingerprint, generatedAliases, type BuildContext, type BuildDetection, 
 import { compilerVersion } from '@bedrock-core/builder-bundler';
 import { compileModule, compilerFingerprint, moduleNamesFor } from '@bedrock-core/builder-bundler/compile';
 import { templateFiles } from './selection.ts';
-import { generateTemplates, generateSchemaTypes, type JsonFormatting, type SchemaTypeSettings } from './index.ts';
+import { generateTemplates, type JsonFormatting } from './index.ts';
 
-export interface GeneratorSettings extends SchemaTypeSettings {
+export interface GeneratorSettings {
   include?: string | string[];
   exclude?: string | string[];
   pretty?: JsonFormatting | false;
@@ -26,10 +26,6 @@ function projectPath(root: string, file: string): string {
 
 /** Discover templates only in configured packs and register their emitted JSON. */
 export async function run(context: BuildContext, settings: GeneratorSettings): Promise<BuildStepResult> {
-  if (settings.types !== false) {
-    await generateSchemaTypes({ ...settings, root: context.projectRoot, signal: context.signal, log: message => context.logger.info?.(`@bedrock-core/generator: ${message}`) });
-  }
-
   const files = await templateFiles(context, settings);
 
   const aliases = generatedAliases(context, settings.generatedImports);

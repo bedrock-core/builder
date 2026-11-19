@@ -184,7 +184,7 @@ for (const stage of ['generator', 'i18n']) {
     const project = await fixture(t);
 
     project.behavior.dependencies.push({ module_name: 'peer-addon' });
-    project.config.bedrockCore.profiles.default.stages[stage] = stage === 'generator' ? { types: false } : true;
+    project.config.bedrockCore.profiles.default.stages[stage] = true;
     await put(project.project, stage === 'generator' ? 'packs/gameplay/data/value.ts' : 'packs/gameplay/i18n/en_US.ts', 'import { value } from "peer-addon"; export default { value };');
     await project.save();
     await assert.rejects(runBuild(project.options), /External addon API peer-addon/);
@@ -195,7 +195,7 @@ for (const stage of ['generator', 'i18n']) {
 test('generator output cache invalidates when its source becomes a declared addon API importer', async (t) => {
   const project = await fixture(t, true);
 
-  project.config.bedrockCore.profiles.default.stages.generator = { types: false };
+  project.config.bedrockCore.profiles.default.stages.generator = true;
   await put(project.project, 'packs/gameplay/data/value.ts', 'import { value } from "peer-addon"; export default { value };');
   await project.save();
   await runBuild(project.options);

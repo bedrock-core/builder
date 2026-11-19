@@ -6,7 +6,6 @@ import { promisify } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { migrateRegolithConfig, migrateRegolithProject, writeMigration } from '../src/migrate.ts';
-import { localFilterKind } from '../src/migration/local-filter.ts';
 import { validateConfig } from '../src/config.ts';
 import { runBuild } from '../src/run.ts';
 import { projectFor } from '../test-support/project.js';
@@ -21,12 +20,13 @@ function legacy() {
     bridge: { retained: true },
     regolith: {
       formatVersion: '1.8.0', dataPath: './packs/data', watchPaths: ['../shared'],
-      filterDefinitions: Object.fromEntries(['core', 'manifest', 'generator', 'i18n', 'bundler', 'guides', 'ui-compiler'].map(id => [id, {
-        url: 'github.com/bedrock-core/regolith-filters', version: '1.0.0',
-      }])),
+      filterDefinitions: {
+        prepare: { runWith: 'nodejs', script: './filters/prepare.js' },
+        transform: { runWith: 'nodejs', script: './filters/transform.js' },
+      },
       profiles: {
         default: {
-          filters: [{ filter: 'manifest' }, { filter: 'bundler', settings: { debug: true, tsConfigPath: 'tsconfig.test.json' } }],
+          filters: [{ filter: 'prepare' }, { filter: 'transform', settings: { debug: true }, arguments: ['--mode', 'build'] }],
           export: { target: 'local', readOnly: false },
         },
       },
@@ -39,8 +39,19 @@ async function projectWithRegolith(t) {
   const config = legacy();
 
   config.packs = project.config.packs;
-  config.regolith.profiles.default.filters = [{ filter: 'bundler' }];
+  config.regolith.profiles.default.filters = [{ filter: 'transform' }];
   delete config.targetVersion;
+  await mkdir(path.join(project.project, 'packs/data'));
+  await mkdir(path.join(project.project, 'filters'));
+  await writeFile(path.join(project.project, 'packs/data/value.json'), '{"value":42}');
+  await writeFile(path.join(project.project, 'filters/transform.js'), `
+    import { readFileSync, writeFileSync } from 'node:fs';
+    const manifest = JSON.parse(readFileSync('BP/manifest.json', 'utf8'));
+    const data = JSON.parse(readFileSync('data/value.json', 'utf8'));
+    manifest.modules[0].entry = 'scripts/main.js';
+    writeFileSync('BP/manifest.json', JSON.stringify(manifest));
+    writeFileSync('BP/scripts/main.js', 'export const value = ' + data.value + ';');
+  `);
   await writeFile(project.configPath, JSON.stringify(config));
 
   return { ...project, legacy: config };
@@ -66,10 +77,12 @@ test('migration preserves unrelated tools and Regolith config without mutating i
 
   assert.deepEqual(profile.export, { behaviorPack: 'build/example_bp', resourcePack: 'build/example_rp' });
   assert.deepEqual(profile.watch, { paths: ['../shared'] });
-  assert.deepEqual(profile.stages.bundler, { debug: true, tsconfig: 'tsconfig.test.json' });
-  assert.equal(profile.stages.generator, false);
-  assert.equal(profile.stages.i18n, false);
-  assert.equal(profile.stages['ui-compiler'], false);
+  assert.deepEqual(result.config.bedrockCore.plugins.transform, { script: './filters/transform.js', dataPath: './packs/data' });
+  assert.deepEqual(profile.steps, [
+    { plugin: 'prepare', after: 'prepare' },
+    { plugin: 'transform', after: 'prepare', settings: { debug: true }, arguments: ['--mode', 'build'] },
+  ]);
+  assert.ok(Object.values(profile.stages).every(value => value === false));
 });
 
 test('migration emits preferred metadata without redundant project fields', () => {
@@ -88,102 +101,20 @@ test('migration emits preferred metadata without redundant project fields', () =
   assert.deepEqual(input.worlds, ['./worlds/example']);
 });
 
-test('core settings preserve generator opt-in and report manifest namespace ownership', () => {
+test('profile references preserve ordered and repeated script steps and skip disabled filters', () => {
   const config = legacy();
 
-  delete config.namespace;
-  config.regolith.profiles.default.filters = [{ filter: 'core', settings: {
-    'shared': { namespace: 'from_core', pretty: { indent: 'space', size: 2 } },
-    'guides': false, 'ui-compiler': false, 'generator': true, 'bundler': { debug: true },
-  } }];
-  const result = migrateRegolithConfig(config);
-
-  assert.equal(result.ready, true);
-  assert.equal(result.config.namespace, undefined);
-  assert.ok(result.diagnostics.some(item => item.code === 'manifest-namespace'));
-  const stages = result.config.bedrockCore.profiles.default.stages;
-
-  assert.deepEqual(stages.generator, { pretty: { indent: 'space', size: 2 } });
-  assert.deepEqual(stages.bundler, { pretty: { indent: 'space', size: 2 }, debug: true });
-  assert.equal(stages.i18n.sourceDir, 'i18n');
-  assert.equal(stages.i18n.namespace, undefined);
-  delete config.regolith.profiles.default.filters[0].settings.generator;
-  assert.equal(migrateRegolithConfig(config).config.bedrockCore.profiles.default.stages.generator, false);
-});
-
-test('referenced profiles flatten and template paths follow authored pack roots', () => {
-  const config = legacy();
-
-  config.regolith.profiles.content = {
-    filters: [
-      { filter: 'generator', settings: { include: ['BP/entities/**/*.ts', './packs/RP/textures/**/*.ts'], exclude: 'BP/entities/helper.ts', types: false } },
-      { filter: 'i18n' },
-    ],
-    export: { target: 'none' },
-  };
-  config.regolith.profiles.default.filters = [{ profile: 'content' }, { filter: 'bundler' }];
+  config.regolith.profiles.shared = { filters: [{ filter: 'transform' }, { filter: 'prepare', disabled: true }] };
+  config.regolith.profiles.default.filters = [
+    { filter: 'prepare' },
+    { profile: 'shared' },
+    { profile: 'missing', disabled: true },
+    { filter: 'prepare' },
+  ];
   const result = migrateRegolithConfig(config, { profiles: ['default'] });
 
   assert.equal(result.ready, true);
-  assert.deepEqual(Object.keys(result.config.bedrockCore.profiles), ['default']);
-  const stages = result.config.bedrockCore.profiles.default.stages;
-
-  assert.deepEqual(stages.generator.include, ['packs/BP/entities/**/*.ts', 'packs/RP/textures/**/*.ts']);
-  assert.equal(stages.generator.exclude, 'packs/BP/entities/helper.ts');
-  assert.equal(stages.i18n.sourceDir, 'i18n');
-});
-
-test('UI settings migrate local screen modules as project paths and preserve package imports', () => {
-  const config = legacy();
-
-  config.regolith.profiles.default.filters = [{ filter: 'ui-compiler', settings: {
-    namespace: 'screens', testMetadata: true, stamp: true, pretty: { size: 2 },
-    screens: ['./BP/scripts/screens.ts', './data/screens.ts', '@bedrock-core/catalog/compiled'],
-  } }];
-  const result = migrateRegolithConfig(config);
-
-  assert.equal(result.ready, true);
-  validateConfig(result.config);
-  assert.deepEqual(result.config.bedrockCore.profiles.default.stages['ui-compiler'], {
-    testMetadata: true, stamp: true, pretty: { size: 2 },
-    screens: ['./packs/BP/scripts/screens.ts', './packs/data/screens.ts', '@bedrock-core/catalog/compiled'],
-  });
-  assert.equal(codes(result).length, 0);
-});
-
-test('guides settings use owner-relative paths and report guide content requiring placement in a pack', () => {
-  const config = legacy();
-
-  config.regolith.profiles.default.filters = [{ filter: 'guides', settings: {
-    sourceDir: 'data/manual', screensDir: 'BP/scripts/manual', componentsModule: 'BP/scripts/components.tsx',
-    manifestPath: 'data/manual/guides.generated.json', include: ['**/*.mdx'], exclude: ['draft/**'],
-    defaultLocale: 'es_ES', strictLocales: true, maxCodeLineBytes: 40, screenTitle: 'Manual',
-  } }];
-  const result = migrateRegolithConfig(config);
-
-  assert.equal(result.ready, true);
-  assert.deepEqual(result.config.bedrockCore.profiles.default.stages.guides, {
-    owner: 'behaviorPack', sourceDir: 'guides', screensDir: 'scripts/manual',
-    componentsModule: 'scripts/components.tsx',
-    include: ['**/*.mdx'], exclude: ['draft/**'], defaultLocale: 'es_ES', strictLocales: true,
-    maxCodeLineBytes: 40, screenTitle: 'Manual',
-  });
-  assert.ok(result.diagnostics.some(item => item.code === 'guides-declarations'));
-  assert.ok(result.diagnostics.some(item => item.code === 'guides-pack-sources'));
-  assert.ok(result.diagnostics.some(item => item.code === 'guides-pack-output'));
-});
-
-test('disabled filters and profile references cannot activate automatic stages', () => {
-  const config = legacy();
-
-  config.regolith.profiles.default.filters = [
-    { filter: 'bundler', disabled: true, when: 'unknown expression' },
-    { profile: 'missing', disabled: true },
-    { filter: 'custom', disabled: true },
-  ];
-  const result = migrateRegolithConfig(config);
-
-  assert.equal(result.ready, true);
+  assert.deepEqual(result.config.bedrockCore.profiles.default.steps.map(step => step.plugin), ['prepare', 'transform', 'prepare']);
   assert.ok(Object.values(result.config.bedrockCore.profiles.default.stages).every(value => value === false));
 });
 
@@ -220,16 +151,16 @@ test('unsupported behavior is reported rather than dropped or reordered', () => 
     ['shell-commands', (config) => { config.regolith.profiles.default.preShell = ['echo before']; }],
     ['shell-commands', (config) => { config.regolith.profiles.default.postShell = { windows: ['echo after'] }; }],
     ['custom-filter', (config) => { config.regolith.profiles.default.filters = [{ filter: 'unknown' }]; }],
-    ['custom-filter', (config) => { config.regolith.filterDefinitions.bundler.url = 'github.com/other/filters'; }],
-    ['custom-filter', (config) => { config.regolith.filterDefinitions.bundler.script = './custom.ts'; }],
-    ['filter-arguments', (config) => { config.regolith.profiles.default.filters[0].arguments = ['--test']; }],
+    ['custom-filter', (config) => { config.regolith.filterDefinitions.transform.url = 'github.com/example/filters'; }],
+    ['custom-filter', (config) => { config.regolith.filterDefinitions.transform = { npm: '@example/filter', version: '1.0.0' }; }],
+    ['filter-runtime', (config) => { config.regolith.filterDefinitions.transform.runWith = 'python'; }],
+    ['filter-script', (config) => { delete config.regolith.filterDefinitions.transform.script; }],
+    ['filter-arguments', (config) => { config.regolith.profiles.default.filters[0].arguments = [true]; }],
     ['extra-arguments', (config) => { config.regolith.profiles.default.filters[0].extraArguments = 'append'; }],
-    ['parallel-filters', (config) => { config.regolith.profiles.default.filters = [{ asyncFilters: [{ filter: 'bundler' }] }]; }],
-    ['repeated-stage', (config) => { config.regolith.profiles.default.filters.push({ filter: 'bundler' }); }],
-    ['stage-order', (config) => { config.regolith.profiles.default.filters.reverse(); }],
+    ['parallel-filters', (config) => { config.regolith.profiles.default.filters = [{ asyncFilters: [{ filter: 'transform' }] }]; }],
     ['profile-cycle', (config) => { config.regolith.profiles.default.filters = [{ profile: 'default' }]; }],
     ['profile-reference', (config) => { config.regolith.profiles.default.filters = [{ profile: 'missing' }]; }],
-    ['filter-setting', (config) => { config.regolith.profiles.default.filters[1].settings.entry = 'other.ts'; }],
+    ['filter-settings', (config) => { config.regolith.profiles.default.filters[1].settings = true; }],
     ['export-target', (config) => { config.regolith.profiles.default.export = { target: 'none' }; }],
     ['export-target', (config) => { config.regolith.profiles.default.export = { target: 'world', worldPath: './worlds/test' }; }],
     ['multiple-exports', (config) => { config.regolith.profiles.default.export = [{ target: 'local' }, { target: 'development' }]; }],
@@ -238,8 +169,6 @@ test('unsupported behavior is reported rather than dropped or reordered', () => 
     ['export-path', (config) => { config.regolith.profiles.default.export = { target: 'exact', bpPath: '%ROOT%/BP', rpPath: '${ROOT}/RP' }; }],
     ['regolith-version', (config) => { config.regolith.formatVersion = '1.2.0'; }],
     ['regolith-property', (config) => { config.regolith.custom = true; }],
-    ['builder-config', (config) => { config.regolith.profiles.default.filters[1].settings.debug = 'yes'; }],
-    ['generator-pattern', (config) => { config.regolith.profiles.default.filters = [{ filter: 'generator', settings: { include: '**/*.ts' } }]; }],
   ];
 
   for (const [code, change] of cases) {
@@ -267,21 +196,11 @@ test('missing metadata is actionable and existing builder profiles are preserved
   assert.deepEqual(codes(result), ['existing-builder']);
 });
 
-test('explicit mappings require verified filter settings and a Node runtime', () => {
-  const config = legacy();
-
-  config.regolith.filterDefinitions.local = { runWith: 'nodejs', script: './filters/local.ts' };
-  config.regolith.profiles.default.filters = [{ filter: 'local', settings: { debug: true } }];
-  const result = migrateRegolithConfig(config, { filters: { local: 'bundler' } });
-
-  assert.equal(result.ready, true);
-  assert.deepEqual(result.config.bedrockCore.profiles.default.stages.bundler, { debug: true });
-  config.regolith.filterDefinitions.local.runWith = 'python';
-  assert.ok(codes(migrateRegolithConfig(config, { filters: { local: 'bundler' } })).includes('filter-runtime'));
-});
-
 test('project migration reads v3 manifests and produces a working script build', async (t) => {
   const project = await projectWithRegolith(t);
+
+  delete project.legacy.regolith.dataPath;
+  await writeFile(project.configPath, JSON.stringify(project.legacy));
   const source = await readFile(project.configPath, 'utf8');
   const result = await migrateRegolithProject(project.configPath);
 
@@ -294,7 +213,7 @@ test('project migration reads v3 manifests and produces a working script build',
   assert.equal(await readFile(written.backup, 'utf8'), source);
   const build = await runBuild({ configPath: project.configPath });
 
-  assert.match(await readFile(path.join(build.outputPaths.gameplay, 'scripts/main.js'), 'utf8'), /value/);
+  assert.match(await readFile(path.join(build.outputPaths.gameplay, 'scripts/main.js'), 'utf8'), /value = 42/);
 });
 
 test('migration requires the authored script entry to name its source', async (t) => {
@@ -316,31 +235,6 @@ test('migration requires the authored script entry to name its source', async (t
   const valid = await migrateRegolithProject(project.configPath);
 
   assert.equal(valid.ready, true, JSON.stringify(valid.diagnostics));
-});
-
-test('local wrapper recognition uses canonical paths and does not execute lookalike scripts', async (t) => {
-  const project = await projectWithRegolith(t);
-  const config = project.legacy;
-
-  const wrappers = path.join(project.root, 'verified-filters');
-  const wrapper = path.join(wrappers, 'bundler/main.ts');
-
-  await mkdir(path.dirname(wrapper), { recursive: true });
-  await writeFile(wrapper, 'throw new Error("must never execute");');
-  config.regolith.filterDefinitions.bundler = { runWith: 'nodejs', script: wrapper };
-  const kind = await localFilterKind(wrapper, wrappers);
-
-  assert.equal(kind, 'bundler');
-  await writeFile(project.configPath, JSON.stringify(config));
-  assert.equal((await migrateRegolithProject(project.configPath, { filters: { bundler: kind } })).ready, true);
-  const fake = path.join(project.project, 'regolith-filters/bundler/main.ts');
-
-  await mkdir(path.dirname(fake), { recursive: true });
-  await writeFile(fake, 'throw new Error("must never execute");');
-  assert.equal(await localFilterKind(fake, wrappers), undefined);
-  config.regolith.filterDefinitions.bundler.script = fake;
-  await writeFile(project.configPath, JSON.stringify(config));
-  assert.ok(codes(await migrateRegolithProject(project.configPath)).includes('custom-filter'));
 });
 
 test('manifest variants are preserved while invalid versions and unsafe exports block writing', async (t) => {
@@ -419,7 +313,7 @@ test('CLI reports blocked conversions and leaves source and outputs intact', asy
   await assert.rejects(readFile(output), /ENOENT/);
 });
 
-test('CLI profile, metadata, verified-filter and per-pack destination options compose', async (t) => {
+test('CLI profile, metadata, local filters and per-pack destination options compose', async (t) => {
   const project = await projectWithRegolith(t);
   const config = project.legacy;
 
@@ -433,7 +327,7 @@ test('CLI profile, metadata, verified-filter and per-pack destination options co
   const source = await readFile(project.configPath, 'utf8');
   const response = JSON.parse((await exec(process.execPath, [
     cli, project.configPath, '--profile', 'default', '--target-version', '1.26.51',
-    '--filter', 'custom=bundler', '--export', 'default:gameplay=./dist/BP', '--export', 'default:visuals=./dist/RP',
+    '--export', 'default:gameplay=./dist/BP', '--export', 'default:visuals=./dist/RP',
     '--write', '--output', 'config.builder.json', '--json',
   ])).stdout);
 
@@ -442,7 +336,7 @@ test('CLI profile, metadata, verified-filter and per-pack destination options co
   assert.equal(response.config.targetVersion, '1.26.51');
   assert.deepEqual(Object.keys(response.config.bedrockCore.profiles), ['default']);
   assert.deepEqual(response.config.bedrockCore.profiles.default.export, { gameplay: './dist/BP', visuals: './dist/RP' });
-  assert.deepEqual(response.config.bedrockCore.profiles.default.stages.bundler, { debug: true });
+  assert.deepEqual(response.config.bedrockCore.profiles.default.steps, [{ plugin: 'custom', after: 'prepare', settings: { debug: true } }]);
   assert.equal(response.written.path, path.join(project.project, 'config.builder.json'));
   assert.equal(await readFile(project.configPath, 'utf8'), source);
 });

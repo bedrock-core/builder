@@ -1,228 +1,18 @@
-import path from 'node:path';
-import type { StageName, StageSelection, Settings } from '../config.ts';
-import { stages } from '../plan.ts';
-import type { FilterKind, MigrationOptions, ReportDiagnostic } from './types.ts';
+import type { NodePluginDefinition, PluginStep } from '../config.ts';
+import type { ReportDiagnostic } from './types.ts';
 import { isRecord, pointer } from './types.ts';
 
-interface FilterEntry {
-  stage: StageName;
-  settings: Settings;
-  location: string;
-}
-
-const keys: Record<StageName, readonly string[]> = {
-  'manifest': ['manifestPath', 'pretty'],
-  'generator': ['include', 'exclude', 'pretty', 'types', 'schemaVersion', 'typesDir', 'strict', 'typePrefix', 'maxAgeHours'],
-  'guides': ['namespace', 'sourceDir', 'defaultLocale', 'include', 'exclude', 'manifestPath', 'maxCodeLineBytes', 'strictLocales', 'compileScreens', 'screensDir', 'screenTitle', 'componentsModule', 'pretty'],
-  'i18n': ['namespace', 'sourceDir', 'defaultLocale', 'strict', 'vanilla', 'vanillaLangUrlTemplate', 'cacheMaxAgeHours', 'pretty'],
-  'ui-compiler': ['namespace', 'testMetadata', 'stamp', 'screens', 'pretty'],
-  'bundler': ['debug', 'tsConfigPath'],
-};
-
-function filterKind(id: string, definition: unknown, options: MigrationOptions): FilterKind | undefined {
-  if (Object.hasOwn(options.filters ?? {}, id)) {
-    return options.filters![id];
-  }
-
-  if (!isRecord(definition) || typeof definition.url !== 'string' || definition.script !== undefined || definition.runWith !== undefined) {
-    return undefined;
-  }
-
-  const match = /^(?:https:\/\/)?github\.com\/bedrock-core\/regolith-filters(?:\/([a-z-]+))?\/?$/i.exec(definition.url);
-  const name = match?.[1] ?? (match ? id : undefined);
-
-  return name === 'core' || stages.some(stage => stage === name) ? name as FilterKind : undefined;
-}
-
-/** Translate Regolith workspace prefixes into authored project paths. */
-function projectPath(value: string, packs: Record<string, string>, dataPath: unknown, report: ReportDiagnostic, location: string): string {
-  const normalized = value.replaceAll('\\', '/').replace(/^\.\//, '').replace(/^packs\//, '');
-  const candidates: string[] = [];
-
-  for (const directory of Object.values(packs)) {
-    const source = directory.replaceAll('\\', '/').replace(/^\.\//, '').replace(/\/$/, '');
-    const staged = source.replace(/^packs\//, '');
-
-    if (normalized === staged || normalized.startsWith(`${staged}/`)) {
-      candidates.push(`${source}${normalized.slice(staged.length)}`);
-    }
-  }
-
-  if (normalized === 'data' || normalized.startsWith('data/')) {
-    if (typeof dataPath === 'string') {
-      candidates.push(`${dataPath.replaceAll('\\', '/').replace(/\/$/, '')}${normalized.slice(4)}`);
-    } else {
-      report('data-source', location, 'Set an explicit project-relative source path; the Regolith data folder is not configured.');
-    }
-  }
-
-  if (new Set(candidates).size > 1) {
-    report('ambiguous-source-path', location, `Path ${value} matches multiple Regolith workspace roots. Convert it to a project-relative path manually.`);
-  }
-
-  return candidates[0] ?? value;
-}
-
-function settingsFor(
-  entry: FilterEntry,
-  packs: Record<string, string>,
-  dataPath: unknown,
-  report: ReportDiagnostic,
-): StageSelection {
-  const { stage, settings, location } = entry;
-
-  const converted: Settings = {};
-
-  function pattern(value: unknown, key: string): unknown {
-    if (typeof value !== 'string') {
-      return value;
-    }
-
-    const mapped = projectPath(value, packs, dataPath, report, location);
-    const normalized = mapped.replaceAll('\\', '/').replace(/^\.\//, '');
-    const insidePack = Object.values(packs).some((directory) => {
-      const root = directory.replaceAll('\\', '/').replace(/^\.\//, '').replace(/\/$/, '');
-
-      return normalized.startsWith(`${root}/`);
-    });
-
-    if (value.startsWith('!') || (key === 'include' && (!insidePack || normalized.split('/').includes('..')))) {
-      report('generator-pattern', `${location}/settings/${key}`, 'Use project-relative patterns inside configured packs; broad or negated template includes need manual conversion.');
-    }
-
-    return mapped;
-  }
-
-  for (const [key, value] of Object.entries(settings)) {
-    if (key === 'namespace' && stage !== 'i18n' && stage !== 'ui-compiler' && stage !== 'guides') {
-      continue;
-    }
-
-    if (!keys[stage].includes(key) && key !== 'pretty' && key !== 'debug') {
-      report('filter-setting', `${location}/settings/${pointer(key)}`, `Setting ${key} has no verified ${stage} migration. Convert it manually.`);
-      continue;
-    }
-
-    if (stage === 'manifest' && key === 'manifestPath') {
-      const map = (file: unknown) => typeof file === 'string' ? projectPath(file, packs, dataPath, report, location) : file;
-
-      converted.manifestPath = Array.isArray(value) ? value.map(map) : map(value);
-      continue;
-    }
-
-    if ((key === 'include' || key === 'exclude') && stage !== 'guides') {
-      converted[key] = Array.isArray(value) ? value.map(value => pattern(value, key)) : pattern(value, key);
-    } else if (key === 'screens' && Array.isArray(value)) {
-      converted.screens = value.map((source) => {
-        if (typeof source !== 'string' || !source.startsWith('.')) {
-          return source;
-        }
-
-        const mapped = projectPath(source, packs, dataPath, report, location);
-
-        return mapped.startsWith('.') || path.isAbsolute(mapped) ? mapped : `./${mapped}`;
-      });
-    } else if (['sourceDir', 'manifestPath', 'screensDir', 'componentsModule'].includes(key) && typeof value === 'string' && value !== '') {
-      converted[key] = projectPath(value, packs, dataPath, report, location);
-    } else {
-      converted[key === 'tsConfigPath' ? 'tsconfig' : key] = structuredClone(value);
-    }
-  }
-
-  if (stage === 'guides') {
-    const source = typeof converted.sourceDir === 'string' ? converted.sourceDir : projectPath('data/guides', packs, dataPath, report, location);
-    const screens = typeof converted.screensDir === 'string' ? converted.screensDir : projectPath('BP/scripts/guides', packs, dataPath, report, location);
-    const normalize = (value: string) => value.replaceAll('\\', '/').replace(/^\.\//, '').replace(/\/$/, '');
-    const ownerFor = (file: string) => Object.entries(packs).find(([, directory]) => normalize(file).startsWith(`${normalize(directory)}/`));
-    const owner = ownerFor(source) ?? ownerFor(screens);
-
-    if (owner) {
-      converted.owner = owner[0];
-      const relative = (file: string) => path.posix.relative(normalize(owner[1]), normalize(file));
-
-      if (ownerFor(source)?.[0] === owner[0]) {
-        converted.sourceDir = relative(source);
-      } else {
-        converted.sourceDir = 'guides';
-        report('guides-pack-sources', location, `Place guide content from ${source} inside ${owner[1]}/guides before building. Migration does not move files or rewrite their imports.`, 'warning');
-      }
-
-      for (const key of ['screensDir', 'componentsModule', 'manifestPath']) {
-        const file = key === 'screensDir' ? screens : converted[key];
-
-        if (typeof file !== 'string') {
-          continue;
-        }
-
-        if (ownerFor(file)?.[0] === owner[0]) {
-          converted[key] = relative(file);
-        } else if (key === 'componentsModule') {
-          report('guides-pack-components', location, `Place the component registry ${file} inside owner pack ${owner[0]} and use a pack-relative componentsModule path.`);
-        } else {
-          delete converted[key];
-          report('guides-pack-output', location, `The guides ${key} uses its owner-specific default. Configure a pack-relative output path to customize it.`, 'warning');
-        }
-      }
-    } else {
-      converted.sourceDir = 'guides';
-      report('guides-pack-sources', location, `Place guide content from ${source} inside the intended owner pack's guides directory before building. Migration does not move files or rewrite their imports.`, 'warning');
-    }
-
-    report('guides-declarations', location, 'Include .bedrock-core/generated/guides/<packId> in tsconfig. Typed runtime imports use @bedrock-core/generated/guides/<packId>. Guide paths are pack-relative.', 'warning');
-  }
-
-  if (stage === 'i18n') {
-    const source = typeof converted.sourceDir === 'string' ? converted.sourceDir : projectPath('data/i18n', packs, dataPath, report, location);
-    const owner = Object.entries(packs).find(([, directory]) => {
-      const root = directory.replaceAll('\\', '/').replace(/^\.\//, '').replace(/\/$/, '');
-
-      return source.replaceAll('\\', '/').replace(/^\.\//, '').startsWith(`${root}/`);
-    });
-
-    if (owner) {
-      converted.owner = owner[0];
-      converted.sourceDir = path.posix.relative(owner[1].replaceAll('\\', '/'), source.replaceAll('\\', '/'));
-    } else {
-      converted.sourceDir = 'i18n';
-      report('i18n-pack-sources', location, `Place locale sources from ${source} inside the intended owner pack's i18n directory before building. Migration does not move files or rewrite their imports.`, 'warning');
-    }
-
-    report('i18n-declarations', location, 'Include .bedrock-core/generated/i18n/<packId> in tsconfig. Typed runtime imports use @bedrock-core/generated/i18n/<packId>. sourceDir is pack-relative.', 'warning');
-  }
-
-  if (stage === 'generator' && settings.types !== false) {
-    report('generator-declarations', location, 'Include the configured generator declarations (default .bedrock-core/generated/mc/globals.d.ts) in tsconfig.', 'warning');
-  }
-
-  if (stage === 'bundler') {
-    report('bundler-entry', location, 'Verify manifest script entries select the intended sources. tsconfig files/include do not select builder entry points; project code and tsconfig are not rewritten.', 'warning');
-  }
-
-  return Object.keys(converted).length ? converted : stage === 'generator' ? true : 'auto';
-}
-
-/** Flatten profile references and preserve the supported, fixed stage order. */
+/** Flatten profile references into ordered steps for standalone Node filters. */
 export function convertFilters(
   name: string,
   profiles: Record<string, unknown>,
   definitions: Record<string, unknown>,
-  packs: Record<string, string>,
-  dataPath: unknown,
-  options: MigrationOptions,
+  plugins: Map<string, NodePluginDefinition>,
+  dataPath: string | undefined,
   report: ReportDiagnostic,
-): { stages: Partial<Record<StageName, StageSelection>>; namespaces: string[] } {
-  const entries: FilterEntry[] = [];
-  const namespaces = new Set<string>();
+): PluginStep[] {
+  const steps: PluginStep[] = [];
   let remaining = 10000;
-
-  function add(stage: StageName, settings: Settings, location: string): void {
-    if (typeof settings.namespace === 'string' && settings.namespace) {
-      namespaces.add(settings.namespace);
-    }
-
-    delete settings.namespace;
-    entries.push({ stage, settings, location });
-  }
 
   function visit(profileName: string, parents: string[]): void {
     const location = `/regolith/profiles/${pointer(profileName)}`;
@@ -251,7 +41,7 @@ export function convertFilters(
       const commands = profile[key];
 
       if (commands !== undefined && !(Array.isArray(commands) && commands.length === 0) && !(isRecord(commands) && Object.keys(commands).length === 0)) {
-        report('shell-commands', `${location}/${key}`, 'Move shell commands and environment setup into a trusted TS/JS builder plugin. Migration does not execute commands.');
+        report('shell-commands', `${location}/${key}`, 'Move shell commands and environment setup into a Node step or a Builder plugin.');
       }
     }
 
@@ -278,27 +68,30 @@ export function convertFilters(
       }
 
       if (item.when !== undefined) {
-        report('filter-condition', `${itemPath}/when`, 'Conditional execution needs separate profiles or a builder plugin. Expressions are not evaluated.');
+        report('filter-condition', `${itemPath}/when`, 'Conditional execution needs separate profiles or a Builder plugin.');
         continue;
       }
 
       for (const key of Object.keys(item)) {
         if (!['filter', 'profile', 'settings', 'disabled', 'when', 'arguments', 'extraArguments'].includes(key)) {
-          report(key === 'asyncFilters' ? 'parallel-filters' : 'filter-property', `${itemPath}/${pointer(key)}`, 'This filter property needs manual conversion; builder file transformations are sequential.');
+          report(key === 'asyncFilters' ? 'parallel-filters' : 'filter-property', `${itemPath}/${pointer(key)}`, 'This filter property needs manual conversion. Builder file transformations are sequential.');
         }
       }
 
-      if (item.arguments !== undefined && !(Array.isArray(item.arguments) && item.arguments.length === 0)) {
-        report('filter-arguments', `${itemPath}/arguments`, 'Convert CLI arguments to stage or plugin settings manually.');
+      const args = item.arguments;
+
+      if (args !== undefined && (!Array.isArray(args) || !args.every(value => typeof value === 'string'))) {
+        report('filter-arguments', `${itemPath}/arguments`, 'Filter arguments must be an array of strings.');
+        continue;
       }
 
       if (item.extraArguments !== undefined && item.extraArguments !== 'ignore') {
-        report('extra-arguments', `${itemPath}/extraArguments`, 'Runtime argument forwarding needs manual plugin handling.');
+        report('extra-arguments', `${itemPath}/extraArguments`, 'Runtime argument forwarding needs manual conversion.');
       }
 
       if (typeof item.profile === 'string' && item.filter === undefined) {
-        if (item.settings !== undefined) {
-          report('profile-settings', `${itemPath}/settings`, 'Settings on profile references need manual conversion.');
+        if (item.settings !== undefined || args?.length) {
+          report('profile-settings', itemPath, 'Settings and arguments on profile references need manual conversion.');
         }
 
         visit(item.profile, [...parents, profileName]);
@@ -310,26 +103,35 @@ export function convertFilters(
         continue;
       }
 
-      const definition = Object.hasOwn(definitions, item.filter) ? definitions[item.filter] : undefined;
-      const kind = filterKind(item.filter, definition, options);
+      const id = item.filter;
+      const definition = Object.hasOwn(definitions, id) ? definitions[id] : undefined;
+      const definitionPath = `/regolith/filterDefinitions/${pointer(id)}`;
 
-      if (!isRecord(definition) || !kind || (kind !== 'core' && !stages.includes(kind))) {
-        report('custom-filter', itemPath, `Filter ${item.filter} is not a verified @bedrock-core filter. Port it to a run(context, settings) plugin; use --filter id=stage only for a verified equivalent.`);
+      if (!isRecord(definition) || definition.url !== undefined || definition.npm !== undefined) {
+        report('custom-filter', itemPath, `Provide a local Node entry for ${id} or configure its Builder step manually.`);
+        continue;
+      }
+
+      if (definition.runWith !== 'nodejs') {
+        report('filter-runtime', definitionPath, 'Automatic conversion supports local NodeJS filters.');
+        continue;
+      }
+
+      if (typeof definition.script !== 'string' || !definition.script.trim()) {
+        report('filter-script', `${definitionPath}/script`, 'Provide the path to the local Node entry.');
         continue;
       }
 
       for (const key of Object.keys(definition)) {
-        if (!['url', 'version', 'runWith', 'script'].includes(key)) {
-          report('filter-definition', `/regolith/filterDefinitions/${pointer(item.filter)}/${pointer(key)}`, 'This filter definition property needs manual conversion.');
+        if (!['runWith', 'script', 'requirements'].includes(key)) {
+          report('filter-definition', `${definitionPath}/${pointer(key)}`, 'This filter definition property needs manual conversion.');
         }
       }
 
-      if (definition.runWith !== undefined && definition.runWith !== 'nodejs') {
-        report('filter-runtime', itemPath, 'Only verified Node TS/JS filter equivalents can become built-in stages.');
-      }
-
-      if (definition.version !== undefined) {
-        report('filter-version', itemPath, 'Built-in stages use the installed builder version. Verify output parity against the pinned Regolith filter version.', 'warning');
+      if (typeof definition.requirements === 'string' && definition.requirements.trim()) {
+        report('filter-requirements', `${definitionPath}/requirements`, `Install the filter dependencies in ${definition.requirements} before building.`, 'warning');
+      } else if (definition.requirements !== undefined) {
+        report('filter-requirements', `${definitionPath}/requirements`, 'Provide the directory containing the Node filter dependencies.');
       }
 
       if (item.settings !== undefined && !isRecord(item.settings)) {
@@ -337,69 +139,17 @@ export function convertFilters(
         continue;
       }
 
-      const settings = item.settings ?? {};
-
-      if (kind !== 'core') {
-        add(kind, settings, itemPath);
-        continue;
-      }
-
-      for (const key of Object.keys(settings)) {
-        if (key !== 'shared' && !stages.some(stage => stage === key)) {
-          report('core-setting', `${itemPath}/settings/${pointer(key)}`, 'Expected shared settings or a built-in stage name.');
-        }
-      }
-
-      const shared = settings.shared ?? {};
-
-      if (!isRecord(shared)) {
-        report('core-shared', `${itemPath}/settings/shared`, 'Shared settings must be an object.');
-        continue;
-      }
-
-      for (const key of Object.keys(shared)) {
-        if (!['namespace', 'pretty'].includes(key)) {
-          report('core-shared-setting', `${itemPath}/settings/shared/${pointer(key)}`, 'Move this shared setting to each stage that consumes it.');
-        }
-      }
-
-      for (const stage of stages) {
-        const own = settings[stage];
-
-        if (own === false || (stage === 'generator' && own === undefined)) {
-          continue;
-        }
-
-        if (own !== undefined && !isRecord(own) && !(stage === 'generator' && own === true)) {
-          report('core-stage', `${itemPath}/settings/${stage}`, 'Expected a settings object, false, or generator: true.');
-          continue;
-        }
-
-        add(stage, { ...shared, ...(isRecord(own) ? own : {}) }, itemPath);
-      }
+      plugins.set(id, { script: definition.script, ...(dataPath === undefined ? {} : { dataPath }) });
+      steps.push({
+        plugin: id,
+        after: 'prepare',
+        ...(item.settings === undefined ? {} : { settings: item.settings }),
+        ...(args === undefined ? {} : { arguments: args }),
+      });
     }
   }
 
   visit(name, []);
-  const selected: Partial<Record<StageName, StageSelection>> = Object.fromEntries(stages.map(stage => [stage, false]));
-  const seen = new Set<StageName>();
-  let previous = -1;
 
-  for (const entry of entries) {
-    const index = stages.indexOf(entry.stage);
-
-    if (seen.has(entry.stage)) {
-      report('repeated-stage', entry.location, `Stage ${entry.stage} runs more than once. Port repeated transformations to explicit plugin steps.`);
-    }
-
-    if (index < previous) {
-      report('stage-order', entry.location, 'The configured filter order differs from the fixed builder stage order. Convert the sequence to plugin hooks manually.');
-    }
-
-    previous = index;
-    seen.add(entry.stage);
-    selected[entry.stage] = settingsFor(entry, packs, dataPath, report);
-  }
-
-  return { stages: selected, namespaces: [...namespaces] };
+  return steps;
 }

@@ -10,7 +10,7 @@ export type PlannedPlugin = {
   mode?: 'auto' | 'always';
   position: 'before' | 'after';
   boundary: string;
-} & ((ModulePluginDefinition & { script?: never }) | (NodePluginDefinition & { module?: never; arguments: string[] }));
+} & ((ModulePluginDefinition & { script?: never; nodeModule?: never }) | (NodePluginDefinition & { module?: never; arguments: string[] }));
 /** Built-in or lifecycle operation in a resolved plan. */
 export type PlannedStage = {
   kind: 'stage';
@@ -129,11 +129,11 @@ export function planBuild(config: ProjectConfig, profileName = 'default'): Plann
       throw new Error(`Invalid plugin mode: ${step.plugin}`);
     }
 
-    if ('script' in definition && step.mode === 'auto') {
+    if (!('module' in definition) && step.mode === 'auto') {
       throw new Error(`Automatic detection requires a module plugin: ${step.plugin}`);
     }
 
-    if ('script' in definition && (step.packs !== undefined || step.links !== undefined)) {
+    if (!('module' in definition) && (step.packs !== undefined || step.links !== undefined)) {
       throw new Error(`Pack and link overrides require a native module plugin: ${step.plugin}`);
     }
 
@@ -154,9 +154,9 @@ export function planBuild(config: ProjectConfig, profileName = 'default'): Plann
       throw new Error(`Folder and data overrides require a Node script: ${step.plugin}`);
     }
 
-    const script = 'script' in definition
-      ? validatePluginDefinition({ ...definition, ...scriptOverrides }, step.plugin) as NodePluginDefinition
-      : undefined;
+    const script = 'module' in definition
+      ? undefined
+      : validatePluginDefinition({ ...definition, ...scriptOverrides }, step.plugin) as NodePluginDefinition;
 
     if (script?.persistData && script.dataPath === undefined) {
       throw new Error(`Persistent Node data requires an explicit dataPath: ${step.plugin}`);

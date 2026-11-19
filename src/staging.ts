@@ -141,7 +141,10 @@ export async function stagingInputs(project: string, config: ProjectConfig, prof
         add(step.module, true);
       }
     } else {
-      add(path.resolve(project, step.filterDir ?? '.', step.script), true);
+      if (step.script !== undefined) {
+        add(path.resolve(project, step.filterDir ?? '.', step.script), true);
+      }
+
       add(step.dataPath ?? 'data');
     }
   }

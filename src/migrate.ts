@@ -1,12 +1,12 @@
 import { validateConfig } from './config.ts';
-import type { BuildProfile } from './config.ts';
-import { planBuild } from './plan.ts';
+import type { BuildProfile, NodePluginDefinition } from './config.ts';
+import { planBuild, stages } from './plan.ts';
 import { convertExport } from './migration/exports.ts';
 import { convertFilters } from './migration/filters.ts';
 import { isRecord, pointer } from './migration/types.ts';
 import type { MigrationOptions, MigrationResult, ReportDiagnostic } from './migration/types.ts';
 
-export type { FilterKind, MigrationDiagnostic, MigrationOptions, MigrationResult } from './migration/types.ts';
+export type { MigrationDiagnostic, MigrationOptions, MigrationResult } from './migration/types.ts';
 export { migrateRegolithProject, writeMigration } from './migration/project.ts';
 export type { ProjectMigration } from './migration/project.ts';
 
@@ -80,8 +80,13 @@ export function migrateRegolithConfig(input: unknown, options: MigrationOptions 
   const profiles = regolith.profiles;
   const definitions = isRecord(regolith.filterDefinitions) ? regolith.filterDefinitions : {};
   const selectedNames = options.profiles ?? Object.keys(profiles);
-  const namespaces = new Set<string>();
+  const plugins = new Map<string, NodePluginDefinition>();
   const migrated: [string, BuildProfile][] = [];
+  const dataPath = typeof regolith.dataPath === 'string' && regolith.dataPath.trim() ? regolith.dataPath : undefined;
+
+  if (regolith.dataPath !== undefined && dataPath === undefined) {
+    report('data-source', '/regolith/dataPath', 'Set dataPath to a project-relative directory.');
+  }
 
   if (!selectedNames.length || new Set(selectedNames).size !== selectedNames.length) {
     report('profile-selection', '/regolith/profiles', 'Select at least one distinct profile.');
@@ -102,13 +107,8 @@ export function migrateRegolithConfig(input: unknown, options: MigrationOptions 
       continue;
     }
 
-    const converted = convertFilters(name, profiles, definitions, packs, regolith.dataPath, options, report);
-
-    for (const namespace of converted.namespaces) {
-      namespaces.add(namespace);
-    }
-
-    const profile: BuildProfile = { stages: converted.stages };
+    const steps = convertFilters(name, profiles, definitions, plugins, dataPath, report);
+    const profile: BuildProfile = { stages: Object.fromEntries(stages.map(stage => [stage, false])), steps };
     const destinations = convertExport(source.export, packs, config.name, name, options, report, `${location}/export`);
 
     if (destinations) {
@@ -140,9 +140,7 @@ export function migrateRegolithConfig(input: unknown, options: MigrationOptions 
   delete config.worlds;
   config.targetVersion = options.targetVersion ?? config.targetVersion;
 
-  if (typeof config.namespace === 'string') {
-    namespaces.add(config.namespace);
-  }
+  const namespace = config.namespace;
 
   delete config.namespace;
 
@@ -150,12 +148,16 @@ export function migrateRegolithConfig(input: unknown, options: MigrationOptions 
     report('target-version', '/targetVersion', 'Set targetVersion or pass --target-version with the intended Minecraft version.');
   }
 
-  if (namespaces.size) {
-    report('manifest-namespace', '/packs', `Declare a namespace in each owner manifest.json. Source namespace values: ${[...namespaces].join(', ')}.`, 'warning');
+  if (typeof namespace === 'string') {
+    report('manifest-namespace', '/packs', `Declare the ${namespace} namespace in the owning pack manifest.`, 'warning');
   }
 
   config.$schema = options.schema ?? new URL('../schemas/config.schema.json', import.meta.url).href;
-  config.bedrockCore = { formatVersion: '1.0.0', profiles: Object.fromEntries(migrated) };
+  config.bedrockCore = {
+    formatVersion: '1.0.0',
+    ...(plugins.size ? { plugins: Object.fromEntries(plugins) } : {}),
+    profiles: Object.fromEntries(migrated),
+  };
 
   try {
     const validated = validateConfig(config);

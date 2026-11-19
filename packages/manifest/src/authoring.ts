@@ -65,6 +65,7 @@ export function validateAddonFields(id: string, manifest: JsonObject): void {
         || (typeof value.uuid === 'string') === (typeof value.module_name === 'string')
         || (value.uuid !== undefined && (typeof value.uuid !== 'string' || !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(value.uuid)))
         || (value.module_name !== undefined && (typeof value.module_name !== 'string' || !value.module_name.trim()))
+        || (value.optional !== undefined && (typeof value.module_name !== 'string' || typeof value.optional !== 'boolean'))
         || value.pack !== undefined || value.module !== undefined) {
         throw new Error(`Pack ${id} ${field}[${index}] is invalid; must be a native UUID/version or module_name/version dependency object`);
       }

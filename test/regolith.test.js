@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { cp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { runBuild } from '../src/run.ts';
 import { runNodeFilter, publishNodeData } from '../src/regolith.ts';
@@ -12,9 +11,6 @@ import { inspectPacks } from '@bedrock-core/builder-plugin';
 import { watchBuild } from '../src/watch.ts';
 import { projectFor } from '../test-support/project.js';
 import { manifestFor } from '../test-support/manifest.js';
-
-const manifestFilter = fileURLToPath(new URL('../../regolith-filters/manifest/', import.meta.url));
-const bundlerFilter = fileURLToPath(new URL('../../regolith-filters/bundler/', import.meta.url));
 
 async function fixture(t, { cleanup = true } = {}) {
   const project = await projectFor(t, { cleanup });
@@ -294,48 +290,38 @@ test('cancellation terminates the filter before temporary workspace cleanup', { 
   assert.equal(await readFile(path.join(initial.outputPaths.visuals, 'asset.json'), 'utf8'), '{"value":1}');
 });
 
-test('the local manifest Regolith filter runs unchanged and resolves a manifest variant', { skip: !existsSync(path.join(manifestFilter, 'main.ts')) }, async (t) => {
+test('installed ESM and CommonJS filter entries run as the main Node module in the staged workspace', async (t) => {
   const project = await fixture(t);
-  const source = path.join(project.project, 'packs/visuals');
-  const manifest = JSON.parse(await readFile(path.join(source, 'manifest.json'), 'utf8'));
+  const directory = path.join(project.project, 'node_modules/example-filter');
 
-  manifest.metadata = { authors: ['Fixture'] };
-  await writeFile(path.join(source, 'manifest.json'), JSON.stringify(manifest));
-  await writeFile(path.join(source, 'manifest.test.json'), JSON.stringify({ extends: './manifest.json', header: { name: 'Legacy variant' } }));
-  project.config.bedrockCore.plugins.example = { filterDir: manifestFilter, script: './main.ts' };
-  project.config.bedrockCore.profiles.default.steps[0].settings = { manifestPath: 'RP/manifest.test.json' };
+  await mkdir(directory, { recursive: true });
+  await writeFile(path.join(directory, 'package.json'), JSON.stringify({
+    type: 'module',
+    exports: { './esm': { import: './entry.js' }, './cjs': { require: './entry.cjs' } },
+  }));
+  await writeFile(path.join(directory, 'entry.js'), `
+    import { writeFileSync } from 'node:fs';
+    if (!import.meta.main) throw new Error('expected Node entry point');
+    const settings = JSON.parse(process.argv[2]);
+    writeFileSync('RP/result.json', JSON.stringify([settings.mode, ...process.argv.slice(3)]));
+  `);
+  await writeFile(path.join(directory, 'entry.cjs'), `
+    if (require.main !== module) throw new Error('expected Node entry point');
+    require('node:fs').writeFileSync('RP/second.json', JSON.stringify(process.argv.slice(2)));
+  `);
+  project.config.bedrockCore.plugins = {
+    example: { nodeModule: 'example-filter/esm' },
+    second: { nodeModule: 'example-filter/cjs' },
+  };
+  project.config.bedrockCore.profiles.default.steps = [
+    { plugin: 'example', after: 'prepare', settings: { mode: 'esm' }, arguments: ['space value'] },
+    { plugin: 'second', before: 'export', arguments: ['cjs'] },
+  ];
   await project.save();
   const result = await runBuild({ configPath: project.configPath, logger: {} });
-  const exported = JSON.parse(await readFile(path.join(result.outputPaths.visuals, 'manifest.json'), 'utf8'));
 
-  assert.equal(exported.header.name, 'Legacy variant');
-  assert.equal(exported.header.uuid, manifest.header.uuid);
-  assert.equal(existsSync(path.join(result.outputPaths.visuals, 'manifest.test.json')), false);
-  assert.equal(existsSync(path.join(source, 'manifest.test.json')), true);
-  assert.equal(JSON.parse(await readFile(path.join(source, 'manifest.json'), 'utf8')).header.name, manifest.header.name);
-});
-
-test('the local Node bundler resolves its installed dependencies and project npm imports', {
-  skip: !existsSync(path.join(bundlerFilter, 'main.ts')) || !existsSync(path.join(bundlerFilter, 'node_modules/esbuild/package.json')),
-}, async (t) => {
-  const project = await fixture(t);
-  const dependency = path.join(project.project, 'node_modules/@bedrock-core/legacy-fixture');
-
-  await mkdir(dependency, { recursive: true });
-  await writeFile(path.join(dependency, 'package.json'), JSON.stringify({ name: '@bedrock-core/legacy-fixture', type: 'module', main: './index.js' }));
-  await writeFile(path.join(dependency, 'index.js'), 'export const value = 16;');
-  await writeFile(path.join(project.project, 'tsconfig.json'), JSON.stringify({ compilerOptions: { target: 'ES2020', module: 'ESNext' } }));
-  await writeFile(path.join(project.project, 'packs/gameplay/scripts/main.ts'), `import { value } from '@bedrock-core/legacy-fixture'; export const result: number = value + 1;`);
-  project.config.bedrockCore.plugins.example = { filterDir: bundlerFilter, script: './main.ts' };
-  project.config.bedrockCore.profiles.default.steps[0].settings = { debug: true };
-  await project.save();
-  const result = await runBuild({ configPath: project.configPath, logger: {} });
-  const output = path.join(result.outputPaths.gameplay, 'scripts/main.js');
-  const runtime = await import(pathToFileURL(output).href);
-
-  assert.equal(runtime.result, 17);
-  assert.equal(existsSync(path.join(result.outputPaths.gameplay, 'scripts/main.ts')), false);
-  assert.equal(existsSync(path.join(project.project, 'packs/gameplay/scripts/main.ts')), true);
+  assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPaths.visuals, 'result.json'), 'utf8')), ['esm', 'space value']);
+  assert.deepEqual(JSON.parse(await readFile(path.join(result.outputPaths.visuals, 'second.json'), 'utf8')), ['cjs']);
 });
 
 test('watch reloads external Node filter helpers without output loops', { timeout: 15000 }, async (t) => {

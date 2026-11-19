@@ -2,7 +2,7 @@
   "name": "@bedrock-core/builder-validation",
   "version": "0.2.0",
   "type": "module",
-  "description": "Standalone pack content validation against Mojang's Bedrock schema catalog",
+  "description": "Standalone pack content validation against native Bedrock document types",
   "exports": {
     ".": "./src/index.ts"
   },
@@ -10,13 +10,9 @@
     "node": ">=26.13.0"
   },
   "dependencies": {
-    "@minecraft/bedrock-schemas": "1.26.50",
-    "ajv": "8.17.1",
+    "@bedrock-core/bedrock-types": "workspace:*",
     "jsonc-parser": "3.3.1",
-    "picomatch": "^4.0.2"
-  },
-  "devDependencies": {
-    "@types/picomatch": "^4.0.2"
+    "typescript-native": "npm:typescript@7.1.0-beta"
   },
   "license": "MIT",
   "files": [

@@ -101,10 +101,16 @@ for (const preset of ['script', 'resource']) {
       assert.ok(manifest.dependencies.some(dependency => dependency.module_name === '@minecraft/server-gametest'));
       assert.ok(!manifest.dependencies.some(dependency => dependency.pack || dependency.uuid));
       assert.ok(pkg.scripts['test:mc']);
+      assert.match(pkg.scripts['test:mc:debug'], /--debug --keep-alive/);
+      assert.match(pkg.scripts['test:mc:profile'], /--profile --profile-dir/);
       await assert.rejects(access(path.join(root, 'packs/RP')));
     } else {
       assert.equal((await JSON.parse(await readFile(path.join(result.outputPaths.resourcePack, 'manifest.json'), 'utf8'))).metadata.product_type, undefined);
       assert.equal(pkg.scripts['test:mc'], undefined);
+      assert.equal(pkg.scripts['test:mc:debug'], undefined);
+      assert.equal(pkg.scripts['test:mc:profile'], undefined);
+      await assert.rejects(access(path.join(root, '.vscode/launch.json')));
+      await assert.rejects(access(path.join(root, '.vscode/tasks.json')));
       await assert.rejects(access(path.join(root, 'packs/BP')));
     }
 
@@ -148,6 +154,16 @@ test('generated starter validates all builder profiles and escaped metadata', as
   assert.match(pkg.dependencies['@bedrock-core/navigation'], /^\d+\.\d+\.\d+$/);
   assert.match(pkg.dependencies['@bedrock-core/ui'], /^\d+\.\d+\.\d+$/);
   assert.match(pkg.scripts['test:mc'], /--packs build\/test --tag example --expect-registered 1/);
+  const launches = JSON.parse(await readFile(path.join(root, '.vscode/launch.json'), 'utf8'));
+  const debug = launches.configurations.find(configuration => configuration.name === 'Debug GameTests with BDS');
+  const tasks = JSON.parse(await readFile(path.join(root, '.vscode/tasks.json'), 'utf8'));
+
+  assert.equal(debug.mode, 'listen');
+  assert.equal(debug.targetModuleUuid, behavior.modules.find(module => module.type === 'script').uuid);
+  assert.equal(debug.generatedSourceRoot, '${workspaceFolder}/build/test/quoted-scaffold_bp/scripts/');
+  assert.equal(debug.sourceMapRoot, debug.generatedSourceRoot);
+  assert.equal(tasks.tasks.find(task => task.label === debug.preLaunchTask).script, 'test:mc:debug');
+  assert.match(pkg.scripts['test:mc:profile'], /--json \.bds\/profiles\/latest\/result\.json/);
   const bds = JSON.parse(await readFile(path.join(root, 'bds-runner.json'), 'utf8'));
 
   assert.equal(bds.version, '1.26.51.1');

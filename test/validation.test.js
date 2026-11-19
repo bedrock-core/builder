@@ -26,24 +26,30 @@ async function fixture(t) {
   return { root, source, config, configPath, mode: 'strict', packs: [{ id: 'gameplay', path: path.join(root, 'packs/BP'), kind: 'behavior' }] };
 }
 
-test('content validation follows nested official schema references and supports JSON comments', async (t) => {
+test('document validation checks nested types and supports JSON comments', async (t) => {
   const project = await fixture(t);
 
   await writeFile(project.source, '{ "pools": [{ /* pool */ "rolls": 1, "entries": [{"type":"item","name":"minecraft:apple","weight":1}], }], }');
   const result = await validatePackContent(project);
 
-  assert.equal(result.schemaVersion, '1.26.50');
-  assert.match(result.files[0].schema, /bp\/loot_tables/);
+  assert.equal(result.typesVersion, '26.50.5');
+  assert.equal(result.files[0].category, 'bp/loot_tables');
+  const second = path.join(path.dirname(project.source), 'second.json');
+
+  await writeFile(second, '{"pools":[{"rolls":1,"entries":[{"type":"item","name":"validation:🍎","weight":"invalid"}]}]}');
   await writeFile(project.source, '{"pools":[{"rolls":"invalid","entries":[]}]}');
   await assert.rejects(validatePackContent(project), (error) => {
     assert.ok(error instanceof ContentValidationError);
-    assert.ok(error.diagnostics.some(issue => issue.pointer === '/pools/0/rolls'));
+    assert.deepEqual(error.diagnostics.map(({ file, pointer }) => [file, pointer]), [
+      ['loot_tables/example.json', '/pools/0/rolls'],
+      ['loot_tables/second.json', '/pools/0/entries/0/weight'],
+    ]);
 
     return true;
   });
 });
 
-test('official block validation resolves the pinned legacy Molang reference and still rejects invalid components', async (t) => {
+test('block validation registers declaration inputs and rejects invalid components', async (t) => {
   const project = await fixture(t);
   const blocks = path.join(project.packs[0].path, 'blocks');
   const file = path.join(blocks, 'container.json');
@@ -60,16 +66,57 @@ test('official block validation resolves the pinned legacy Molang reference and 
   } });
   const block = result.files.find(entry => entry.file === 'blocks/container.json');
 
-  assert.match(block.schema, /bp\/blocks/);
-  assert.equal(block.schemaIssue, undefined);
-  assert.ok([...dependencies].some(input => input.endsWith('molang_expression.schema.json')));
+  assert.equal(block.category, 'bp/blocks');
+  assert.ok([...dependencies].some(input => input.endsWith('components.d.ts')));
   await writeFile(file, JSON.stringify({ 'format_version': '1.21.120', 'minecraft:block': {
     description: { identifier: 'validation:owned_container' }, components: { 'minecraft:friction': 'invalid' },
   } }));
   await assert.rejects(validatePackContent(project), ContentValidationError);
 });
 
-test('official terrain atlas validation accepts single paths and path arrays while rejecting invalid values', async (t) => {
+test('entity version checks require contiguous versions and names in the upgrade handler map', async (t) => {
+  const project = await fixture(t);
+  const file = path.join(project.packs[0].path, 'entities/robot.json');
+  const entity = {
+    description: {
+      identifier: 'validation:robot',
+      properties: { 'validation:ready': { type: 'bool', default: false } },
+      entity_version: { upgrades: [
+        { upgrade_to: 1, name: 'validation:first' },
+        { upgrade_to: 2, name: 'validation:second' },
+      ] },
+    },
+    events: { 'validation:ordinary': {} },
+    upgrades: { 'validation:first': {}, 'validation:second': { set_property: { 'validation:ready': true } } },
+  };
+  const document = { 'format_version': '1.26.20', 'minecraft:entity': entity };
+
+  await mkdir(path.dirname(file));
+  await writeFile(file, JSON.stringify(document));
+  const valid = await validatePackContent(project);
+
+  assert.deepEqual(valid.files.find(entry => entry.file === 'entities/robot.json').diagnostics, []);
+
+  for (const upgrade_to of [0, 1, 1.5, 3]) {
+    entity.description.entity_version.upgrades[1] = { upgrade_to, name: 'validation:ordinary' };
+    await writeFile(file, JSON.stringify(document));
+    await assert.rejects(validatePackContent(project), (error) => {
+      assert.ok(error instanceof ContentValidationError);
+      assert.deepEqual(error.diagnostics.map(issue => issue.pointer), [
+        '/minecraft:entity/description/entity_version/upgrades/1/upgrade_to',
+        '/minecraft:entity/description/entity_version/upgrades/1/name',
+      ]);
+
+      return true;
+    });
+  }
+
+  entity.description.entity_version.upgrades[1] = { upgrade_to: 2, name: 'validation:second' };
+  await writeFile(file, JSON.stringify({ ...document, format_version: '1.26.19' }));
+  await assert.rejects(validatePackContent(project), /requires format_version 1\.26\.20 or later/);
+});
+
+test('terrain atlas type validation accepts single paths and path arrays while rejecting invalid values', async (t) => {
   const project = await fixture(t);
   const resource = path.join(project.root, 'packs/RP');
   const file = path.join(resource, 'textures/terrain_texture.json');
@@ -83,8 +130,7 @@ test('official terrain atlas validation accepts single paths and path arrays whi
   await writeFile(file, JSON.stringify(atlas));
   const result = await validatePackContent(options);
 
-  assert.match(result.files[0].schema, /rp\/textures\/terrain_texture/);
-  assert.equal(result.files[0].schemaIssue, undefined);
+  assert.equal(result.files[0].category, 'rp/textures/terrain_texture');
 
   for (const invalid of [42, ['textures/blocks/stone', 42], { invalid: true }]) {
     atlas.texture_data.stone.textures = invalid;
@@ -93,66 +139,57 @@ test('official terrain atlas validation accepts single paths and path arrays whi
   }
 });
 
-test('custom terrain atlas schemas retain their declared texture types', async (t) => {
+test('type checking selects the installed release matching the target', async (t) => {
   const project = await fixture(t);
-  const schemaRoot = path.join(project.root, 'custom-schema');
-  const relative = 'schemas/rp/textures/terrain_texture.schema.json';
+  const options = { ...project, projectRoot: project.root, targetVersion: '1.26.60' };
+  const installed = path.join(project.root, 'node_modules/@bedrock-core/bedrock-types');
+
+  await writeFile(project.source, '{"pools":[42]}');
+  const warned = await validatePackContent({ ...options, mode: 'warn' });
+
+  assert.equal(warned.typesVersion, '');
+  assert.match(warned.typesIssue, /matching .*Bedrock 1.26.60/);
+  await assert.rejects(validatePackContent(options), /matching .*Bedrock 1.26.60/);
+  await mkdir(path.join(installed, 'dist'), { recursive: true });
+  await writeFile(path.join(installed, 'package.json'), JSON.stringify({ name: '@bedrock-core/bedrock-types', version: '26.60.5' }));
+  await writeFile(path.join(installed, 'dist/documents.d.ts'), 'export interface DocumentTypes { \'bp/loot_tables\': { pools: number[] } }');
+  const result = await validatePackContent(options);
+
+  assert.equal(result.typesVersion, '26.60.5');
+  assert.equal(result.files[0].category, 'bp/loot_tables');
+  await writeFile(project.source, '{"pools":["invalid"]}');
+  await assert.rejects(validatePackContent(options), /TS2322/);
+});
+
+test('resource pack localization outside DocumentTypes still receives syntax checks', async (t) => {
+  const project = await fixture(t);
   const resource = path.join(project.root, 'packs/RP');
-  const file = path.join(resource, 'textures/terrain_texture.json');
+  const file = path.join(resource, 'texts/languages.json');
+  const options = { mode: 'strict', packs: [{ id: 'assets', path: resource, kind: 'resource' }] };
 
-  await mkdir(path.dirname(path.join(schemaRoot, relative)), { recursive: true });
   await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(path.join(schemaRoot, 'package.json'), JSON.stringify({ version: '1.26.50' }));
-  await writeFile(path.join(schemaRoot, 'catalog.json'), JSON.stringify({ schemas: [
-    { url: './' + relative, fileMatch: ['textures/terrain_texture.json'] },
-  ] }));
-  await writeFile(path.join(schemaRoot, relative), JSON.stringify({ type: 'object', properties: {
-    texture_data: { type: 'object', additionalProperties: { type: 'object', properties: {
-      textures: { type: 'array', items: { type: 'string' } },
-    } } },
-  } }));
-  const options = { mode: 'strict', schemaRoot, packs: [{ id: 'assets', path: resource, kind: 'resource' }] };
+  await writeFile(file, '["en_US","es_ES"]');
+  const result = await validatePackContent(options);
 
-  await writeFile(file, JSON.stringify({ texture_data: { stone: { textures: 'textures/blocks/stone' } } }));
+  assert.equal(result.files[0].category, undefined);
+  assert.deepEqual(result.files[0].diagnostics, []);
+  await writeFile(file, '["en_US",');
   await assert.rejects(validatePackContent(options), ContentValidationError);
-  await writeFile(file, JSON.stringify({ texture_data: { stone: { textures: ['textures/blocks/stone'] } } }));
-  await validatePackContent(options);
 });
 
-test('custom schema roots retain their own unresolved references without applying package aliases', async (t) => {
-  const project = await fixture(t);
-  const schemaRoot = path.join(project.root, 'custom-schema');
-
-  await mkdir(path.join(schemaRoot, 'schemas/common'), { recursive: true });
-  await mkdir(path.join(schemaRoot, 'schemas/bp'));
-  await writeFile(path.join(schemaRoot, 'package.json'), JSON.stringify({ version: '1.26.50' }));
-  await writeFile(path.join(schemaRoot, 'catalog.json'), JSON.stringify({ schemas: [
-    { url: './schemas/bp/example.json', fileMatch: ['loot_tables/**/*.json'] },
-  ] }));
-  await writeFile(path.join(schemaRoot, 'schemas/bp/example.json'), JSON.stringify({ $ref: '../common/expression.schema.json' }));
-  await writeFile(path.join(schemaRoot, 'schemas/common/molang_expression.schema.json'), JSON.stringify({ type: 'object' }));
-  await writeFile(project.source, '{}');
-  const result = await validatePackContent({ ...project, schemaRoot });
-
-  const content = result.files.find(entry => entry.file === 'loot_tables/example.json');
-
-  assert.equal(content.schema, undefined);
-  assert.match(content.schemaIssue, /expression\.schema\.json/);
-});
-
-test('unknown JSON receives syntax validation and reports schema coverage accurately', async (t) => {
+test('unknown JSON receives syntax validation and reports type coverage accurately', async (t) => {
   const project = await fixture(t);
   const unknown = path.join(project.packs[0].path, 'custom.json');
 
   await writeFile(unknown, '{"custom":true}');
   const result = await validatePackContent(project);
 
-  assert.equal(result.files[0].schema, undefined);
+  assert.equal(result.files[0].category, undefined);
   await writeFile(unknown, '{"custom":}');
   await assert.rejects(validatePackContent(project), /gameplay\/custom.json/);
 });
 
-test('validation profiles warn or skip schema errors while invalid JSON stays fatal', async (t) => {
+test('validation profiles warn or skip type errors while invalid JSON stays fatal', async (t) => {
   const project = await fixture(t);
   const warnings = [];
   const options = { configPath: project.configPath, logger: { warn: message => warnings.push(message) } };
@@ -166,24 +203,24 @@ test('validation profiles warn or skip schema errors while invalid JSON stays fa
   await setMode('warn');
   const warned = await runBuild(options);
 
-  assert.ok(warned.validation.files[0].diagnostics.some(issue => issue.kind === 'schema' && issue.pointer === '/pools/0/rolls'));
+  assert.ok(warned.validation.files[0].diagnostics.some(issue => issue.kind === 'type' && issue.pointer === '/pools/0/rolls'));
   assert.ok(warnings.some(message => message.includes('gameplay/loot_tables/example.json/pools/0/rolls')));
   await setMode('strict');
   await assert.rejects(runBuild(options), ContentValidationError);
   await setMode('skip');
   const skipped = await runBuild(options);
 
-  assert.equal(skipped.validation.schemaVersion, '');
-  assert.equal(skipped.validation.files[0].schema, undefined);
+  assert.equal(skipped.validation.typesVersion, '');
+  assert.equal(skipped.validation.files[0].category, undefined);
   assert.deepEqual(skipped.validation.files[0].diagnostics, []);
-  await validatePackContent({ ...project, mode: 'skip', schemaRoot: path.join(project.root, 'missing-schemas') });
+  await validatePackContent({ ...project, mode: 'skip', typesRoot: path.join(project.root, 'missing-types') });
   await writeFile(project.source, '{"pools":}');
   await assert.rejects(runBuild(options), ContentValidationError);
   await setMode('warn');
   await assert.rejects(runBuild(options), ContentValidationError);
 });
 
-test('schema diagnostics warn by default in the runner and standalone API while syntax and manifests stay fatal', async (t) => {
+test('type diagnostics warn by default in the runner and standalone API while syntax and manifests stay fatal', async (t) => {
   const project = await fixture(t);
   const warnings = [];
 
@@ -193,7 +230,7 @@ test('schema diagnostics warn by default in the runner and standalone API while 
   await writeFile(project.source, '{"pools":[{"rolls":"invalid","entries":[]}]}');
   const result = await validatePackContent(project);
 
-  assert.ok(result.files[0].diagnostics.some(issue => issue.kind === 'schema'));
+  assert.ok(result.files[0].diagnostics.some(issue => issue.kind === 'type'));
   const built = await runBuild({ configPath: project.configPath, logger: { warn: message => warnings.push(message) } });
 
   assert.ok(warnings.some(message => message.includes('/pools/0/rolls')));
@@ -220,9 +257,9 @@ test('pinned sound definitions accept path strings and validate named sound obje
   await write(['sounds/ui/example', { name: 'sounds/ui/other', volume: 0.5, pitch: [0.9, 1] }]);
   const result = await validatePackContent(options);
 
-  assert.match(result.files[0].schema, /rp\/sounds\/index/);
+  assert.equal(result.files[0].category, 'rp/sounds');
 
-  for (const invalid of [17, '', { volume: 1 }, { name: 'sounds/ui/other', pitch: 'high' }]) {
+  for (const invalid of [17, { volume: 1 }, { name: 'sounds/ui/other', pitch: 'high' }]) {
     await write([invalid]);
     await assert.rejects(validatePackContent(options), ContentValidationError);
   }
@@ -272,7 +309,7 @@ test('validation reuses unchanged files and checks only the edited document', as
   assert.equal(edited.compilations.filter(item => item.id.startsWith('validate/') && item.status === 'cached').length, 1);
 });
 
-test('official entity effects accept infinite duration and reject other strings', async (t) => {
+test('entity effect types accept infinite duration and reject other strings', async (t) => {
   const project = await fixture(t);
   const file = path.join(project.packs[0].path, 'entities/display.json');
   const entity = { 'format_version': '1.26.20', 'minecraft:entity': { description: { identifier: 'validation:display' }, components: { 'minecraft:spell_effects': { add_effects: [{ effect: 'invisibility', duration: 'infinite' }] } } } };
@@ -285,22 +322,33 @@ test('official entity effects accept infinite duration and reject other strings'
   await assert.rejects(validatePackContent(project), ContentValidationError);
 });
 
-test('official client entities accept mixed render-controller entries without accepting array numbers', async (t) => {
+test('client entity validation checks all 1,024 mixed render-controller entries', async (t) => {
   const project = await fixture(t);
   const resource = path.join(project.root, 'packs/RP');
   const file = path.join(resource, 'entity/display.entity.json');
-  const entity = { 'format_version': '1.10.0', 'minecraft:client_entity': { description: { identifier: 'validation:display', render_controllers: ['controller.render.main', { 'controller.render.outline': 'q.property(\'validation:selected\') == 1' }] } } };
+  const renderControllers = ['controller.render.main'];
+
+  for (let index = 1; index < 1024; index++) {
+    renderControllers.push({ [`controller.render.face_${index}`]: `v.face_${index} == 1` });
+  }
+
+  const entity = { 'format_version': '1.10.0', 'minecraft:client_entity': { description: { identifier: 'validation:display', render_controllers: renderControllers } } };
   const options = { mode: 'strict', packs: [{ id: 'assets', path: resource, kind: 'resource' }] };
 
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, JSON.stringify(entity));
   await validatePackContent(options);
-  entity['minecraft:client_entity'].description.render_controllers.push(42);
+  renderControllers[1023] = 42;
   await writeFile(file, JSON.stringify(entity));
-  await assert.rejects(validatePackContent(options), ContentValidationError);
+  await assert.rejects(validatePackContent(options), (error) => {
+    assert.ok(error instanceof ContentValidationError);
+    assert.deepEqual(error.diagnostics.map(issue => issue.pointer), ['/minecraft:client_entity/description/render_controllers/1023']);
+
+    return true;
+  });
 });
 
-test('official geometry accepts numeric and expression vectors while rejecting object coordinates', async (t) => {
+test('geometry types accept numeric vectors and reject string coordinates', async (t) => {
   const project = await fixture(t);
   const resource = path.join(project.root, 'packs/RP');
   const file = path.join(resource, 'models/blocks/housing.geo.json');
@@ -312,8 +360,53 @@ test('official geometry accepts numeric and expression vectors while rejecting o
   await validatePackContent(options);
   geometry['minecraft:geometry'][0].bones[0].pivot[0] = '0';
   await writeFile(file, JSON.stringify(geometry));
-  await validatePackContent(options);
-  geometry['minecraft:geometry'][0].bones[0].pivot[0] = {};
-  await writeFile(file, JSON.stringify(geometry));
   await assert.rejects(validatePackContent(options), ContentValidationError);
+});
+
+test('Creator Tools runs on the assembled pack set and can block export', async (t) => {
+  const project = await fixture(t);
+  const cli = path.join(project.root, 'node_modules/@minecraft/creator-tools');
+  const resource = path.join(project.root, 'packs/RP');
+
+  await mkdir(cli, { recursive: true });
+  await mkdir(resource, { recursive: true });
+  await writeFile(path.join(resource, 'manifest.json'), JSON.stringify(manifestFor('resources')));
+  await writeFile(path.join(cli, 'package.json'), JSON.stringify({ name: '@minecraft/creator-tools', type: 'module', version: '0.21.0', bin: { mct: './test.js' } }));
+  await writeFile(path.join(cli, 'test.js'), `
+    import assert from 'node:assert/strict';
+    import { existsSync } from 'node:fs';
+    import path from 'node:path';
+    const args = process.argv.slice(2);
+    const input = args[args.indexOf('-i') + 1];
+    assert.ok(args.includes('--offline') && args.includes('--single'));
+    assert.ok(existsSync(path.join(input, 'behavior_packs/pack-0/manifest.json')));
+    assert.ok(existsSync(path.join(input, 'resource_packs/pack-1/manifest.json')));
+    console.log(JSON.stringify({ command: 'validate', projects: [{ items: [
+      { type: 'warning', generatorId: 'JSON', path: '/behavior_packs/pack-0/loot_tables/example.json', message: 'Structure issue' },
+      { type: 'error', generatorId: 'PRJINT', path: '/resource_packs/pack-1/manifest.json', message: 'Dependency is missing' },
+    ] }] }));
+    process.exitCode = 4;
+  `);
+  await writeFile(project.source, '{"pools":[]}');
+  project.config.packs.assets = './packs/RP';
+  const profile = project.config.bedrockCore.profiles.default;
+
+  profile.export.assets = './dist/RP';
+  profile.creatorToolsValidation = 'warn';
+  await writeFile(project.configPath, JSON.stringify(project.config));
+  const options = { configPath: project.configPath, logger: {} };
+  const result = await runBuild(options);
+
+  assert.deepEqual(result.validation.creatorTools.rules, ['JSON', 'PRJINT']);
+  assert.deepEqual(result.validation.creatorTools.diagnostics.map(({ pack, rule, severity }) => [pack, rule, severity]), [
+    ['gameplay', 'JSON', 'warning'],
+    ['assets', 'PRJINT', 'error'],
+  ]);
+  const previous = await readFile(path.join(project.root, 'dist/BP/loot_tables/example.json'), 'utf8');
+
+  profile.creatorToolsValidation = 'strict';
+  await writeFile(project.configPath, JSON.stringify(project.config));
+  await writeFile(project.source, '{ "pools": [] }');
+  await assert.rejects(runBuild(options), /\[PRJINT\] Dependency is missing/);
+  assert.equal(await readFile(path.join(project.root, 'dist/BP/loot_tables/example.json'), 'utf8'), previous);
 });

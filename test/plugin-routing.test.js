@@ -225,7 +225,7 @@ test('native producers reserve their inputs before automatic generator discovery
   `);
   await mkdir(path.join(project.project, 'packs/gameplay/custom'));
   await writeFile(path.join(project.project, 'packs/gameplay/custom/model.ts'), 'throw new Error("Must not execute as JSON"); export default {};');
-  project.config.bedrockCore.profiles.default.stages.generator = { types: false };
+  project.config.bedrockCore.profiles.default.stages.generator = {};
   const result = await build(project);
 
   await access(path.join(result.outputPaths.gameplay, 'processed.json'));

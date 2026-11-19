@@ -1,8 +1,4 @@
-import type { StageName } from '../config.ts';
 import type { PackInfo } from '../packs.ts';
-
-/** Known built-in filter implementation accepted by configuration conversion. */
-export type FilterKind = StageName | 'core';
 
 /** Configuration conversion issue with a stable code and JSON pointer. */
 export interface MigrationDiagnostic {
@@ -16,7 +12,7 @@ export interface MigrationDiagnostic {
   message: string;
 }
 
-/** Explicit metadata, profile, filter and destination mappings for Regolith configuration conversion. */
+/** Explicit metadata, profile and destination mappings for Regolith configuration conversion. */
 export interface MigrationOptions {
   /** Supply a missing target Minecraft version. */
   targetVersion?: string;
@@ -24,8 +20,6 @@ export interface MigrationOptions {
   profiles?: string[];
   /** Exact destination overrides keyed by profile and configured pack ID. */
   exports?: Record<string, Record<string, string>>;
-  /** Explicit mappings for verified local filters or forks; no module is executed. */
-  filters?: Record<string, FilterKind>;
   /** Explicit classification for packs whose type cannot be inferred. */
   packKinds?: Record<string, PackInfo['kind']>;
   /** Editor schema reference inserted into the converted config. */

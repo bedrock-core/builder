@@ -243,7 +243,7 @@ test('cancellation during validation publishes nothing', async (t) => {
 test('runner generates named behavior and resource packs, preserving authored templates and script files', async (t) => {
   const { project, config, configPath } = await projectFor(t);
 
-  config.bedrockCore.profiles.default.stages.generator = { types: false, pretty: { indent: 'space', size: 2 } };
+  config.bedrockCore.profiles.default.stages.generator = { pretty: { indent: 'space', size: 2 } };
   await mkdir(path.join(project, 'packs/gameplay/data'));
   await mkdir(path.join(project, 'shared'));
   await writeFile(path.join(project, 'shared/value.json'), '{"value":11}');
@@ -274,7 +274,7 @@ test('generator selection supports a resource-only project and always protects s
 
   delete config.packs.gameplay;
   delete config.bedrockCore.profiles.default.export.gameplay;
-  config.bedrockCore.profiles.default.stages = { generator: { types: false, include: 'packs/visuals/**/*.ts', exclude: '**/helper.ts' } };
+  config.bedrockCore.profiles.default.stages = { generator: { include: 'packs/visuals/**/*.ts', exclude: '**/helper.ts' } };
   await mkdir(path.join(project, 'packs/visuals/scripts'));
   await writeFile(path.join(project, 'packs/visuals/selected.ts'), 'export default { selected: true };');
   await writeFile(path.join(project, 'packs/visuals/helper.ts'), 'export const helper = true;');
@@ -307,7 +307,7 @@ test('a generator can consume an earlier hook artifact and feed the bundler thro
   const profile = config.bedrockCore.profiles.default;
 
   profile.steps = [{ plugin: 'input', before: 'generator' }];
-  profile.stages.generator = { types: false, generatedImports: { '@bedrock-core/generated/input': 'input' } };
+  profile.stages.generator = { generatedImports: { '@bedrock-core/generated/input': 'input' } };
   profile.stages.bundler.generatedImports = { '@bedrock-core/generated/settings': 'generator:gameplay:settings.json' };
   await writeFile(configPath, JSON.stringify(config));
   const result = await runBuild({ configPath, logger: {} });
@@ -320,7 +320,7 @@ test('a generator can consume an earlier hook artifact and feed the bundler thro
 test('generator failures retain the last export and reject selections outside packs', async (t) => {
   const { project, config, configPath } = await projectFor(t);
 
-  config.bedrockCore.profiles.default.stages.generator = { types: false };
+  config.bedrockCore.profiles.default.stages.generator = {};
   const source = path.join(project, 'packs/gameplay/settings.ts');
 
   await writeFile(source, 'export default { value: 1 };');
@@ -333,7 +333,7 @@ test('generator failures retain the last export and reject selections outside pa
   await assert.rejects(runBuild({ configPath, logger: {} }), /invalid template/);
   assert.equal(await readFile(output, 'utf8'), previous);
   assert.match(await readFile(source, 'utf8'), /invalid template/);
-  config.bedrockCore.profiles.default.stages.generator = { types: false, include: ['external.ts'] };
+  config.bedrockCore.profiles.default.stages.generator = { include: ['external.ts'] };
   await writeFile(path.join(project, 'external.ts'), 'export default {};');
   await writeFile(configPath, JSON.stringify(config));
   await assert.rejects(runBuild({ configPath, logger: {} }), /inside configured packs/);
@@ -352,7 +352,7 @@ test('generator settings schema rejects malformed selectors, formatting and unkn
     assert.throws(() => validateConfig(config), /Invalid project configuration/);
   }
 
-  config.bedrockCore.profiles.default.stages.generator = { include: 'packs/**/*.ts', exclude: [], pretty: { indent: 'space', size: 12 }, types: false, typesDir: null, schemaVersion: 'latest', strict: false, typePrefix: 'Mc', maxAgeHours: 24 };
+  config.bedrockCore.profiles.default.stages.generator = { include: 'packs/**/*.ts', exclude: [], pretty: { indent: 'space', size: 12 } };
   validateConfig(config);
 });
 
@@ -370,7 +370,7 @@ test('templates resolve promised defaults and async factory results before seria
 test('automatic discovery skips named helpers shared by a template and runtime bundle', async (t) => {
   const { project, config, configPath } = await projectFor(t);
 
-  config.bedrockCore.profiles.default.stages.generator = { types: false };
+  config.bedrockCore.profiles.default.stages.generator = {};
   await mkdir(path.join(project, 'packs/gameplay/content'));
   const helper = path.join(project, 'packs/gameplay/content/helper.ts');
 

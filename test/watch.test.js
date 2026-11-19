@@ -5,7 +5,6 @@ import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { watchBuild } from '../src/watch.ts';
 import { projectFor, put } from '../test-support/project.js';
-import { seedSchemas } from '../test-support/schemas.js';
 import { translationsFor } from '../test-support/i18n.js';
 import { guidesFor } from '../test-support/guides.js';
 
@@ -67,7 +66,7 @@ test('watch reuses templates on script edits and rebuilds template consumers on 
   const results = [];
   const errors = [];
 
-  project.config.bedrockCore.profiles.default.stages.generator = { types: false };
+  project.config.bedrockCore.profiles.default.stages.generator = {};
   project.config.bedrockCore.profiles.default.watch = { debounceMs: 30 };
   await writeFile(project.configPath, JSON.stringify(project.config));
   await put(project.project, 'shared/value.json', '{"value":1}');
@@ -363,7 +362,7 @@ test('watch reloads generator npm imports and recovers after a template failure'
   await writeFile(template, 'import { value } from "template-data"; export default { value };');
   delete project.config.packs.gameplay;
   delete project.config.bedrockCore.profiles.default.export.gameplay;
-  project.config.bedrockCore.profiles.default.stages = { generator: { types: false } };
+  project.config.bedrockCore.profiles.default.stages = { generator: {} };
   project.config.bedrockCore.profiles.default.watch = { debounceMs: 30 };
   await writeFile(project.configPath, JSON.stringify(project.config));
   const watching = watchBuild({
@@ -396,20 +395,21 @@ test('watch reloads generator npm imports and recovers after a template failure'
   assert.equal(await readFile(output, 'utf8'), '{"value":14}');
 });
 
-test('watch ignores generated editor declarations and still rebuilds authored templates', { timeout: 15000 }, async (t) => {
+test('watch ignores cached declarations and still rebuilds authored templates', { timeout: 15000 }, async (t) => {
   const project = await projectFor(t, { cleanup: false });
-  const { version } = await seedSchemas(project.project);
   const cancellation = new AbortController();
   const results = [];
   const errors = [];
   const template = path.join(project.project, 'packs/visuals/generated.ts');
-  const declarations = path.join(project.project, 'editor/mc/globals.d.ts');
+  const declarations = path.join(project.project, '.bedrock-core/types/index.d.ts');
 
   delete project.config.packs.gameplay;
   delete project.config.bedrockCore.profiles.default.export.gameplay;
-  project.config.bedrockCore.profiles.default.stages = { generator: { schemaVersion: version, typesDir: 'editor/mc' } };
+  project.config.bedrockCore.profiles.default.stages = { generator: true };
   project.config.bedrockCore.profiles.default.watch = { debounceMs: 30 };
   await writeFile(template, 'export default { value: 1 };');
+  await mkdir(path.dirname(declarations), { recursive: true });
+  await writeFile(declarations, 'declare type Cached = true;');
   await writeFile(project.configPath, JSON.stringify(project.config));
   const watching = watchBuild({
     configPath: project.configPath, signal: cancellation.signal, logger: {},
@@ -429,7 +429,6 @@ test('watch ignores generated editor declarations and still rebuilds authored te
   await waitFor(() => results.length === 1);
   const original = await readFile(declarations, 'utf8');
 
-  assert.match(original, /declare type Entity/);
   await writeFile(declarations, `${original}\n// Editor declaration edit.\n`);
   await delay(200);
   assert.equal(results.length, 1);

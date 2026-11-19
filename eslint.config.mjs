@@ -4,6 +4,10 @@ import { defineConfig } from 'eslint/config';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
+const interfaceDeclaration = {
+  selector: ':matches(TSInterfaceDeclaration, ExportNamedDeclaration[declaration.type="TSInterfaceDeclaration"], ExportDefaultDeclaration[declaration.type="TSInterfaceDeclaration"])',
+};
+
 export default defineConfig([
   { ignores: ['**/node_modules/**', '**/dist/**', '**/.bedrock-core/**', '**/.bds/**', 'coverage/**', 'packages/cli/templates/**'] },
   {
@@ -18,6 +22,12 @@ export default defineConfig([
       '@typescript-eslint/consistent-type-imports': 'error',
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+    },
+  },
+  {
+    files: ['packages/bedrock-types/types/registries.d.ts'],
+    rules: {
+      '@typescript-eslint/no-empty-object-type': ['error', { allowInterfaces: 'with-single-extends' }],
     },
   },
   {
@@ -39,6 +49,7 @@ export default defineConfig([
         { blankLine: 'always', prev: '*', next: 'return' },
         { blankLine: 'always', prev: 'block-like', next: '*' },
         { blankLine: 'always', prev: '*', next: 'block-like' },
+        { blankLine: 'always', prev: interfaceDeclaration, next: interfaceDeclaration },
       ],
     },
   },

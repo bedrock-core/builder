@@ -19,9 +19,10 @@ export interface BuildOptions {
   /** Additional final check after artifact checks, before manifest/content validation and export. */
   validateArtifacts?: (context: BuildContext) => void | Promise<void>;
 }
+
 /** Successful build report containing durable destinations and IDs, without temporary paths. */
 export interface BuildResult {
-  /** Final JSON syntax/schema validation coverage. */
+  /** Final JSON syntax and document type validation coverage. */
   readonly validation: ContentValidationResult;
   /** Pack IDs mapped to their published absolute directories. */
   readonly outputPaths: Readonly<Record<string, string>>;

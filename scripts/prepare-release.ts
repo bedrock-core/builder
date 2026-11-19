@@ -3,7 +3,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ScriptTarget } from 'typescript-native/ast';
 import { API, formatDiagnosticsWithColorAndContext } from 'typescript-native/sync';
+import { buildBedrockTypes } from '../packages/bedrock-types/src/build.ts';
 import { programDiagnostics } from '../packages/bundler/src/typescript.ts';
+
+await buildBedrockTypes();
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const output = path.join(root, '.bedrock-core/release/compiled');
@@ -58,6 +61,10 @@ const workspaces = await Promise.all([...new Set(['.', ...metadata.workspaces])]
 const versions = new Map(workspaces.map(({ pkg }) => [pkg.name, pkg.version]));
 
 for (const { workspace, directory, pkg } of workspaces) {
+  if (workspace === 'packages/bedrock-types') {
+    continue;
+  }
+
   const dist = path.join(directory, 'dist');
 
   await rm(dist, { recursive: true, force: true });
@@ -70,8 +77,6 @@ for (const { workspace, directory, pkg } of workspaces) {
     const contract = await readFile(path.join(root, 'src/contract.d.ts'), 'utf8');
 
     await writeFile(path.join(dist, 'src/contract.d.ts'), contract.replaceAll('.ts\'', '.js\''));
-  } else if (workspace.endsWith('/validation')) {
-    await cp(path.join(directory, 'schemas'), path.join(dist, 'schemas'), { recursive: true });
   }
 
   // Compiler fingerprints resolve metadata beside their release source directory.

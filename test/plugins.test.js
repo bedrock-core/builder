@@ -37,7 +37,7 @@ test('a built-in generator package runs as an external plugin with the same arti
 
   await put(project, 'packs/gameplay/content/widget.ts', 'export default { weight: 7 };');
   project.config.bedrockCore.plugins = { content: { module: '@bedrock-core/builder-generator/plugin' } };
-  project.config.bedrockCore.profiles.default.steps = [{ plugin: 'content', before: 'bundler', mode: 'auto', settings: { types: false } }];
+  project.config.bedrockCore.profiles.default.steps = [{ plugin: 'content', before: 'bundler', mode: 'auto', settings: {} }];
   await save(project);
   const options = { configPath: project.configPath, logger: {} };
   const first = await runBuild(options);
@@ -256,6 +256,9 @@ test('external plugins can provide virtual runtime modules through bundler resol
   const first = await runBuild(options);
 
   assert.equal((await runtime(first)).value, 41);
+  const sourceMap = JSON.parse(await readFile(path.join(first.outputPaths.gameplay, 'scripts/main.js.map'), 'utf8'));
+
+  assert.ok(sourceMap.sources.includes('widget-data:widgets'));
   const second = await runBuild(options);
 
   assert.equal(second.stages.find(stage => stage.stage === 'bundler').status, 'executed');

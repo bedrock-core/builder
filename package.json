@@ -27,13 +27,13 @@
   "scripts": {
     "test": "node --test",
     "plan": "node bin/plan.ts",
-    "build": "node bin/build.ts",
-    "typecheck": "node node_modules/typescript-native/bin/tsc --noEmit",
+    "build": "yarn prepare:types && node bin/build.ts",
+    "typecheck": "yarn prepare:types && node node_modules/typescript-native/bin/tsc --noEmit && node node_modules/typescript-native/bin/tsc -p packages/bedrock-types/tsconfig.json --noEmit",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix --max-warnings=0",
     "format": "eslint . --fix --max-warnings=0",
     "check": "yarn lint && yarn typecheck && yarn test",
-    "watch": "node bin/watch.ts",
+    "watch": "yarn prepare:types && node bin/watch.ts",
     "migrate": "node bin/migrate.ts",
     "scaffold": "node packages/cli/src/index.ts",
     "test:cli": "yarn workspace @bedrock-core/cli test",
@@ -62,7 +62,9 @@
     "version:packages": "changeset version && node scripts/sync-cli-template.mjs --builder-only && yarn install --mode=update-lockfile",
     "tag-release": "node scripts/tag-release.ts",
     "test:release": "node --test scripts/publish-release.test.ts scripts/cli-artifact.test.mjs scripts/sync-cli-template.test.mjs scripts/release-versions.test.ts scripts/acceptance-archives.test.ts",
-    "publish:ci": "yarn publish-release --scope \"$RELEASE_SCOPE\" && yarn tag-release --scope \"$RELEASE_SCOPE\""
+    "publish:ci": "yarn publish-release --scope \"$RELEASE_SCOPE\" && yarn tag-release --scope \"$RELEASE_SCOPE\"",
+    "prepare:types": "node packages/bedrock-types/src/build.ts",
+    "setup": "yarn install && yarn prepare:types"
   },
   "engines": {
     "node": ">=26.13.0"
@@ -78,6 +80,7 @@
     "@bedrock-core/builder-validation": "workspace:*",
     "@types/node": "25.9.9",
     "ajv": "8.17.1",
+    "import-meta-resolve": "^4.2.0",
     "typescript-native": "npm:typescript@7.1.0-beta"
   },
   "devDependencies": {
@@ -100,7 +103,8 @@
     "packages/validation",
     "packages/plugin",
     "packages/manifest",
-    "packages/cli"
+    "packages/cli",
+    "packages/bedrock-types"
   ],
   "packageManager": "yarn@4.16.0",
   "license": "MIT",

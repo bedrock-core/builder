@@ -1,4 +1,4 @@
-import { lstat, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { lstat, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -6,7 +6,6 @@ import { migrateRegolithConfig } from '../migrate.ts';
 import { readManifest } from '../manifest.ts';
 import { inspectPack } from '../packs.ts';
 import { resolveExportPaths } from '../export.ts';
-import { localFilterKind } from './local-filter.ts';
 import { validateConfig } from '../config.ts';
 import { scriptSource } from '@bedrock-core/builder-bundler/entries';
 import type { MigrationOptions, MigrationResult } from './types.ts';
@@ -21,17 +20,16 @@ export interface ProjectMigration extends MigrationResult {
 }
 
 /**
- * Inspect pack metadata and known local wrappers without importing any project code.
+ * Inspect pack metadata and local Node entry files without importing project code.
  * @param options Project inputs, settings and optional integrations for this operation.
  * @returns A preview with inspected metadata and the original config text for guarded writes.
- * @remarks Inspects source manifests and known local wrapper identities without importing authored filter code.
  */
 export async function migrateRegolithProject(configPath = 'config.json', options: MigrationOptions = {}): Promise<ProjectMigration> {
   const file = await realpath(configPath);
   const project = path.dirname(file);
   const sourceText = await readFile(file, 'utf8');
   const input: unknown = JSON.parse(sourceText);
-  const inferred = { ...options, filters: { ...options.filters }, packKinds: { ...options.packKinds } };
+  const inferred = { ...options, packKinds: { ...options.packKinds } };
   const diagnostics: MigrationResult['diagnostics'] = [];
   const engineVersions = new Set<string>();
   const identities = new Set<string>();
@@ -84,28 +82,33 @@ export async function migrateRegolithProject(configPath = 'config.json', options
     }
   }
 
-  if (isRecord(input) && isRecord(input.regolith) && isRecord(input.regolith.filterDefinitions)) {
-    const repository = fileURLToPath(new URL('../../', import.meta.url));
+  inferred.schema ??= path.relative(project, fileURLToPath(new URL('../../schemas/config.schema.json', import.meta.url))).replaceAll('\\', '/');
+  const result = migrateRegolithConfig(input, inferred);
+  const builder = result.config.bedrockCore;
 
-    for (const [id, definition] of Object.entries(input.regolith.filterDefinitions)) {
-      if (Object.hasOwn(inferred.filters, id) || !isRecord(definition) || definition.runWith !== 'nodejs' || typeof definition.script !== 'string') {
+  if (isRecord(builder) && isRecord(builder.plugins)) {
+    const defaultDataPath = './packs/data';
+    const defaultData = await stat(path.resolve(project, defaultDataPath), { throwIfNoEntry: false });
+
+    for (const [id, definition] of Object.entries(builder.plugins)) {
+      if (!isRecord(definition) || typeof definition.script !== 'string') {
         continue;
       }
 
-      try {
-        const kind = await localFilterKind(path.resolve(project, definition.script), path.join(repository, '..', 'regolith-filters'));
+      const entry = await stat(path.resolve(project, definition.script), { throwIfNoEntry: false });
 
-        if (kind) {
-          Object.defineProperty(inferred.filters, id, { value: kind, enumerable: true });
-        }
-      } catch {
-        // Unverified modules remain custom filters; the converter reports them.
+      if (!entry?.isFile()) {
+        diagnostics.push({
+          severity: 'error', code: 'filter-script', path: `/regolith/filterDefinitions/${pointer(id)}/script`,
+          message: `Node filter entry must be a file: ${definition.script}.`,
+        });
+      }
+
+      if (definition.dataPath === undefined && defaultData?.isDirectory()) {
+        definition.dataPath = defaultDataPath;
       }
     }
   }
-
-  inferred.schema ??= path.relative(project, fileURLToPath(new URL('../../schemas/config.schema.json', import.meta.url))).replaceAll('\\', '/');
-  const result = migrateRegolithConfig(input, inferred);
 
   if (isRecord(result.config.packs) && isRecord(result.config.bedrockCore) && isRecord(result.config.bedrockCore.profiles)) {
     for (const [name, profile] of Object.entries(result.config.bedrockCore.profiles)) {

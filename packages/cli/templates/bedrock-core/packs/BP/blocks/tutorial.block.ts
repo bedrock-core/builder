@@ -1,9 +1,12 @@
+import type { BlockDocument } from '@bedrock-core/bedrock-types';
+import type { ManyTemplate } from '@bedrock-core/builder-generator/templates';
+
 /**
  * Generator MULTI-FILE pattern: `[nameFn, dataFn, items]` — one .json block per
  * item, written next to this file (the generator stage transpiles every
  * non-script .ts in the packs at build time; this file never ships).
  *
- * `satisfies Many<Options, Block>` types the tuple against Mojang's official
+ * `satisfies ManyTemplate<Options, BlockDocument>` types the tuple against Mojang's official
  * block schema: `options` needs no annotation in either callback, components
  * autocomplete, and typos are errors. `satisfies` is erased at build time.
  */
@@ -40,4 +43,4 @@ export default [
     { id: 'tutorial_block_red', displayName: 'Tutorial Block (Red)', mapColor: '#c0392b' },
     { id: 'tutorial_block_blue', displayName: 'Tutorial Block (Blue)', mapColor: '#2980b9', light: 7 },
   ],
-] satisfies Many<Options, Block>;
+] satisfies ManyTemplate<Options, BlockDocument>;

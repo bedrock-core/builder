@@ -9,8 +9,6 @@ import type { JsonValue } from './templates.ts';
 import { deterministicData } from './deterministic.ts';
 export { defineMany, defineTemplate } from './templates.ts';
 export type { JsonValue, ManyTemplate, TemplateName, TemplateData } from './templates.ts';
-export { generateSchemaTypes } from './types.ts';
-export type { SchemaTypeSettings, SchemaTypeOptions, SchemaTypeResult } from './types.ts';
 
 const sourceExtension = import.meta.url.endsWith('.ts') ? 'ts' : 'js';
 

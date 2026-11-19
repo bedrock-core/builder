@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import Ajv from 'ajv';
 import { manifestFor } from '../test-support/manifest.js';
 import { validatePackManifests } from '../src/manifest.ts';
 import { validateConfig } from '../src/config.ts';
-import { resolveManifest, transformManifest } from '../src/manifest.ts';
+import { resolveManifest, transformManifest, nativeManifest, validateManifest } from '../src/manifest.ts';
 import { run as resolveStage } from '@bedrock-core/builder-manifest/plugin';
 import { projectFor } from '../test-support/project.js';
 import { runBuild } from '../src/run.ts';
@@ -56,6 +57,37 @@ test('manifest UUIDs are unique across packs regardless of letter case', async (
   await assert.rejects(validatePackManifests({ one: path.join(root, 'one'), two: path.join(root, 'two') }), /duplicate manifest UUID/);
 });
 
+test('the authored schema and manifest stage check v3 subpacks and native metadata', async () => {
+  const schema = JSON.parse(await readFile(new URL('../schemas/pack-manifest.schema.json', import.meta.url), 'utf8'));
+  const check = new Ajv({ strict: false }).compile(schema);
+  const manifest = manifestFor('resources');
+
+  Object.assign(manifest.header, { base_game_version: '1.26.50', pack_optimization_version: '1.26.50', platform_locked: false, allow_random_seed: true, lock_template_options: true });
+  manifest.modules[0].description = 'Resources';
+  manifest.dependencies = [{ module_name: '@minecraft/server', version: '2.10.0', optional: true }];
+  manifest.metadata = { product_type: 'addon', generated_with: { editor: ['1.0.0'] }, custom: { enabled: true } };
+  manifest.capabilities = ['pbr'];
+  manifest.has_education_metadata = false;
+  manifest.subpacks = [{ folder_name: 'high', name: 'High', memory_performance_tier: 5 }];
+
+  assert.equal(check(manifest), true, JSON.stringify(check.errors));
+  assert.equal(validateManifest('assets', manifest), manifest);
+  assert.deepEqual(nativeManifest(manifest), manifest);
+
+  for (const [override, reason] of [
+    [{ header: { ...manifest.header, platform_locked: 1 } }, /header.platform_locked/],
+    [{ capabilities: [true] }, /capabilities/],
+    [{ metadata: { generated_with: { editor: [1] } } }, /metadata.generated_with/],
+    [{ subpacks: [{ ...manifest.subpacks[0], memory_performance_tier: 6 }] }, /subpacks/],
+    [{ dependencies: [{ ...manifest.dependencies[0], optional: 'yes' }] }, /dependencies/],
+  ]) {
+    const invalid = { ...manifest, ...override };
+
+    assert.equal(check(invalid), false);
+    assert.throws(() => validateManifest('assets', invalid), reason);
+  }
+});
+
 test('bundler schema accepts options without another entry declaration', () => {
   const config = {
     name: 'Schema fixture', authors: [], targetVersion: '1.26.50',
@@ -72,7 +104,7 @@ test('manifest transforms preserve module identity and unrelated fields without 
   const input = manifestFor('script');
 
   input.metadata = { authors: ['Author'], custom: { retained: true } };
-  input.settings = [{ type: 'label', text: 'Settings' }];
+  input.capabilities = ['pbr'];
   const snapshot = structuredClone(input);
   const output = transformManifest(input, {
     header: { name: 'Test name' },
@@ -84,7 +116,7 @@ test('manifest transforms preserve module identity and unrelated fields without 
   assert.equal(output.modules[0].uuid, input.modules[0].uuid);
   assert.equal(output.modules[0].entry, 'scripts/tests.js');
   assert.deepEqual(output.metadata.custom, { retained: true, added: true });
-  assert.deepEqual(output.settings, input.settings);
+  assert.deepEqual(output.capabilities, input.capabilities);
   assert.throws(() => transformManifest(input, { modules: { missing: {} } }), /unknown UUID/);
 });
 

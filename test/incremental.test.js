@@ -49,7 +49,7 @@ test('generator imports invalidate their template and only changed output invali
   const project = await projectFor(t);
   const options = optionsFor(project);
 
-  project.config.bedrockCore.profiles.default.stages.generator = { types: false };
+  project.config.bedrockCore.profiles.default.stages.generator = {};
   await writeFile(project.configPath, JSON.stringify(project.config));
   await put(project.project, 'shared/data.json', '{"value":7}');
   await put(project.project, 'packs/gameplay/data/value.ts', `import data from '../../../shared/data.json'; export default { value: data.value };`);
@@ -94,7 +94,7 @@ test('generator imports invalidate their template and only changed output invali
 test('plain Many callbacks and data-only TS imports cache without changing their exports', async (t) => {
   const project = await projectFor(t);
 
-  project.config.bedrockCore.profiles.default.stages.generator = { types: false };
+  project.config.bedrockCore.profiles.default.stages.generator = {};
   await writeFile(project.configPath, JSON.stringify(project.config));
   await put(project.project, 'shared/items.ts', 'export const items = [{ name: "a", value: 3 }, { name: "b", value: 4 }] as const;');
   await put(project.project, 'packs/gameplay/data/many.ts', `
@@ -112,7 +112,7 @@ test('plain Many callbacks and data-only TS imports cache without changing their
 test('Node environment imports and side-effect modules keep evaluating', async (t) => {
   const project = await projectFor(t);
 
-  project.config.bedrockCore.profiles.default.stages.generator = { types: false };
+  project.config.bedrockCore.profiles.default.stages.generator = {};
   await writeFile(project.configPath, JSON.stringify(project.config));
   await put(project.project, 'packs/gameplay/data/environment.ts', `import process from 'node:process'; export default { value: process.env.BUILDER_INCREMENTAL_TEST };`);
   t.after(() => {
@@ -131,7 +131,7 @@ test('Node environment imports and side-effect modules keep evaluating', async (
 test('output formatting and unrelated config changes reuse existing compiled modules', async (t) => {
   const project = await projectFor(t);
 
-  project.config.bedrockCore.profiles.default.stages.generator = { types: false };
+  project.config.bedrockCore.profiles.default.stages.generator = {};
   await writeFile(project.configPath, JSON.stringify(project.config));
   await put(project.project, 'packs/gameplay/data/value.ts', 'export default { value: 5 };');
   await runBuild(optionsFor(project));
@@ -156,7 +156,7 @@ test('output formatting and unrelated config changes reuse existing compiled mod
 test('locales reuse compiled modules, evaluate runtime inputs and invalidate only imported helpers', async (t) => {
   const project = await translationsFor(t);
 
-  project.config.bedrockCore.profiles.default.stages.i18n = { types: false };
+  project.config.bedrockCore.profiles.default.stages.i18n = {};
   await writeFile(project.configPath, JSON.stringify(project.config));
   await put(project.project, 'shared/title.ts', 'export const suffix = "A";');
   await put(project.project, 'packs/gameplay/i18n/en_US.ts', `
@@ -190,7 +190,7 @@ test('profile cache false compiles runtime templates again without persistent re
   const project = await projectFor(t);
 
   project.config.bedrockCore.profiles.default.cache = false;
-  project.config.bedrockCore.profiles.default.stages.generator = { types: false };
+  project.config.bedrockCore.profiles.default.stages.generator = {};
   await writeFile(project.configPath, JSON.stringify(project.config));
   await put(project.project, 'packs/gameplay/data/runtime.ts', 'export default { value: Math.random() };');
   await runBuild(optionsFor(project));

@@ -6,13 +6,22 @@ const repository = fileURLToPath(new URL('../', import.meta.url));
 const read = file => JSON.parse(readFileSync(file, 'utf8'));
 const save = (file, value) => writeFileSync(file, JSON.stringify(value, null, '\t') + '\n');
 
-/** Update the starter's Builder pin using this repository alone. */
+function builderVersions(root) {
+  return {
+    '@bedrock-core/builder': read(resolve(root, 'package.json')).version.split('-')[0],
+    '@bedrock-core/builder-generator': read(resolve(root, 'packages/generator/package.json')).version.split('-')[0],
+    '@bedrock-core/bedrock-types': '~' + read(resolve(root, 'packages/bedrock-types/package.json')).version.split('-')[0],
+  };
+}
+
+/** Update the starter's build tooling and document types from their owning packages. */
 export function syncBuilderTemplate(root = repository) {
   const file = resolve(root, 'packages/cli/templates/bedrock-core/package.json');
   const pkg = read(file);
-  const builderVersion = read(resolve(root, 'package.json')).version.split('-')[0];
+  const versions = builderVersions(root);
+  const builderVersion = versions['@bedrock-core/builder'];
 
-  pkg.devDependencies['@bedrock-core/builder'] = builderVersion;
+  Object.assign(pkg.devDependencies, versions);
   save(file, pkg);
 
   return { builderVersion };
@@ -60,7 +69,7 @@ export function syncCliTemplate(root = repository, uiRoot = resolve(root, '../ui
   }
 
   pkg.dependencies['@bedrock-core/navigation'] = navigationVersion;
-  pkg.devDependencies['@bedrock-core/builder'] = builderVersion;
+  Object.assign(pkg.devDependencies, builderVersions(root));
   pkg.devDependencies['@bedrock-core/bds-runner'] = '^' + read(resolve(root, '../bds-runner/package.json')).version;
   const manifests = ['manifest.json', 'manifest.test.json'].map((name) => {
     const file = resolve(template, 'packs/BP', name);

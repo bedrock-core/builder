@@ -6,7 +6,6 @@ import { runBuild } from '../src/run.ts';
 import { validateConfig } from '../src/config.ts';
 import { projectFor, put } from '../test-support/project.js';
 import { translationsFor } from '../test-support/i18n.js';
-import { seedSchemas } from '../test-support/schemas.js';
 
 const status = (result, stage) => result.stages.find(entry => entry.stage === stage)?.status;
 
@@ -76,7 +75,6 @@ test('templates and locale modules automatically enable their producers and gene
   const project = await translationsFor(t);
 
   await automatic(project);
-  await seedSchemas(project.project);
   await put(project.project, 'packs/gameplay/data/value.ts', 'export default { value: 7 };');
   await put(project.project, 'packs/gameplay/scripts/main.ts', `import data from '@bedrock-core/generated/i18n'; export const value = data.namespace;`);
   const result = await runBuild({ configPath: project.configPath, logger: {} });
@@ -92,7 +90,6 @@ test('automatic detection sees inputs created by before hooks and still runs aft
   const project = await projectFor(t);
 
   await automatic(project);
-  await seedSchemas(project.project);
   await put(project.project, 'create.ts', `
     import { mkdir, writeFile } from 'node:fs/promises';
     import path from 'node:path';
@@ -247,7 +244,6 @@ test('template and plugin execution repeat while changing generated inputs inval
   const project = await projectFor(t);
 
   await automatic(project);
-  await seedSchemas(project.project);
   await put(project.project, 'packs/gameplay/data/random.ts', 'export default { value: Math.random() };');
   await put(project.project, 'packs/gameplay/scripts/main.ts', `import data from '@bedrock-core/generated/value'; export const value = data.value;`);
   await put(project.project, 'producer.ts', `

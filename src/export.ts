@@ -594,7 +594,7 @@ export async function withExportPaths<T>(paths: Record<string, string>, build: (
 /**
  * Publish pack folders with manifest checks, locks and rollback, without the build runner.
  * @returns Published pack IDs and absolute destination directories.
- * @remarks Updates files in place without renaming pack roots. Snapshots and locks stay in the OS temporary directory. JSON schema validation is separate; use validatePackContent when content checks are required.
+ * @remarks Updates files in place without renaming pack roots. Snapshots and locks stay in the OS temporary directory. Use validatePackContent to check pack JSON before export.
  * @throws If manifest checks or publication fail. Failed rollback reports a retained recovery directory.
  */
 export async function exportPacks({ packs, paths, signal, environment = process.env }: ExportOptions): Promise<ExportedPack[]> {

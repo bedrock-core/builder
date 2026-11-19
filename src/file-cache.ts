@@ -30,13 +30,16 @@ interface Location {
   root: string;
   path: string;
 }
+
 interface Input extends Location {
   hash: string;
 }
+
 interface Output extends Location {
   content: string;
   hash: string;
 }
+
 interface RecordEntry {
   key: string;
   seeds: Location[];

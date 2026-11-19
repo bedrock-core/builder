@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { appendFile, mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { extractTgz } from '../packages/generator/src/tar.ts';
+import { extractTgz } from '../packages/bedrock-types/src/inputs/tar.ts';
 import { acceptanceArchives, acceptanceYarnConfig, archiveIntegrity, type AcceptanceArchiveIndex } from './acceptance-archives.ts';
 import { yarn, yarnOutput } from './yarn.ts';
 

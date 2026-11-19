@@ -1,12 +1,11 @@
 import { readFile, readdir, realpath } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
-import { Ajv, type ValidateFunction } from 'ajv';
-import { parse, printParseErrorCode, type ParseError } from 'jsonc-parser';
-import picomatch from 'picomatch';
+import { findNodeAtOffset, getNodePath, parse, parseTree, printParseErrorCode, type ParseError } from 'jsonc-parser';
+import { validateWithCreatorTools, type CreatorToolsResult, type CreatorToolsValidationOptions } from './creator-tools.ts';
+import type { openTypesRelease, TypeSelection } from './types-release.ts';
+
+export type { CreatorToolsDiagnostic, CreatorToolsResult, CreatorToolsValidationOptions } from './creator-tools.ts';
 
 /** Manifest-classified pack directory whose final JSON files are checked. */
 export interface ContentPack {
@@ -14,60 +13,64 @@ export interface ContentPack {
   id: string;
   /** Pack directory to inspect. */
   path: string;
-  /** Manifest classification used to select applicable document schemas. */
+  /** Manifest classification used to select applicable document types. */
   kind: 'behavior' | 'resource' | 'other';
 }
 
 /** Validation failure located by pack, file and JSON pointer. */
 export interface ContentDiagnostic {
-  /** Whether the parser or a content schema reported the problem. */
-  kind?: 'syntax' | 'schema';
+  /** Validator that reported the problem. */
+  kind?: 'syntax' | 'type' | 'creator-tools';
   /** Configured pack ID. */
   pack: string;
   /** JSON file path relative to the pack directory, using forward slashes. */
   file: string;
   /** JSON pointer identifying the invalid value. */
   pointer: string;
-  /** Syntax or schema validation explanation. */
+  /** Validation explanation. */
   message: string;
+  /** TypeScript diagnostic code for document type errors. */
+  code?: number;
 }
 
-/** Per-file syntax/schema diagnostics and any unavailable-schema explanation. */
+/** Per-file syntax and document type diagnostics. */
 export interface ContentFileResult {
   /** Configured pack ID. */
   pack: string;
   /** Checked JSON path relative to the pack directory, using forward slashes. */
   file: string;
-  /** Applied schema URL when a matching catalog schema is available. */
-  schema?: string;
-  /** Reason a matching upstream schema could not be applied. */
-  schemaIssue?: string;
-  /** Syntax and schema errors for this file. */
+  /** Applied DocumentTypes category when a matching type is available. */
+  category?: string;
+  /** Syntax and type errors for this file. */
   diagnostics: ContentDiagnostic[];
 }
 
-/** Schema catalog version and validation coverage for all checked files. */
+/** Bedrock types release and validation coverage for the checked files. */
 export interface ContentValidationResult {
-  /** Resolved Mojang schema catalog version, or an empty string when schema checks are skipped. */
-  schemaVersion: string;
-  /** Per-file checks and schema coverage. */
+  /** Resolved native types package version, or an empty string when type checking is unavailable or skipped. */
+  typesVersion: string;
+  /** Reason the types for this target could not be loaded. */
+  typesIssue?: string;
+  /** Per-file checks and type coverage. */
   files: ContentFileResult[];
+  /** Mojang CLI checks when Creator Tools is enabled. */
+  creatorTools?: CreatorToolsResult;
 }
 
-/** How to handle schema checks. Invalid JSON syntax always fails. */
+/** How to handle document type checks. Invalid JSON syntax always fails. */
 export type ContentValidationMode = 'strict' | 'warn' | 'skip';
 
-/** Pack selection, schema catalog and optional validation-reuse integration. */
-export interface ContentValidationOptions {
+/** Pack selection, installed native types and optional validation reuse. */
+export interface ContentValidationOptions extends TypeSelection {
   /** Final pack directories to validate. */
   packs: readonly ContentPack[];
-  /** Schema validation mode, defaulting to warn. */
+  /** Document type validation mode, defaulting to warn. */
   mode?: ContentValidationMode;
-  /** Custom installed Mojang schema catalog directory. */
-  schemaRoot?: string;
+  /** Optional Creator Tools checks on the complete pack set. */
+  creatorTools?: CreatorToolsValidationOptions;
   /** Cooperative validation cancellation. */
   signal?: AbortSignal;
-  /** Reuse hook keyed by file, schema dependencies and validator revision; call validate on a miss. */
+  /** Reuse hook keyed by file, declaration dependencies and validator revision. Call validate on a miss. */
   reuse?: (
     file: string,
     dependencies: readonly string[],
@@ -76,7 +79,7 @@ export interface ContentValidationOptions {
   ) => Promise<ContentFileResult>;
 }
 
-/** Aggregated JSON validation failure with structured diagnostics. */
+/** Aggregated pack content failure with structured diagnostics. */
 export class ContentValidationError extends Error {
   /** Structured validation failures collected across checked files. */
   readonly diagnostics: readonly ContentDiagnostic[];
@@ -89,294 +92,275 @@ export class ContentValidationError extends Error {
   }
 }
 
-interface CatalogEntry {
-  url: string;
-  fileMatch?: string[];
+interface DocumentFile {
+  pack: string;
+  file: string;
+  source: string;
+  category?: string;
 }
 
-interface SchemaDocument {
-  [key: string]: unknown;
+type TypesRelease = Awaited<ReturnType<typeof openTypesRelease>>;
+
+function record(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
 
-function within(root: string, file: string): boolean {
-  const relative = path.relative(root, file);
+function documentInputs(category: string, document: unknown, literal: (value: unknown) => string): { category: string; literal: string; controllerOffset: number }[] {
+  const root = record(document);
+  const entity = category === 'rp/entity' ? record(root?.['minecraft:client_entity']) : undefined;
+  const description = record(entity?.description);
+  const controllers = description?.render_controllers;
+  const batchSize = 256;
 
-  return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+  if (!Array.isArray(controllers) || controllers.length <= batchSize) {
+    return [{ category, literal: literal(document), controllerOffset: 0 }];
+  }
+
+  // This unbounded list has independently typed entries. Slices keep the
+  // literal union manageable and preserve the surrounding document context.
+  return Array.from({ length: Math.ceil(controllers.length / batchSize) }, (_, index) => {
+    const controllerOffset = index * batchSize;
+    const slice = controllers.slice(controllerOffset, controllerOffset + batchSize);
+
+    return {
+      category, controllerOffset,
+      literal: literal({ ...root, 'minecraft:client_entity': { ...entity, description: { ...description, render_controllers: slice } } }),
+    };
+  });
 }
 
-/**
- * Validate JSON syntax and apply content schemas according to the selected mode.
- * @param options Project inputs, settings and optional integrations for this operation.
- * @returns Per-file coverage and diagnostics. Syntax errors and strict schema errors throw ContentValidationError.
- */
+function entityUpgradeDiagnostics(document: unknown, pack: string, file: string): ContentDiagnostic[] {
+  const root = record(document);
+  const entity = record(root?.['minecraft:entity']);
+  const version = record(record(entity?.description)?.entity_version);
+  const steps = version?.upgrades;
+
+  if (!Array.isArray(steps)) {
+    return [];
+  }
+
+  const diagnostics: ContentDiagnostic[] = [];
+  const pointer = '/minecraft:entity/description/entity_version';
+  const report = (suffix: string, message: string) => diagnostics.push({ kind: 'type', pack, file, pointer: pointer + suffix, message });
+  const handlers = record(entity?.upgrades) ?? {};
+  const seen = new Set<number>();
+  const formatVersion = typeof root?.format_version === 'string' ? /^(\d+)\.(\d+)(?:\.(\d+))?$/.exec(root.format_version) : null;
+
+  if (formatVersion) {
+    const [, major, minor, patch = '0'] = formatVersion;
+
+    if (Number(major) < 1 || (Number(major) === 1 && (Number(minor) < 26 || (Number(minor) === 26 && Number(patch) < 20)))) {
+      report('', 'Entity versioning requires format_version 1.26.20 or later.');
+    }
+  }
+
+  for (const [index, value] of steps.entries()) {
+    const step = record(value);
+    const to = step?.upgrade_to;
+    const name = step?.name;
+
+    if (typeof to === 'number') {
+      if (!Number.isInteger(to) || to < 1 || to > steps.length || seen.has(to)) {
+        report(`/upgrades/${index}/upgrade_to`, `Upgrade versions must use each integer from 1 through ${steps.length} exactly once.`);
+      }
+
+      seen.add(to);
+    }
+
+    if (typeof name === 'string' && (!name.length || !Object.hasOwn(handlers, name))) {
+      report(`/upgrades/${index}/name`, 'Upgrade name must identify a handler in minecraft:entity.upgrades.');
+    }
+  }
+
+  return diagnostics;
+}
+
+async function checkBatch(
+  entries: readonly DocumentFile[],
+  options: ContentValidationOptions,
+  types: TypesRelease | undefined,
+  revision: string,
+): Promise<ContentFileResult[]> {
+  if (!entries.length) {
+    return [];
+  }
+
+  const pending: {
+    entry: DocumentFile;
+    resolve: (result: ContentFileResult) => void;
+    reject: (error: unknown) => void;
+  }[] = [];
+  const lookup = entries.map((entry) => {
+    let markReady!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      markReady = resolve;
+    });
+
+    const collect = () => new Promise<ContentFileResult>((resolve, reject) => {
+      pending.push({ entry, resolve, reject });
+      markReady();
+    });
+
+    const { pack, file, source, category } = entry;
+    const cached = Promise.resolve().then(() => options.reuse
+      ? options.reuse(source, category ? types!.inputs : [],
+          createHash('sha256').update(JSON.stringify([revision, pack, file, category ?? null])).digest('hex'), collect)
+      : collect()).finally(markReady);
+
+    return { ready, cached };
+  });
+  const settled = Promise.allSettled(lookup.map(entry => entry.cached));
+
+  // Wait for cache hits and collect all misses before checking the batch.
+  await Promise.all(lookup.map(entry => entry.ready));
+
+  try {
+    const parsed = await Promise.all(pending.map(async ({ entry: { pack, file, source, category } }) => {
+      options.signal?.throwIfAborted();
+      const errors: ParseError[] = [];
+      const document: unknown = parse((await readFile(source, 'utf8')).replace(/^\uFEFF/, ''), errors, { allowTrailingComma: true });
+      const diagnostics: ContentDiagnostic[] = errors.map(error => ({
+        kind: 'syntax',
+        pack,
+        file,
+        pointer: '',
+        message: `${printParseErrorCode(error.error)} at offset ${error.offset}`,
+      }));
+      const result: ContentFileResult = { pack, file, diagnostics };
+
+      if (types && category && !errors.length) {
+        result.category = category;
+
+        if (category === 'bp/entities') {
+          diagnostics.push(...entityUpgradeDiagnostics(document, pack, file));
+        }
+
+        return { result, inputs: documentInputs(category, document, types.literal) };
+      }
+
+      return { result };
+    }));
+    const typed = parsed.flatMap(({ result, inputs }) => inputs?.map(input => ({ result, input })) ?? []);
+    const findings = types?.check(typed.map(entry => entry.input), options.signal) ?? [];
+
+    for (const [index, { result, input }] of typed.entries()) {
+      const issues = findings[index];
+
+      if (issues.length) {
+        const tree = parseTree(input.literal);
+
+        for (const { code, message, offset } of issues) {
+          const node = tree && offset >= 0 ? findNodeAtOffset(tree, offset, true) : undefined;
+          const segments = node ? getNodePath(node) : [];
+
+          if (input.controllerOffset && segments[0] === 'minecraft:client_entity' && segments[1] === 'description' && segments[2] === 'render_controllers' && typeof segments[3] === 'number') {
+            segments[3] += input.controllerOffset;
+          }
+
+          const pointer = segments.map(segment => '/' + String(segment).replaceAll('~', '~0').replaceAll('/', '~1')).join('');
+          const formatted = `TS${code} ${message}`;
+
+          if (!input.controllerOffset || !result.diagnostics.some(issue => issue.code === code && issue.pointer === pointer && issue.message === formatted)) {
+            result.diagnostics.push({ kind: 'type', code, pack: result.pack, file: result.file, pointer, message: formatted });
+          }
+        }
+      }
+    }
+
+    for (const [index, { resolve }] of pending.entries()) {
+      resolve(parsed[index].result);
+    }
+  } catch (error) {
+    for (const { reject } of pending) {
+      reject(error);
+    }
+  }
+
+  return (await settled).map((entry) => {
+    if (entry.status === 'rejected') {
+      throw entry.reason;
+    }
+
+    return entry.value;
+  });
+}
+
+/** Check final pack JSON syntax and the native document types for its Bedrock target. */
 export async function validatePackContent(options: ContentValidationOptions): Promise<ContentValidationResult> {
   const mode = options.mode ?? 'warn';
-  const skip = mode === 'skip';
-  const require = createRequire(import.meta.url);
-  const root = skip ? '' : await realpath(options.schemaRoot ?? path.dirname(require.resolve('@minecraft/bedrock-schemas/catalog.json')));
-  const catalogFile = path.join(root, 'catalog.json');
-  const catalog: { schemas: CatalogEntry[] } = skip ? { schemas: [] } : JSON.parse(await readFile(catalogFile, 'utf8'));
-  const metadataFile = path.join(root, 'package.json');
-  const metadata: { version: string } = skip ? { version: '' } : JSON.parse(await readFile(metadataFile, 'utf8'));
-  const catalogInputs = skip ? [] : [catalogFile, metadataFile];
-  const validators = new Map<string, { validate: ValidateFunction; inputs: string[] }>();
-  const unavailable = new Map<string, string>();
-  const documents = new Map<string, SchemaDocument>();
-  const referencesByFile = new Map<string, Set<string>>();
-  const ajv = skip ? undefined : new Ajv({ allErrors: true, strict: false, validateFormats: false, logger: false });
+  const backend = mode === 'skip' ? undefined : await import('./types-release.ts');
 
-  async function load(file: string, inputs: Set<string>): Promise<SchemaDocument> {
-    options.signal?.throwIfAborted();
-    file = await realpath(file);
+  using api = backend && new backend.API();
+  let types: TypesRelease | undefined;
+  let typesIssue: string | undefined;
 
-    if (!within(root, file)) {
-      throw new Error(`Schema reference must stay inside its package: ${file}`);
+  if (backend && api) {
+    try {
+      types = await backend.openTypesRelease(api, options);
+    } catch (error) {
+      options.signal?.throwIfAborted();
+      typesIssue = error instanceof Error ? error.message : String(error);
     }
-
-    inputs.add(file);
-    const previous = documents.get(file);
-
-    if (previous) {
-      for (const reference of referencesByFile.get(file) ?? []) {
-        if (!inputs.has(reference)) {
-          await load(reference, inputs);
-        }
-      }
-
-      return previous;
-    }
-
-    const document = JSON.parse(await readFile(file, 'utf8')) as SchemaDocument;
-    const references = new Set<string>();
-
-    if (!options.schemaRoot && metadata.version === '1.26.50'
-      && file === path.join(root, 'schemas/rp/textures/terrain_texture.schema.json')) {
-      // Vanilla terrain atlases use single texture paths as well as arrays.
-      // https://github.com/Mojang/bedrock-samples/blob/main/resource_pack/textures/terrain_texture.json
-      const properties = document.properties as Record<string, SchemaDocument>;
-      const entry = properties.texture_data.additionalProperties as { properties: Record<string, SchemaDocument> };
-
-      entry.properties.textures = { anyOf: [{ type: 'string' }, entry.properties.textures] };
-    }
-
-    if (!options.schemaRoot && metadata.version === '1.26.50') {
-      if (file === path.join(root, 'schemas/rp/sounds/index.schema.json')) {
-        // Sound definitions accept bare paths and objects with a file name and playback settings.
-        const fields = document.properties as Record<string, SchemaDocument>;
-        const events = fields.sound_definitions.additionalProperties as { properties: Record<string, SchemaDocument> };
-        const sounds = events.properties.sounds;
-
-        sounds.items = { anyOf: [{ type: 'string', minLength: 1 }, { ...sounds.items as SchemaDocument, required: ['name'] }] };
-      }
-
-      if (file === path.join(root, 'schemas/bp/entities/entity_minecraft_spell_effects.schema.json')) {
-        // Effects accept numeric seconds or the documented infinite duration.
-        // https://learn.microsoft.com/minecraft/creator/reference/content/entityreference/examples/entitycomponents/minecraftcomponent_spell_effects
-        const fields = document.properties as SchemaDocument;
-        const additions = fields.add_effects as SchemaDocument;
-        const item = additions.items as SchemaDocument;
-        const properties = item.properties as SchemaDocument;
-
-        properties.duration = { anyOf: [properties.duration, { const: 'infinite' }] };
-      }
-
-      if (['description.schema.json', 'description_2.schema.json'].some(name => file === path.join(root, 'schemas/rp/entity', name))) {
-        // Client entities can mix unconditional controllers and conditional entries.
-        const fields = document.properties as SchemaDocument;
-        const controllers = fields.render_controllers as SchemaDocument;
-        const alternatives = controllers.anyOf as SchemaDocument[];
-        const items = alternatives.filter(entry => entry.type === 'array').map(entry => entry.items);
-
-        alternatives.push({ type: 'array', items: { anyOf: items } });
-      }
-
-      if (file.startsWith(path.join(root, 'schemas/rp/models') + path.sep)) {
-        // Geometry vectors accept numeric coordinates and Molang expressions.
-        const vectors = new Set(['visible_bounds_offset', 'pivot', 'rotation', 'origin', 'size', 'uv', 'uv_size', 'translation', 'scale']);
-
-        const visit = (value: unknown, vector = false): void => {
-          if (Array.isArray(value)) {
-            value.forEach(entry => visit(entry, vector));
-          } else if (value && typeof value === 'object') {
-            const node = value as SchemaDocument;
-            const items = node.items as SchemaDocument | undefined;
-
-            if (vector && node.type === 'array' && items?.type === 'string') {
-              items.type = ['string', 'number'];
-            }
-
-            for (const [key, entry] of Object.entries(node)) {
-              visit(entry, vector || vectors.has(key));
-            }
-          }
-        };
-
-        visit(document);
-      }
-    }
-
-    function normalize(value: unknown): void {
-      if (Array.isArray(value)) {
-        value.forEach(normalize);
-      } else if (value && typeof value === 'object') {
-        const node = value as SchemaDocument;
-
-        delete node.$id;
-
-        if (typeof node.$ref === 'string' && !node.$ref.startsWith('#')) {
-          let target = new URL(node.$ref, pathToFileURL(file));
-
-          if (target.protocol !== 'file:') {
-            throw new Error(`Remote schema references are unsupported: ${target.href}`);
-          }
-
-          // The pinned Mojang block schemas use the legacy Molang object's alternate filename.
-          if (!options.schemaRoot && metadata.version === '1.26.50'
-            && fileURLToPath(target) === path.join(root, 'schemas/common/expression.schema.json') && !existsSync(fileURLToPath(target))) {
-            const fragment = target.hash;
-
-            target = pathToFileURL(path.join(root, 'schemas/common/molang_expression.schema.json'));
-            target.hash = fragment;
-          }
-
-          node.$ref = target.href;
-          target.hash = '';
-          references.add(fileURLToPath(target));
-        }
-
-        Object.values(node).forEach(normalize);
-      }
-    }
-
-    normalize(document);
-    document.$id = pathToFileURL(file).href;
-    documents.set(file, document);
-    referencesByFile.set(file, references);
-
-    for (const reference of references) {
-      await load(reference, inputs);
-    }
-
-    return document;
   }
 
-  async function validator(file: string, compiler: Ajv) {
-    const previous = validators.get(file);
-
-    if (previous) {
-      return previous;
-    }
-
-    const inputs = new Set(catalogInputs);
-    const document = await load(file, inputs);
-
-    for (const schema of documents.values()) {
-      // Register the complete graph before compiling cyclic or shared references.
-      if (!compiler.schemas[schema.$id as string]) {
-        compiler.addSchema(schema);
-      }
-    }
-
-    const validate = compiler.getSchema(document.$id as string) ?? compiler.compile(document);
-    const result = { validate, inputs: [...inputs] };
-
-    validators.set(file, result);
-
-    return result;
-  }
-
-  const revision = createHash('sha256').update(await readFile(new URL(import.meta.url))).digest('hex');
+  const implementation = [new URL(import.meta.url), ...(backend?.typeImplementation ?? [])];
+  const revision = options.reuse
+    ? createHash('sha256').update(backend?.checkerVersion ?? '').update(Buffer.concat(await Promise.all(implementation.map(file => readFile(file))))).digest('hex')
+    : '';
   const files: ContentFileResult[] = [];
+  const batch: DocumentFile[] = [];
 
   for (const pack of options.packs) {
-    const packRoot = await realpath(pack.path);
-    const prefix = pack.kind === 'behavior' ? 'bp/' : pack.kind === 'resource' ? 'rp/' : undefined;
-    const entries = prefix ? catalog.schemas.filter(entry => entry.url.startsWith(`./schemas/${prefix}`)) : [];
+    const root = await realpath(pack.path);
 
     async function visit(directory: string): Promise<void> {
       for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
         options.signal?.throwIfAborted();
         const source = path.join(directory, entry.name);
-        const relative = path.relative(packRoot, source).replaceAll('\\', '/');
+        const file = path.relative(root, source).replaceAll('\\', '/');
 
         if (entry.isSymbolicLink()) {
-          throw new Error(`Pack content cannot use links: ${pack.id}/${relative}`);
+          throw new Error(`Pack content cannot use links: ${pack.id}/${file}`);
         }
 
         if (entry.isDirectory()) {
           await visit(source);
-          continue;
-        }
+        } else if (entry.isFile() && /\.json$/i.test(entry.name) && file !== 'manifest.json') {
+          batch.push({ pack: pack.id, file, source, category: types?.category(pack.kind, file) });
 
-        if (!entry.isFile() || !/\.json$/i.test(entry.name) || relative === 'manifest.json') {
-          continue;
-        }
-
-        // Exact filenames take precedence over folder-wide catalog patterns.
-        const matches = entries.filter(item => item.fileMatch?.some(pattern => picomatch.isMatch(relative, pattern)));
-
-        matches.sort((a, b) => (a.fileMatch?.join().includes('/**/') ? 1 : 0) - (b.fileMatch?.join().includes('/**/') ? 1 : 0));
-        const selected = matches[0];
-        let compiled: { validate: ValidateFunction; inputs: string[] } | undefined;
-        let schemaIssue = selected ? unavailable.get(selected.url) : undefined;
-
-        if (ajv && pack.kind === 'resource' && relative === 'texts/languages.json') {
-          const file = fileURLToPath(new URL('../schemas/languages.schema.json', import.meta.url));
-
-          compiled = { validate: ajv.compile(JSON.parse(await readFile(file, 'utf8'))), inputs: [file, ...catalogInputs] };
-        } else if (ajv && selected && !schemaIssue) {
-          try {
-            compiled = await validator(path.resolve(root, selected.url), ajv);
-          } catch (error) {
-            options.signal?.throwIfAborted();
-            // A broken upstream schema cannot establish content validity.
-            schemaIssue = `Schema unavailable: ${error instanceof Error ? error.message : String(error)}`;
-            unavailable.set(selected.url, schemaIssue);
+          if (batch.length === 128) {
+            files.push(...await checkBatch(batch.splice(0), options, types, revision));
           }
         }
-
-        const inputs = compiled?.inputs ?? catalogInputs;
-
-        async function check(): Promise<ContentFileResult> {
-          const errors: ParseError[] = [];
-          const document: unknown = parse(await readFile(source, 'utf8'), errors, { allowTrailingComma: true });
-          const diagnostics: ContentDiagnostic[] = errors.map(error => ({
-            kind: 'syntax',
-            pack: pack.id,
-            file: relative,
-            pointer: '',
-            message: `${printParseErrorCode(error.error)} at offset ${error.offset}`,
-          }));
-
-          if (!errors.length && compiled && !compiled.validate(document)) {
-            for (const error of compiled.validate.errors ?? []) {
-              diagnostics.push({ kind: 'schema', pack: pack.id, file: relative, pointer: error.instancePath, message: error.message ?? error.keyword });
-            }
-          }
-
-          return {
-            pack: pack.id,
-            file: relative,
-            ...(compiled && selected ? { schema: selected.url } : {}),
-            ...(schemaIssue ? { schemaIssue } : {}),
-            diagnostics,
-          };
-        }
-
-        const fileRevision = createHash('sha256').update(JSON.stringify({ revision, pack: pack.id, relative, skip, schema: selected?.url, schemaIssue })).digest('hex');
-
-        files.push(await (options.reuse?.(source, inputs, fileRevision, check) ?? check()));
       }
     }
 
-    await visit(packRoot);
+    await visit(root);
   }
 
-  const diagnostics = files.flatMap(file => file.diagnostics).filter(issue => mode !== 'warn' || issue.kind !== 'schema');
+  files.push(...await checkBatch(batch, options, types, revision));
+  const diagnostics = files.flatMap(file => file.diagnostics).filter(issue => mode !== 'warn' || issue.kind !== 'type');
+
+  if (typesIssue && mode === 'strict') {
+    diagnostics.push({ kind: 'type', pack: 'project', file: '', pointer: '', message: typesIssue });
+  }
 
   if (diagnostics.length) {
     throw new ContentValidationError(diagnostics);
   }
 
-  return { schemaVersion: metadata.version, files };
+  const result: ContentValidationResult = { typesVersion: types?.version ?? '', files, ...(typesIssue ? { typesIssue } : {}) };
+
+  if (options.creatorTools) {
+    const creatorToolsOptions = { projectRoot: options.projectRoot, ...options.creatorTools };
+
+    result.creatorTools = await validateWithCreatorTools(options.packs, creatorToolsOptions, options.signal);
+    const errors = result.creatorTools.diagnostics.filter(issue => issue.severity === 'error');
+
+    if (creatorToolsOptions.mode === 'strict' && errors.length) {
+      throw new ContentValidationError(errors);
+    }
+  }
+
+  return result;
 }

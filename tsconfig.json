@@ -26,6 +26,7 @@
     "packages/cli/templates/**",
     "examples/generator-project/**",
     "examples/i18n-project/**",
-    "examples/guides-project/**"
+    "examples/guides-project/**",
+    "packages/bedrock-types/types/**"
   ]
 }

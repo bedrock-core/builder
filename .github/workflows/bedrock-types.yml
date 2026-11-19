@@ -1,0 +1,141 @@
+name: Bedrock types
+
+on:
+  pull_request:
+    paths:
+      - 'packages/bedrock-types/**'
+      - 'packages/validation/**'
+      - '.github/workflows/bedrock-types.yml'
+      - 'yarn.lock'
+  schedule:
+    - cron: '45 7 * * *'
+  repository_dispatch:
+    types: [minecraft-compatibility]
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Bedrock types operation
+        type: choice
+        options: [audit, update]
+        default: audit
+      version:
+        description: Audit a single pinned types version. Leave empty for all versions.
+        type: string
+      schema_tag:
+        description: Discover a specific stable Mojang schema tag. Leave empty to check for new stable releases.
+        type: string
+      creator_tools:
+        description: Compare the vanilla audit with Mojang Creator Tools
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    if: github.event_name == 'pull_request' || inputs.operation == 'audit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TYPES_VERSION: ${{ inputs.version }}
+      CREATOR_TOOLS: ${{ inputs.creator_tools }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26.13.0'
+      - run: npm install --global corepack@0.36.0
+      - run: corepack enable
+      - run: yarn install --immutable
+      - uses: actions/cache@v6
+        with:
+          path: |
+            packages/bedrock-types/.bedrock-core/cache/schema-types/*.zip
+            packages/bedrock-types/.bedrock-core/cache/schema-types/*.tgz
+          key: bedrock-types-inputs-${{ hashFiles('packages/bedrock-types/releases.json') }}
+          restore-keys: bedrock-types-inputs-
+      - name: Audit pinned vanilla files
+        run: |
+          args=()
+          if [[ -n "$TYPES_VERSION" ]]; then args+=("$TYPES_VERSION"); fi
+          if [[ "$CREATOR_TOOLS" == "true" ]]; then
+            npm install --prefix "$RUNNER_TEMP/creator-tools" --ignore-scripts --omit=optional @minecraft/creator-tools@0.21.0
+            args+=(--creator-tools "$RUNNER_TEMP/creator-tools")
+          fi
+          node packages/bedrock-types/src/audit.ts "${args[@]}" --check
+      - name: Attach vanilla findings
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bedrock-types-audit
+          include-hidden-files: true
+          path: |
+            packages/bedrock-types/.bedrock-core/releases/*/vanilla.json
+            packages/bedrock-types/.bedrock-core/releases/*/creator-tools.json
+          if-no-files-found: ignore
+
+  update:
+    if: github.event_name == 'schedule' || github.event_name == 'repository_dispatch' || (inputs.operation == 'update' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: update-bedrock-types
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26.13.0'
+      - run: npm install --global corepack@0.36.0
+      - run: corepack enable
+      - run: yarn install --immutable
+      - uses: actions/cache@v6
+        with:
+          path: |
+            packages/bedrock-types/.bedrock-core/cache/schema-types/*.zip
+            packages/bedrock-types/.bedrock-core/cache/schema-types/*.tgz
+          key: bedrock-types-inputs-${{ hashFiles('packages/bedrock-types/releases.json') }}
+          restore-keys: bedrock-types-inputs-
+      - name: Discover, regenerate and compare source releases
+        id: discover
+        env:
+          SCHEMA_TAG: ${{ inputs.schema_tag }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          args=()
+          if [[ -n "$SCHEMA_TAG" ]]; then args+=(--tag "$SCHEMA_TAG"); fi
+          node packages/bedrock-types/src/update.ts "${args[@]}"
+      - name: Attach generated declarations and diffs
+        id: evidence
+        if: steps.discover.outputs.updated == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: bedrock-types-candidate
+          include-hidden-files: true
+          path: |
+            packages/bedrock-types/.bedrock-core/releases/*/dist
+            packages/bedrock-types/.bedrock-core/releases/*/dist.patch
+            packages/bedrock-types/.bedrock-core/releases/*/dist-diff.json
+            packages/bedrock-types/.bedrock-core/releases/*/vanilla.json
+            packages/bedrock-types/.bedrock-core/releases/*/audit-error.txt
+      - name: Propose source pins for review
+        if: steps.discover.outputs.updated == 'true'
+        uses: peter-evans/create-pull-request@v8
+        with:
+          branch: automation/bedrock-types
+          add-paths: packages/bedrock-types/releases.json
+          commit-message: Update Bedrock type source pins
+          title: Update Bedrock type source pins
+          draft: true
+          body: |
+            Regenerate the declaration package from the new Mojang SDK and matching samples.
+
+            Review the vanilla findings and the generated declaration changes before merging.
+
+            [Candidate distributions, diffs and audit reports](${{ steps.evidence.outputs.artifact-url }})

@@ -22,7 +22,7 @@ try {
 
   assert.equal(first.packs.length, 3);
   assert.equal(first.packs.filter(pack => pack.kind === 'resource').length, 2);
-  assert.ok(first.validation.files.some(file => file.schema?.includes('/items/')));
+  assert.ok(first.validation.files.some(file => file.category === 'bp/items'));
   const unchanged = await runBuild(options);
 
   assert.ok(unchanged.compilations.every(item => item.status === 'cached'), JSON.stringify(unchanged.compilations.filter(item => item.status !== 'cached')));

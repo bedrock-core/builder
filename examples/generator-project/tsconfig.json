@@ -8,7 +8,12 @@
     "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true,
     "resolveJsonModule": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": [".bedrock-core/generated/mc/globals.d.ts", "packs/**/*.ts", "shared/**/*.ts"]
+  "include": [
+    "packs/**/*.ts",
+    "shared/**/*.ts"
+  ]
 }

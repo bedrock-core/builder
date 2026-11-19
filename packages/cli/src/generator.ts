@@ -419,9 +419,8 @@ function displayNextSteps(
   }
 
   console.info(
-    chalk.gray('  The first build writes the Minecraft document types, so the .ts templates in'),
+    chalk.gray('  The .ts templates import Minecraft document types from @bedrock-core/bedrock-types.'),
   );
-  console.info(chalk.gray('  packs/BP/blocks and packs/BP/entities autocomplete once it has run.'));
 
   console.info(
     chalk.gray('  See packs/BP/ui/ to explore the starter screens and navigation.'),

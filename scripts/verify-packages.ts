@@ -5,7 +5,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { extractTgz } from '../packages/generator/src/tar.ts';
+import { extractTgz } from '../packages/bedrock-types/src/inputs/tar.ts';
 import { yarn } from './yarn.ts';
 import { validateConfig } from '../src/config.ts';
 import { acceptanceDependencies, installedPackage, linkAcceptanceDependencies, type AcceptanceDependencies } from '../test-support/acceptance.ts';
@@ -21,7 +21,7 @@ const fixturePackage = JSON.parse(await readFile(path.join(repository, 'fixtures
 const fixtureArchives = await acceptanceArchives(process.env.BUILDER_ACCEPTANCE_ARCHIVES);
 const dependencies = process.env.BUILDER_ACCEPTANCE_DEPENDENCY_ROOT && !fixtureArchives.evidence ? acceptanceDependencies(repository) : undefined;
 const toolchain = { root: repository, modules: path.join(repository, 'node_modules') };
-const archives = new Map<string, { contents: Map<string, Buffer>; dependencies: Record<string, string> }>();
+const archives = new Map<string, { contents: Map<string, Buffer>; dependencies: Record<string, string>; typeExports: string[] }>();
 const root = await mkdtemp(path.join(tmpdir(), 'builder-package-check-'));
 
 async function stageArchives(root: string, names: readonly string[], dependencies: AcceptanceDependencies): Promise<void> {
@@ -79,14 +79,23 @@ async function removeTemporary(directory: string, prefix: string): Promise<void>
 try {
   for (const pkg of packages) {
     const contents = extractTgz(await readFile(path.join(directory, pkg.file)));
-    const metadata = JSON.parse(contents.get('package/package.json')!.toString()) as { exports?: Record<string, unknown>; dependencies?: Record<string, string> };
-    const compiled = JSON.parse(contents.get('package/dist/package.json')!.toString()) as { version: string; dependencies?: Record<string, string> };
+    const metadata = JSON.parse(contents.get('package/package.json')!.toString()) as { types?: string; exports?: Record<string, unknown>; dependencies?: Record<string, string> };
     const exports = metadata.exports ?? {};
 
-    archives.set(pkg.name, { contents, dependencies: metadata.dependencies ?? {} });
+    const typeExports = metadata.types && Object.values(exports).every(entry => entry === './package.json'
+      || (entry !== null && typeof entry === 'object' && Object.keys(entry).length === 1 && 'types' in entry))
+      ? Object.keys(exports).filter(entry => entry !== './package.json')
+      : [];
 
-    assert.equal(compiled.version, pkg.version);
-    assert.deepEqual(compiled.dependencies, metadata.dependencies ?? {}, `${pkg.name} compiled metadata must match its published dependency versions`);
+    archives.set(pkg.name, { contents, dependencies: metadata.dependencies ?? {}, typeExports });
+
+    if (!typeExports.length) {
+      const compiled = JSON.parse(contents.get('package/dist/package.json')!.toString()) as { version: string; dependencies?: Record<string, string> };
+
+      assert.equal(compiled.version, pkg.version);
+      assert.deepEqual(compiled.dependencies, metadata.dependencies ?? {}, `${pkg.name} compiled metadata must match its published dependency versions`);
+    }
+
     assert.ok(Object.values(metadata.dependencies ?? {}).every(version => !version.startsWith('workspace:')));
     assert.ok(!JSON.stringify(exports).includes('/src/index.ts'));
     assert.ok(Object.keys(exports).every(entry => !entry.includes('*')), `${pkg.name} must list its export paths explicitly`);
@@ -197,7 +206,8 @@ try {
     }
     assert.deepEqual(JSON.parse(await readFile('addon/filter-data/input.json', 'utf8')), { count: 7 });
     assert.deepEqual(JSON.parse(await readFile(result.outputPaths.assets + '/routing.json', 'utf8')), { owner: 'logic', destination: 'assets' });
-    assert.ok(result.validation.files.some(file => file.schema));
+    assert.equal(result.validation.typesVersion, ${JSON.stringify(packages.find(pkg => pkg.name === '@bedrock-core/bedrock-types')!.version)});
+    assert.ok(result.validation.files.some(file => file.category));
     assert.equal(result.stages.find(stage => stage.stage === 'ui-compiler').status, 'executed');
     const cached = await runBuild({ configPath: 'addon/config.json', logger: {} });
     assert.ok(cached.compilations.every(item => item.status === 'cached'));
@@ -268,6 +278,22 @@ try {
         await stageArchives(standalone, [pkg.name], dependencies);
       } else {
         yarn(['install', '--no-immutable'], standalone);
+      }
+
+      const typeExports = archives.get(pkg.name)!.typeExports;
+
+      if (typeExports.length) {
+        await writeFile(path.join(standalone, 'types.ts'), typeExports.map((entry, index) =>
+          'export type * as Api' + index + ' from ' + JSON.stringify(pkg.name + (entry === '.' ? '' : entry.slice(1))) + ';',
+        ).join('\n'));
+        await writeFile(path.join(standalone, 'tsconfig.json'), JSON.stringify({
+          compilerOptions: { strict: true, noEmit: true, module: 'NodeNext', target: 'ES2023', types: [], skipLibCheck: false },
+          files: ['types.ts'],
+        }));
+        const result = spawnSync(process.execPath, [path.join(repository, 'node_modules/typescript-native/bin/tsc'), '--noEmit'], { cwd: standalone, stdio: 'inherit' });
+
+        assert.equal(result.status, 0, pkg.name + ' declarations must typecheck without Builder or its generator installed');
+        continue;
       }
 
       if (pkg.name === '@bedrock-core/cli') {

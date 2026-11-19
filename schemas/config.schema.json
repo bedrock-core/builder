@@ -201,13 +201,18 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "script"
+          "oneOf": [
+            { "required": ["script"] },
+            { "required": ["nodeModule"] }
           ],
           "properties": {
             "script": {
               "$ref": "#/definitions/nonempty",
               "description": "Standalone Node entry point, relative to filterDir, using the Regolith BP/RP/data contract."
+            },
+            "nodeModule": {
+              "$ref": "#/definitions/nonempty",
+              "description": "Installed Node package or exported subpath resolved from filterDir and executed in the BP/RP/data workspace."
             },
             "filterDir": {
               "$ref": "#/definitions/nonempty",
@@ -425,7 +430,12 @@
         "validation": {
           "enum": ["strict", "warn", "skip"],
           "default": "warn",
-          "description": "Content schema validation mode. JSON syntax and pack manifests are always checked."
+          "description": "Document type validation mode. JSON syntax and pack manifests are always checked."
+        },
+        "creatorToolsValidation": {
+          "enum": ["strict", "warn", "skip"],
+          "default": "skip",
+          "description": "Run the installed Mojang Creator Tools CLI on the final pack set. In strict mode, errors prevent export."
         },
         "api": {
           "description": "Portable addon API package output; defaults to dist/api when public addon exports are declared. Set false to disable.",

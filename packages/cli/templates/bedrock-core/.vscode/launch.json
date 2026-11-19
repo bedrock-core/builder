@@ -11,6 +11,18 @@
 			"mode": "listen",
 			"port": 19144,
 			"targetModuleUuid": "{{BP_SCRIPT_UUID}}"
+		},
+		{
+			"type": "minecraft-js",
+			"request": "attach",
+			"name": "Debug GameTests with BDS",
+			"mode": "listen",
+			"port": 19144,
+			"preLaunchTask": "BDS: debug GameTests",
+			"sourceMapRoot": "${workspaceFolder}/build/test/{{PROJECT_NAME}}_bp/scripts/",
+			"generatedSourceRoot": "${workspaceFolder}/build/test/{{PROJECT_NAME}}_bp/scripts/",
+			"localRoot": "${workspaceFolder}/packs/BP/scripts/",
+			"targetModuleUuid": "{{BP_SCRIPT_UUID}}"
 		}
 	]
 }

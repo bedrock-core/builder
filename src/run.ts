@@ -161,7 +161,7 @@ export async function runBuild({
   const modules = new Map<string, string>();
 
   for (const step of plan.filter(step => step.kind === 'plugin')) {
-    if (step.script !== undefined) {
+    if (step.module === undefined) {
       continue;
     }
 
@@ -500,7 +500,7 @@ export async function runBuild({
         }
 
         if (step.kind === 'plugin') {
-          if (step.script === undefined) {
+          if (step.module !== undefined) {
             const plugin = await nativeImplementation(step);
             const invocations = nativePluginContexts(context, plugin, step, plugin.requirements === undefined ? [] : await currentPacks());
             const writes = sharedPackWrites(invocations, step.plugin);
@@ -564,11 +564,16 @@ export async function runBuild({
 
           await validatePackManifests(stagedPacks);
           await inspectPacks(stagedPacks);
-          const mode = config.bedrockCore.profiles[profile]?.validation ?? 'warn';
+          const profileSettings = config.bedrockCore.profiles[profile];
+          const mode = profileSettings?.validation ?? 'warn';
+          const creatorTools = profileSettings?.creatorToolsValidation;
 
           validation = await validatePackContent({
             packs: await Promise.all(Object.keys(stagedPacks).map(id => context.inspectPack(id))),
             mode,
+            projectRoot: project,
+            targetVersion: config.targetVersion,
+            creatorTools: creatorTools && creatorTools !== 'skip' ? { mode: creatorTools, projectRoot: project } : undefined,
             signal,
             async reuse(file, inputs, revision, validate) {
               const result = await cache.reuse(path.relative(staged, file).replaceAll('\\', '/'), {
@@ -582,18 +587,19 @@ export async function runBuild({
               return result.value;
             },
           });
-          const checked = validation.files.filter(file => file.schema).length;
+          const checked = validation.files.filter(file => file.category).length;
 
-          logger.info?.(mode === 'skip'
-            ? `@bedrock-core/builder: checked ${validation.files.length} JSON documents for syntax; content schema validation skipped`
-            : `@bedrock-core/builder: ${mode === 'warn' ? 'checked' : 'validated'} ${checked} content documents against Mojang schemas ${validation.schemaVersion}; ${validation.files.length - checked} additional JSON documents checked for syntax`);
-          const schemaIssues = new Set(validation.files.flatMap(file => file.schemaIssue ? [file.schemaIssue] : []));
+          logger.info?.(validation.typesVersion
+            ? `@bedrock-core/builder: checked ${checked} content documents against Bedrock types ${validation.typesVersion}; ${validation.files.length - checked} additional JSON documents checked for syntax`
+            : `@bedrock-core/builder: checked ${validation.files.length} JSON documents for syntax`);
 
-          for (const issue of schemaIssues) {
-            logger.warn?.(`@bedrock-core/builder: ${issue}`);
+          if (validation.typesIssue) {
+            logger.warn?.(`@bedrock-core/builder: ${validation.typesIssue}`);
           }
 
-          for (const { pack, file, pointer, message } of validation.files.flatMap(result => result.diagnostics)) {
+          const diagnostics = [...validation.files.flatMap(result => result.diagnostics), ...validation.creatorTools?.diagnostics ?? []];
+
+          for (const { pack, file, pointer, message } of diagnostics) {
             logger.warn?.(`@bedrock-core/builder: ${pack}/${file}${pointer}: ${message}`);
           }
         } else if (step.stage === 'export') {

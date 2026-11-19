@@ -237,12 +237,6 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
 
         exclusions = stagingExclusions(project, config, configPath);
 
-        const generator = settings.stages?.generator;
-
-        if (generator && typeof generator === 'object' && generator.types !== false && typeof generator.typesDir === 'string' && generator.typesDir) {
-          roots.add(path.resolve(project, generator.typesDir));
-        }
-
         // Retain former outputs as ignored paths after profile edits.
         outputRoots = new Set([...outputRoots, ...roots]);
         sourceRoots = await stagingInputs(project, config, profile, configPath, [...outputRoots], signal);
@@ -349,7 +343,6 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
 
   try {
     const config = validateConfig(JSON.parse(await readFile(configPath, 'utf8')));
-    const settings = config.bedrockCore.profiles[profile];
 
     exclusions = stagingExclusions(project, config, configPath);
 
@@ -358,12 +351,6 @@ export async function watchBuild(options: WatchOptions): Promise<void> {
     }
 
     sourceRoots = await stagingInputs(project, config, profile, configPath, [...outputRoots], signal);
-
-    const generator = settings?.stages?.generator;
-
-    if (generator && typeof generator === 'object' && generator.types !== false && typeof generator.typesDir === 'string' && generator.typesDir) {
-      outputRoots.add(path.resolve(project, generator.typesDir));
-    }
   } catch {
     // A malformed config stays observable so editing it can recover the build.
   }

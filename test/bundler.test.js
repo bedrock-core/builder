@@ -61,6 +61,29 @@ test('standalone API bundles TS, JS and JSON without the runner', async (t) => {
     true,
   );
 });
+test('exported source maps retain authored and external source paths on cold and cached builds', async (t) => {
+  const { root, configPath } = await fixture(t);
+  const external = await realpath(await mkdtemp(path.join(tmpdir(), 'builder-map-dependency-')));
+
+  t.after(() => rm(external, { recursive: true, force: true }));
+  const dependency = path.join(external, 'value.ts');
+  const entry = path.join(root, 'packs/BP/scripts/main.ts');
+
+  await writeFile(dependency, 'export const value: number = 42;');
+  await writeFile(entry, `import { value } from ${JSON.stringify(dependency)}; export const result: number = value;`);
+
+  for (let build = 0; build < 2; build++) {
+    const result = await runBuild({ configPath, logger: {} });
+    const file = path.join(result.outputPaths.behaviorPack, 'scripts/main.js.map');
+    const map = JSON.parse(await readFile(file, 'utf8'));
+    const originals = new Set(map.sources.map(source => path.resolve(path.dirname(file), source)));
+
+    assert.equal(originals.has(entry), true, 'Authored frames must point to the project, after staging is removed');
+    assert.equal(originals.has(dependency), true, 'External frames must survive map relocation to the exported pack');
+    assert.equal(map.file, 'main.js');
+  }
+});
+
 test('runner bundles a generated artifact and project npm dependency without other stages', async (t) => {
   const { root, config, configPath } = await fixture(t);
 
@@ -88,6 +111,21 @@ test('runner bundles a generated artifact and project npm dependency without oth
   profile.stages.bundler.generatedImports = { '@bedrock-core/generated/items': 'items' };
   await writeFile(configPath, JSON.stringify(config));
   const result = await runBuild({ configPath, logger: {} });
+
+  for (let build = 0; build < 2; build++) {
+    const exported = build === 0 ? result : await runBuild({ configPath, logger: {} });
+    const map = JSON.parse(await readFile(path.join(exported.outputPaths.behaviorPack, 'scripts/main.js.map'), 'utf8'));
+
+    for (const source of map.sources) {
+      await readFile(source);
+    }
+
+    const generated = map.sources.find(source => source.endsWith('/items.json'));
+
+    assert.ok(generated, 'Generated sources must remain available after staged build cleanup');
+    assert.equal(JSON.parse(await readFile(generated, 'utf8')).value, 9);
+  }
+
   const bundle = await readFile(
     path.join(result.outputPaths.behaviorPack, 'scripts/main.js'),
     'utf8',

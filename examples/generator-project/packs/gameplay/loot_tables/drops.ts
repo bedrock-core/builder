@@ -1,3 +1,6 @@
+import type { LootTableDocument } from '@bedrock-core/bedrock-types';
+import type { ManyTemplate } from '@bedrock-core/builder-generator/templates';
+
 import drops from '../../../shared/drops.json' with { type: 'json' };
 import { createLootTable } from '../../../shared/loot.ts';
 
@@ -7,4 +10,4 @@ export default [
   drop => drop.id,
   drop => createLootTable(drop.item),
   drops,
-] satisfies Many<Drop, LootTable>;
+] satisfies ManyTemplate<Drop, LootTableDocument>;

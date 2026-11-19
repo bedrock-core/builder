@@ -59,6 +59,7 @@ export interface BundleOptions {
   /** Import prefixes resolved from dependencyRoot before source-relative lookup. */
   resolveFromProject?: readonly string[];
 }
+
 /** Written output files, input dependencies and esbuild compilation metadata. */
 export interface BundleResult {
   /** Absolute paths of written bundles and source maps. */

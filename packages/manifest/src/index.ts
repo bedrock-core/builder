@@ -42,6 +42,7 @@ interface ManifestModule {
   type: string;
   uuid: string;
   version: string;
+  description?: string;
   language?: string;
   entry?: string;
 }
@@ -139,8 +140,25 @@ interface Manifest {
     uuid: string;
     version: string;
     min_engine_version?: string;
+    base_game_version?: string;
+    pack_optimization_version?: string;
+    pack_scope?: string;
+    platform_locked?: boolean;
+    allow_random_seed?: boolean;
+    lock_template_options?: boolean;
   };
   modules: ManifestModule[];
+  dependencies?: ({ uuid: string; version: string } | { module_name: string; version: string; optional?: boolean })[];
+  metadata?: {
+    authors?: string[];
+    license?: string;
+    url?: string;
+    product_type?: string;
+    generated_with?: Record<string, string[]>;
+  };
+  capabilities?: string[];
+  has_education_metadata?: boolean;
+  subpacks?: { folder_name: string; name: string; memory_performance_tier: number }[];
 }
 
 const uuidPattern = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
@@ -162,6 +180,70 @@ export function isManifestVersion(value: unknown): value is string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function stringList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(item => typeof item === 'string');
+}
+
+function validateManifestDetails(manifest: Record<string, unknown>, header: Record<string, unknown>, fail: (field: string) => never): void {
+  for (const field of ['min_engine_version', 'base_game_version', 'pack_optimization_version', 'pack_scope']) {
+    if (header[field] !== undefined && typeof header[field] !== 'string') {
+      fail(`header.${field}`);
+    }
+  }
+
+  for (const field of ['allow_random_seed', 'lock_template_options', 'platform_locked']) {
+    if (header[field] !== undefined && typeof header[field] !== 'boolean') {
+      fail(`header.${field}`);
+    }
+  }
+
+  const { metadata, capabilities, has_education_metadata, subpacks } = manifest;
+
+  if (metadata !== undefined) {
+    if (!isRecord(metadata)) {
+      fail('metadata');
+    }
+
+    for (const field of ['license', 'url', 'product_type']) {
+      if (metadata[field] !== undefined && typeof metadata[field] !== 'string') {
+        fail(`metadata.${field}`);
+      }
+    }
+
+    if (metadata.authors !== undefined && !stringList(metadata.authors)) {
+      fail('metadata.authors');
+    }
+
+    const generated = metadata.generated_with;
+
+    if (generated !== undefined && (!isRecord(generated) || !Object.values(generated).every(stringList))) {
+      fail('metadata.generated_with');
+    }
+  }
+
+  if (capabilities !== undefined && !stringList(capabilities)) {
+    fail('capabilities');
+  }
+
+  if (has_education_metadata !== undefined && typeof has_education_metadata !== 'boolean') {
+    fail('has_education_metadata');
+  }
+
+  if (subpacks !== undefined) {
+    if (!Array.isArray(subpacks)) {
+      fail('subpacks');
+    }
+
+    for (const [index, subpack] of subpacks.entries()) {
+      if (!isRecord(subpack) || typeof subpack.name !== 'string' || typeof subpack.folder_name !== 'string'
+        || typeof subpack.memory_performance_tier !== 'number' || !Number.isInteger(subpack.memory_performance_tier)
+        || subpack.memory_performance_tier < 0 || subpack.memory_performance_tier > 5) {
+        fail(`subpacks[${index}]`);
+      }
+    }
+  }
 }
 
 /**
@@ -217,7 +299,10 @@ export function validateManifest(id: string, value: unknown, authored = false): 
   for (const [index, module] of manifest.modules.entries()) {
     if (!isRecord(module) || typeof module.type !== 'string'
       || typeof module.uuid !== 'string' || !uuidPattern.test(module.uuid)
-      || !isManifestVersion(module.version)) {
+      || !isManifestVersion(module.version)
+      || (module.description !== undefined && typeof module.description !== 'string')
+      || (module.language !== undefined && typeof module.language !== 'string')
+      || (module.entry !== undefined && typeof module.entry !== 'string')) {
       fail(`modules[${index}]`);
     }
 
@@ -260,11 +345,14 @@ export function validateManifest(id: string, value: unknown, authored = false): 
         || (typeof dependency.uuid === 'string') === (typeof dependency.module_name === 'string')
         || (dependency.uuid !== undefined && (typeof dependency.uuid !== 'string' || !uuidPattern.test(dependency.uuid)))
         || (dependency.module_name !== undefined && (typeof dependency.module_name !== 'string' || !dependency.module_name.trim()))
+        || (dependency.optional !== undefined && (typeof dependency.module_name !== 'string' || typeof dependency.optional !== 'boolean'))
         || dependency.pack !== undefined) {
         fail(`dependencies[${index}]`);
       }
     }
   }
+
+  validateManifestDetails(manifest, header, fail);
 
   return value as unknown as Manifest;
 }

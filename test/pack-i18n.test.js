@@ -17,7 +17,7 @@ async function fixture(t) {
   secondary.dependencies = [{ uuid: project.resources.header.uuid }];
   project.config.packs.secondary = './packs/secondary';
   project.config.bedrockCore.profiles.default.export.secondary = './dist/secondary';
-  project.config.bedrockCore.profiles.default.stages.generator = { types: false };
+  project.config.bedrockCore.profiles.default.stages.generator = {};
   await put(project.project, 'package.json', '{"type":"module"}');
   await put(project.project, 'packs/secondary/manifest.json', JSON.stringify(secondary));
 
@@ -74,7 +74,7 @@ test('pack-local sources produce isolated runtime bundles and compose into a sha
 test('pack-local custom source directories are reserved from generation and excluded only after script consumers finish', async (t) => {
   const project = await projectFor(t);
 
-  project.config.bedrockCore.profiles.default.stages = { generator: { types: false }, i18n: { sourceDir: 'locales' } };
+  project.config.bedrockCore.profiles.default.stages = { generator: {}, i18n: { sourceDir: 'locales' } };
   await put(project.project, 'packs/gameplay/locales/en_US.ts', 'export default { message: "Owned" } as const;');
   await put(project.project, 'packs/gameplay/scripts/main.ts', 'import source from "../locales/en_US"; import bundle from "@bedrock-core/generated/i18n/gameplay"; export const value = { source, bundle };');
   await put(project.project, 'config.json', JSON.stringify(project.config));

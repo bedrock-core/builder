@@ -13,17 +13,20 @@ export interface ReleasePackage {
   file: string;
   workspace: string;
 }
+
 interface Manifest {
   name: string;
   version: string;
   private?: boolean;
   dependencies?: Record<string, string>;
 }
+
 export interface PublishOptions {
   scope: 'builder' | 'cli';
   dryRun: boolean;
   tag?: string;
 }
+
 export interface PublishServices {
   pack: (pkg: ReleasePackage, file: string) => void;
   publish: (args: string[]) => void;
@@ -157,6 +160,16 @@ export async function publishRelease(root: string, options: PublishOptions, serv
   };
 
   selected.forEach(visit);
+
+  const typesName = '@bedrock-core/bedrock-types';
+
+  if (!options.dryRun && [...manifests.values()].some(manifest => manifest.dependencies?.[typesName])) {
+    const types = packages.find(entry => entry.name === typesName);
+
+    if (!types || !(await io.fetch('https://registry.npmjs.org/' + encodeURIComponent(typesName) + '/' + types.version)).ok) {
+      throw new Error('Publish the pinned @bedrock-core/bedrock-types release before publishing Builder.');
+    }
+  }
 
   // Check every unreleased archive and current source before publishing any package.
   for (const pkg of ordered) {

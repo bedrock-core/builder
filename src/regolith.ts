@@ -1,16 +1,19 @@
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm } from 'node:fs/promises';
+import { createRequire, isBuiltin } from 'node:module';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { resolve } from 'import-meta-resolve';
 import type { BuildContext } from './contract.d.ts';
 import type { NodePluginDefinition, Settings } from './config.ts';
 import { withSourceWrites } from './source-writes.ts';
 
-interface NodeFilterOptions extends NodePluginDefinition {
+type NodeFilterOptions = NodePluginDefinition & {
   settings?: Settings;
   arguments?: string[];
-}
+};
 
 interface Session {
   directory: string;
@@ -258,11 +261,31 @@ async function execute(context: BuildContext, options: NodeFilterOptions, direct
   });
 }
 
-/** Run a standalone Regolith Node script against conventional staged BP, RP and data folders. */
+function moduleEntry(specifier: string, filterDir: string): string {
+  if (specifier.startsWith('.') || path.isAbsolute(specifier) || specifier.includes(':') || isBuiltin(specifier)) {
+    throw new Error('Node filter module must be a package specifier: ' + specifier);
+  }
+
+  const parent = pathToFileURL(path.join(filterDir, 'package.json'));
+
+  try {
+    return fileURLToPath(resolve(specifier, parent.href));
+  } catch (error) {
+    try {
+      return createRequire(parent).resolve(specifier);
+    } catch {
+      throw new Error('Cannot resolve Node filter module ' + specifier + ' from ' + filterDir, { cause: error });
+    }
+  }
+}
+
+/** Run a Node entry against conventional staged BP, RP and data folders. */
 export async function runNodeFilter(context: BuildContext, options: NodeFilterOptions, sharedContext = context): Promise<void> {
   context.signal?.throwIfAborted();
   const filterDir = await realpath(path.resolve(context.projectRoot, options.filterDir ?? '.'));
-  const script = await realpath(path.resolve(filterDir, options.script));
+  const script = await realpath(options.nodeModule === undefined
+    ? path.resolve(filterDir, options.script)
+    : moduleEntry(options.nodeModule, filterDir));
 
   if (!(await lstat(script)).isFile()) {
     throw new Error('Node filter script must be a file: ' + script);

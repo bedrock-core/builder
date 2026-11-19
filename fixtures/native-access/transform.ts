@@ -5,6 +5,7 @@ interface Operation {
   result: ResultKind;
   member?: string;
 }
+
 export interface Instrumented {
   code: string;
   operations: Record<string, number>;

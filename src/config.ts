@@ -14,10 +14,14 @@ export type Settings = Record<string, unknown>;
 export type StageSelection = 'auto' | boolean | Settings;
 /** Conventional Regolith folders mapped to configured pack IDs. */
 export interface ScriptFolders { BP?: string; RP?: string }
-/** Standalone Node script run once in a temporary BP/RP/data workspace. */
-export interface NodePluginDefinition {
+
+/** Standalone Node entry run once in a temporary BP/RP/data workspace. */
+export type NodePluginDefinition = (
   /** Entry file relative to filterDir, or an absolute file path. */
-  script: string;
+  { script: string; nodeModule?: never }
+  /** Installed package or exported subpath resolved from filterDir. */
+  | { nodeModule: string; script?: never }
+) & {
   /** Definition directory relative to config.json; defaults to projectRoot. */
   filterDir?: string;
   /** Configured pack IDs exposed under conventional folder names. Omission infers an unambiguous set. */
@@ -28,7 +32,8 @@ export interface NodePluginDefinition {
   persistData?: boolean;
   /** Node flags placed before the entry file. */
   nodeArguments?: string[];
-}
+};
+
 /** Native module with host-owned owner restrictions and dependency overrides. */
 export interface ModulePluginDefinition {
   module: string;
@@ -52,8 +57,10 @@ export interface BuildProfile {
   stages?: Partial<Record<StageName, StageSelection>>;
   /** Reuse verified compilation and validation results; defaults to true. */
   cache?: boolean;
-  /** Content schema validation mode; defaults to warn. JSON syntax and pack manifests always validate. */
+  /** Document type validation mode, defaulting to warn. JSON syntax and pack manifests always validate. */
   validation?: ContentValidationMode;
+  /** Creator Tools CLI validation mode, defaulting to skip. */
+  creatorToolsValidation?: ContentValidationMode;
   /** Invocations after prepare, before/after enabled stages, or before export. */
   steps?: PluginStep[];
   /** Destination for every configured pack ID, relative to config.json or absolute. */
@@ -63,6 +70,7 @@ export interface BuildProfile {
   /** Debounce interval and additional project-relative inputs for watch mode. */
   watch?: { debounceMs?: number; paths?: string[] };
 }
+
 /** Bedrock project metadata and builder configuration; unrelated tool fields are preserved. */
 export interface ProjectConfig {
   /** Editor schema reference; has no effect on path resolution. */

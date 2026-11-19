@@ -9,7 +9,7 @@
     "profiles": {
       "default": {
         "stages": {
-          "generator": { "types": false },
+          "generator": true,
           "guides": { "resourcePack": "assets" },
           "i18n": { "resourcePack": "assets" },
           "ui-compiler": { "resourcePack": "assets" }

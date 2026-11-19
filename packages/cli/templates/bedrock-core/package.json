@@ -16,6 +16,8 @@
 		"plan": "bc-builder plan config.json",
 		"typecheck": "node node_modules/typescript-native/bin/tsc --noEmit",
 		"test:mc": "bc-builder build config.json build-test && bc-bds run --packs build/test --tag example --expect-registered 1",
+		"test:mc:debug": "bc-builder build config.json build-test && bc-bds run --packs build/test --tag example --expect-registered 1 --debug --keep-alive",
+		"test:mc:profile": "bc-builder build config.json build-test && bc-bds run --packs build/test --tag example --expect-registered 1 --profile --profile-dir .bds/profiles/latest --json .bds/profiles/latest/result.json",
 		"build:optimized": "bc-builder build config.json build-optimized && bc-bds optimize --packs build/production --out dist",
 		"bds:fetch": "bc-bds fetch",
 		"bds:where": "bc-bds where"
@@ -48,7 +50,9 @@
 		"typescript-native": "npm:typescript@7.1.0-beta",
 		"@bedrock-core/builder": "0.2.0",
 		"@bedrock-core/bds-runner": "^0.3.0",
-		"eslint-plugin-react-hooks": "7.1.1"
+		"eslint-plugin-react-hooks": "7.1.1",
+		"@bedrock-core/bedrock-types": "~26.50.5",
+		"@bedrock-core/builder-generator": "0.2.0"
 	},
 	"packageManager": "yarn@4.18.0",
 	"engines": {

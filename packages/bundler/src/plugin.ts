@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { copyFile, lstat, mkdir, readdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { fingerprint, generatedAliases, type BuildContext, type BuildDetection, type BuildStepResult } from '@bedrock-core/builder-plugin';
 import { readScriptEntries, scriptOutputEntry, scriptOutputManifest, type JsonObject } from '@bedrock-core/builder-manifest';
@@ -297,12 +298,43 @@ export async function run(context: BuildContext, settings: BundlerSettings): Pro
     await mkdir(path.dirname(output.destination), { recursive: true });
 
     if (output.destination.endsWith('.map')) {
-      const map = JSON.parse(await readFile(output.temporary, 'utf8')) as { sources: string[] };
+      const map = JSON.parse(await readFile(output.temporary, 'utf8')) as { sources: string[]; file?: string };
 
-      map.sources = map.sources.map(source => path.relative(
-        path.dirname(output.destination),
-        path.resolve(path.dirname(output.temporary), source),
-      ).replaceAll('\\', '/'));
+      // Export destinations vary; debugger frames refer to authored files outside the staged workspace.
+      const originals: string[] = [];
+
+      for (const source of map.sources) {
+        if (/^[a-z][a-z0-9+.-]*:/i.test(source) && !path.isAbsolute(source)) {
+          originals.push(source);
+          continue;
+        }
+
+        const absolute = path.resolve(path.dirname(output.temporary), source);
+
+        if (within(context.generatedDir, absolute)) {
+          const content = await readFile(absolute);
+          const digest = createHash('sha256').update(content).digest('hex');
+          const retained = path.join(context.projectRoot, '.bedrock-core/cache/debug-sources', digest, path.relative(context.generatedDir, absolute));
+
+          await mkdir(path.dirname(retained), { recursive: true });
+
+          if (!await exists(retained)) {
+            await writeFile(retained, content);
+          }
+
+          originals.push(retained.replaceAll('\\', '/'));
+          continue;
+        }
+
+        const original = within(context.stagedRoot, absolute)
+          ? path.join(context.projectRoot, path.relative(context.stagedRoot, absolute))
+          : absolute;
+
+        originals.push(original.replaceAll('\\', '/'));
+      }
+
+      map.sources = originals;
+      map.file = path.basename(output.destination, '.map');
       await writeFile(output.destination, JSON.stringify(map));
     } else {
       await copyFile(output.temporary, output.destination);

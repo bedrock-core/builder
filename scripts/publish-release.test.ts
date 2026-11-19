@@ -5,7 +5,15 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test, type TestContext } from 'node:test';
-import { publishOptions, publishRelease, type ReleasePackage, type PublishServices } from './publish-release.ts';
+import { publishOptions, publishRelease, selectRelease, type ReleasePackage, type PublishServices } from './publish-release.ts';
+
+test('the Builder release includes shared native declarations alongside the tooling', () => {
+  const packages = ['@bedrock-core/builder', '@bedrock-core/bedrock-types', '@bedrock-core/cli']
+    .map(name => ({ name, version: '0.1.0', file: name + '.tgz', workspace: '.' }));
+
+  assert.deepEqual(selectRelease(packages, 'builder').map(pkg => pkg.name), ['@bedrock-core/builder']);
+  assert.deepEqual(selectRelease(packages, 'cli').map(pkg => pkg.name), ['@bedrock-core/cli']);
+});
 
 async function fixture(t: TestContext, version = '0.1.0') {
   const root = await mkdtemp(path.join(tmpdir(), 'builder-publish-test-'));

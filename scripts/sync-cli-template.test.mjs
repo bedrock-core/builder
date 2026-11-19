@@ -21,6 +21,8 @@ test('template synchronization follows each owning package and keeps Navigation 
 
   for (const [file, version] of [
     ['builder/package.json', '0.1.0'],
+    ['builder/packages/generator/package.json', '0.2.0'],
+    ['builder/packages/bedrock-types/package.json', '26.50.5'],
     ['ui/package.json', '0.13.0'],
     ['ui/packages/navigation/package.json', '0.14.0'],
     ['ui/packages/ore-styled/package.json', '0.10.0'],
@@ -56,6 +58,8 @@ test('template synchronization follows each owning package and keeps Navigation 
   assert.equal(pkg.dependencies['@bedrock-core/observable'], '^1.1.0');
   assert.equal(pkg.dependencies['@bedrock-core/server'], '^0.2.1');
   assert.equal(pkg.devDependencies['@bedrock-core/bds-runner'], '^0.2.0');
+  assert.equal(pkg.devDependencies['@bedrock-core/builder-generator'], '0.2.0');
+  assert.equal(pkg.devDependencies['@bedrock-core/bedrock-types'], '~26.50.5');
 
   for (const name of ['manifest.json', 'manifest.test.json']) {
     const manifest = JSON.parse(readFileSync(path.join(directory, template, 'packs/BP', name), 'utf8'));
@@ -85,6 +89,10 @@ test('Builder release versioning updates the starter without sibling repositorie
 
   mkdirSync(path.dirname(template), { recursive: true });
   writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version: '0.1.2' }));
+  mkdirSync(path.join(root, 'packages/generator'), { recursive: true });
+  mkdirSync(path.join(root, 'packages/bedrock-types'), { recursive: true });
+  writeFileSync(path.join(root, 'packages/generator/package.json'), JSON.stringify({ version: '0.2.3' }));
+  writeFileSync(path.join(root, 'packages/bedrock-types/package.json'), JSON.stringify({ version: '26.60.5' }));
   const original = {
     dependencies: { '@bedrock-core/ui': '0.14.0', '@bedrock-core/navigation': '0.13.1' },
     devDependencies: { '@bedrock-core/builder': '0.1.1', 'typescript': '5.9.3' },
@@ -96,6 +104,8 @@ test('Builder release versioning updates the starter without sibling repositorie
   const pkg = JSON.parse(readFileSync(template, 'utf8'));
 
   assert.equal(pkg.devDependencies['@bedrock-core/builder'], '0.1.2');
+  assert.equal(pkg.devDependencies['@bedrock-core/builder-generator'], '0.2.3');
+  assert.equal(pkg.devDependencies['@bedrock-core/bedrock-types'], '~26.60.5');
   assert.equal(pkg.devDependencies.typescript, original.devDependencies.typescript);
   assert.deepEqual(pkg.dependencies, original.dependencies);
 });

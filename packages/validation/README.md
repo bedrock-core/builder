@@ -1,5 +1,5 @@
 # @bedrock-core/builder-validation
 
-Validate pack JSON against Mojang's Minecraft Bedrock schemas.
+Check pack JSON syntax and document shapes using the native Bedrock types for the project target.
 
 https://bedrock-core.drav.dev/docs/builder/api/validatePackContent
