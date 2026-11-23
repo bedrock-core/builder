@@ -3,7 +3,7 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { auditRelease } from './audit.ts';
 import { diffReleases } from './diff.ts';
-import { compareVersions, readReleases, releasesFile, reportsRoot, stableTag, type TypeRelease } from './releases.ts';
+import { compareVersions, readReleases, releasesFile, reportsRoot, releaseTag, type TypeRelease } from './releases.ts';
 
 interface UpstreamRelease {
   tag_name: string;
@@ -45,12 +45,28 @@ async function sdkVersion(version: string): Promise<Sdk | undefined> {
   return await response.json() as Sdk;
 }
 
-const stable = (release: UpstreamRelease): boolean => !release.draft && !release.prerelease && stableTag.test(release.tag_name);
-const { values } = parseArgs({ options: { tag: { type: 'string' } } });
+const published = (release: UpstreamRelease): boolean => !release.draft && releaseTag.test(release.tag_name)
+  && release.prerelease === release.tag_name.endsWith('-preview');
+const { values } = parseArgs({
+  options: { tag: { type: 'string' }, game: { type: 'string', multiple: true } },
+});
 
-if (values.tag && !stableTag.test(values.tag)) {
-  throw new Error('Use a stable Mojang schema release tag such as v1.26.60.5.');
+if ((values.tag && !releaseTag.test(values.tag)) || values.game?.some(game => !releaseTag.test('v' + game))) {
+  throw new Error('Use a Mojang release tag or a four-part game version with the Preview suffix where applicable.');
 }
+
+const games = values.game?.map((game) => {
+  const [, line, , preview] = releaseTag.exec('v' + game)!;
+  const [edition, year, drop] = line.split('.').map(Number);
+
+  return { tag: 'v' + game, line: [edition, year, Math.floor(drop / 10) * 10].join('.'), preview: Boolean(preview) };
+});
+
+const matches = (release: UpstreamRelease): boolean => {
+  const [, line, , preview] = releaseTag.exec(release.tag_name)!;
+
+  return games ? games.some(game => preview ? game.tag === release.tag_name : !game.preview && game.line === line) : Boolean(values.tag || !preview);
+};
 
 const pins = await readReleases();
 const recent = 'releases?per_page=100';
@@ -60,46 +76,67 @@ const [schemas, samples] = await Promise.all([
     : github<UpstreamRelease[]>('bedrock-schemas', recent),
   github<UpstreamRelease[]>('bedrock-samples', recent),
 ]);
-const sampleReleases = samples.filter(stable).sort((left, right) => compareVersions(right.tag_name, left.tag_name));
-const newest = Object.keys(pins).sort(compareVersions).at(-1)!;
+const sampleReleases = samples.filter(published).sort((left, right) => compareVersions(right.tag_name, left.tag_name));
 const additions: Record<string, TypeRelease> = {};
+const eligible = schemas.filter(published).filter(matches);
+const reviewedSdks = new Set(Object.values(pins).map(pin => pin.schemaVersion));
+const newestStable = Object.keys(pins).filter(version => !version.endsWith('-preview')).sort(compareVersions).at(-1);
 
-for (const schema of schemas.filter(stable)) {
+async function waiting(message: string): Promise<void> {
+  console.info(message);
+
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    await appendFile(process.env.GITHUB_STEP_SUMMARY, '- ' + message + '\n');
+  }
+}
+
+for (const game of games ?? []) {
+  if (!eligible.some(release => game.preview
+    ? release.tag_name === game.tag
+    : !release.prerelease && releaseTag.exec(release.tag_name)![1] === game.line)) {
+    await waiting('Waiting for Mojang schemas for ' + (game.preview ? game.tag : game.line) + '.');
+  }
+}
+
+for (const schema of eligible) {
   const tag = schema.tag_name;
   const version = tag.slice(3);
-  const track = stableTag.exec(tag)![1];
+  const [, track, build, preview] = releaseTag.exec(tag)!;
+  const sdkRelease = preview ? track + '-beta.' + build : track;
 
-  if (Object.values(pins).some(pin => pin.schemaTag === tag) || (!values.tag && compareVersions(version, newest) <= 0)) {
+  if (reviewedSdks.has(sdkRelease)
+    || (!games && !values.tag && !preview && newestStable && compareVersions(version, newestStable) <= 0)) {
     continue;
   }
 
   const sample = sampleReleases.find(release => release.tag_name === tag)
-    ?? sampleReleases.find(release => stableTag.exec(release.tag_name)![1] === track);
+    ?? (!preview ? sampleReleases.find(release => !release.prerelease && releaseTag.exec(release.tag_name)![1] === track) : undefined);
   const sampleTag = sample?.tag_name;
   const filename = `bedrock-samples-${sampleTag}-full.zip`;
   const asset = sample?.assets.find(asset => asset.name === filename);
   const sha256 = /^sha256:([a-f0-9]{64})$/.exec(asset?.digest ?? '')?.[1];
 
   if (!sampleTag || !sha256 || asset?.browser_download_url !== `https://github.com/Mojang/bedrock-samples/releases/download/${sampleTag}/${filename}`) {
-    console.info(`Waiting for a checksummed stable samples archive for ${tag}`);
+    await waiting(`Waiting for a checksummed Samples archive for ${tag}.`);
     continue;
   }
 
-  const [sdk, commit] = await Promise.all([sdkVersion(track), github<{ sha: string }>('bedrock-schemas', 'commits/' + tag)]);
+  const [sdk, commit] = await Promise.all([sdkVersion(sdkRelease), github<{ sha: string }>('bedrock-schemas', 'commits/' + tag)]);
 
   if (sdk?.gitHead !== commit.sha || !/^sha512-[a-zA-Z0-9+/]{86}==$/.test(sdk.dist?.integrity ?? '')) {
-    console.info(`Waiting for npm SDK ${track} from the commit tagged ${tag}`);
+    await waiting(`Waiting for npm SDK ${sdkRelease} from the commit tagged ${tag}.`);
     continue;
   }
 
   additions[version] = {
     schemaTag: tag,
-    schemaVersion: track,
+    schemaVersion: sdkRelease,
     schemaCommit: commit.sha,
     schemaIntegrity: sdk.dist!.integrity!,
     samplesTag: sampleTag,
     samplesSha256: sha256,
   };
+  reviewedSdks.add(sdkRelease);
 }
 
 const versions = Object.keys(additions).sort(compareVersions);
@@ -110,7 +147,7 @@ if (output) {
 }
 
 if (!versions.length) {
-  console.info('No new stable Bedrock schema source pairs were found.');
+  console.info('No new Bedrock schema source pairs were found.');
 } else {
   const releases = { ...pins, ...additions };
   const ordered = Object.keys(releases).sort(compareVersions);
@@ -125,9 +162,18 @@ if (!versions.length) {
     try {
       const audit = await auditRelease(version);
       const index = ordered.indexOf(version);
-      const diff = index > 0 ? await diffReleases(ordered[index - 1], version) : undefined;
+      const baseline = ordered[index - 1] ?? ordered[index + 1];
+      const diff = baseline ? await diffReleases(baseline, version) : undefined;
 
       summary.push(sources + ` ${audit.counts.newIssues} | ${diff ? diff.added.length + diff.changed.length + diff.removed.length : '—'} |`);
+
+      if (audit.counts.newIssues || audit.counts.resolved) {
+        if (output) {
+          await appendFile(output, 'review=true\n');
+        }
+
+        console.warn('::warning::Review the Types audit findings for ' + version);
+      }
     } catch (error) {
       const directory = path.join(reportsRoot, version);
 
@@ -135,6 +181,7 @@ if (!versions.length) {
       await writeFile(path.join(directory, 'audit-error.txt'), String(error) + '\n');
       console.error(error);
       summary.push(sources + ' Review generation failure | — |');
+      process.exitCode = 1;
     }
   }
 

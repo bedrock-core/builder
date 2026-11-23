@@ -2,4 +2,4 @@
 
 Native Bedrock document types.
 
-https://bedrock-core.drav.dev/docs/builder/api/bedrock-types
+https://bedrock-core.drav.dev/docs/generated-libraries/bedrock-types

@@ -6,12 +6,12 @@ import { parseArgs } from 'node:util';
 import { auditRelease } from './audit.ts';
 import { files, hash, safe } from './files.ts';
 import { extractTgz } from './inputs/tar.ts';
-import { compareVersions, readReleases, reportsRoot, root } from './releases.ts';
+import { compareVersions, readReleases, releaseTag, reportsRoot, root } from './releases.ts';
 
 const { positionals, values } = parseArgs({ allowPositionals: true, options: { publish: { type: 'boolean' } } });
 const [version] = positionals;
 
-if (positionals.length !== 1 || !/^\d+\.\d+\.\d+$/.test(version ?? '')) {
+if (positionals.length !== 1 || !releaseTag.test('v1.' + version)) {
   throw new Error('Usage: node src/pack.ts <version> [--publish]');
 }
 
@@ -101,7 +101,9 @@ try {
       console.info('Already published ' + version);
     } else {
       const latest = metadata?.['dist-tags'].latest;
-      const tag = !latest || compareVersions(version, latest) > 0 ? 'latest' : 'mc-' + version;
+      const tag = version.endsWith('-preview')
+        ? 'mc-' + version
+        : !latest || compareVersions(version, latest) > 0 ? 'latest' : 'mc-' + version;
 
       console.info(npm(['publish', archive, '--registry', 'https://registry.npmjs.org', '--access', 'public', '--tag', tag, '--ignore-scripts']));
     }

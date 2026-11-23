@@ -23,7 +23,7 @@ export async function files(directory: string): Promise<Record<string, string>> 
 
   for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
     if (entry.isSymbolicLink()) {
-      throw new Error('Schema type inputs must not contain symbolic links');
+      throw new Error('Release files must not contain symbolic links');
     }
 
     const file = path.join(directory, entry.name);
@@ -44,7 +44,7 @@ export async function safe(root: string, directory: string): Promise<void> {
   const relative = path.relative(root, directory);
 
   if (!relative || relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) {
-    throw new Error('Generated types must remain inside their package');
+    throw new Error('Generated paths must remain inside their package');
   }
 
   let current = root;
@@ -53,7 +53,7 @@ export async function safe(root: string, directory: string): Promise<void> {
     current = path.join(current, part);
 
     if ((await exists(current)) && (await lstat(current)).isSymbolicLink()) {
-      throw new Error('Generated type paths must not use symlinks');
+      throw new Error('Generated paths must not use symlinks');
     }
   }
 }
