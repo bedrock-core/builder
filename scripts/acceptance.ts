@@ -4,7 +4,9 @@ import { cp, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { ProjectConfig } from '../src/config.ts';
 import { runBuild } from '../src/run.ts';
+import { ContentValidationError } from '../src/validation.ts';
 import { acceptanceDependencies } from '../test-support/acceptance.ts';
 
 const repository = fileURLToPath(new URL('../', import.meta.url));
@@ -18,11 +20,30 @@ try {
   await symlink(modules, path.join(root, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
   console.log(`@bedrock-core/builder: acceptance dependencies: ${modules}`);
   const options = { configPath: path.join(root, 'config.json') };
+  const expectedTypes = process.env.BUILDER_EXPECTED_TYPES_VERSION;
+  const creatorToolsReport = process.env.BUILDER_CREATOR_TOOLS_REPORT;
+  const native = process.argv.includes('--native');
+  const config = JSON.parse(await readFile(options.configPath, 'utf8')) as ProjectConfig;
+
+  if (expectedTypes !== undefined) {
+    config.bedrockCore.profiles.default.validation = expectedTypes ? 'strict' : 'skip';
+    config.bedrockCore.profiles.test.validation = config.bedrockCore.profiles.default.validation;
+    await writeFile(options.configPath, JSON.stringify(config, null, 2) + '\n');
+  }
+
   const first = await runBuild(options);
 
   assert.equal(first.packs.length, 3);
   assert.equal(first.packs.filter(pack => pack.kind === 'resource').length, 2);
-  assert.ok(first.validation.files.some(file => file.category === 'bp/items'));
+
+  if (expectedTypes !== undefined) {
+    assert.equal(first.validation.typesVersion, expectedTypes, 'Builder must validate using the installed Types candidate');
+  }
+
+  if (expectedTypes !== '') {
+    assert.ok(first.validation.files.some(file => file.category === 'bp/items'));
+  }
+
   const unchanged = await runBuild(options);
 
   assert.ok(unchanged.compilations.every(item => item.status === 'cached'), JSON.stringify(unchanged.compilations.filter(item => item.status !== 'cached')));
@@ -39,17 +60,54 @@ try {
   assert.equal(dataEdit.compilations.find(item => item.id === 'generator/packs/BP/items/token.ts')?.status, 'cached');
   assert.equal(dataEdit.compilations.find(item => item.id === 'generator/packs/BP/loot_tables/drop.ts')?.status, 'executed');
   await writeFile(path.join(root, 'shared/drop.json'), '{"name":"minecraft:apple"}');
-  await runBuild(options);
 
-  if (process.argv.includes('--native')) {
+  if (creatorToolsReport) {
+    config.bedrockCore.profiles.default.creatorToolsValidation = 'strict';
+    await writeFile(options.configPath, JSON.stringify(config, null, 2) + '\n');
+  }
+
+  try {
+    const { validation } = await runBuild(options);
+
+    if (creatorToolsReport) {
+      assert.ok(validation.creatorTools?.rules.length, 'Creator Tools must validate the assembled fixture packs');
+      await writeFile(creatorToolsReport, JSON.stringify(validation.creatorTools, null, 2) + '\n');
+    }
+  } catch (error) {
+    if (!creatorToolsReport || !(error instanceof ContentValidationError)) {
+      throw error;
+    }
+
+    await writeFile(creatorToolsReport, JSON.stringify({ diagnostics: error.diagnostics }, null, 2) + '\n');
+
+    if (!native || error.diagnostics.some(issue => issue.kind !== 'creator-tools')) {
+      throw error;
+    }
+
+    console.error(error.message);
+    process.exitCode = 1;
+  }
+
+  if (native) {
     const cli = process.env.BUILDER_BDS_RUNNER;
+    const resultFile = process.env.BUILDER_BDS_RESULT;
+    const flags = ['--idle', resultFile ? '20' : '1', '--timeout', '180'];
 
     if (!cli) {
       throw new Error('Native acceptance needs BUILDER_BDS_RUNNER pointing to the installed bc-bds.mjs CLI');
     }
 
+    await runBuild({ ...options, profile: 'test' });
+
+    if (resultFile) {
+      const runnerConfig = path.join(root, 'bds-runner.json');
+
+      await writeFile(runnerConfig, '{}\n');
+      flags.push('--config', runnerConfig, '--fresh', '--json', resultFile);
+    }
+
     const status = await new Promise<number | null>((resolve, reject) => {
-      const child = spawn(process.execPath, [cli, 'run', '--packs', path.join(root, 'dist'), '--packs', path.join(root, 'dist/theme'), '--tag', 'builder_acceptance', '--expect-registered', '2', '--idle', '1', '--timeout', '180'], {
+      const child = spawn(process.execPath, [cli, 'run', '--packs', path.join(root, 'dist/test'), '--tag', 'builder_acceptance', '--expect-registered', '2', ...flags], {
         cwd: repository,
         stdio: 'inherit',
         env: { ...process.env, BC_BDS_HOME: process.env.BC_BDS_HOME ?? path.join(repository, '.bds') },
@@ -60,9 +118,17 @@ try {
     });
 
     assert.equal(status, 0, 'Native GameTest acceptance must pass');
+
+    if (resultFile && process.env.BC_BDS_VERSION) {
+      const result = JSON.parse(await readFile(resultFile, 'utf8')) as { bdsVersion: string };
+
+      assert.equal(result.bdsVersion, process.env.BC_BDS_VERSION, 'GameTests must use the resolved BDS build');
+    }
   }
 
-  console.log('@bedrock-core/builder: addon acceptance passed');
+  if (!process.exitCode) {
+    console.log('@bedrock-core/builder: addon acceptance passed');
+  }
 } finally {
   await rm(root, { recursive: true, force: true });
 }

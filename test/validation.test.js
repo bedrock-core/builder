@@ -541,11 +541,18 @@ test('geometry types accept numeric vectors and reject string coordinates', asyn
 test('Creator Tools runs on the assembled pack set and can block export', async (t) => {
   const project = await fixture(t);
   const cli = path.join(project.root, 'node_modules/@minecraft/creator-tools');
+  const sdk = path.join(project.root, 'node_modules/@minecraft/server');
   const resource = path.join(project.root, 'packs/RP');
+  const icon = await readFile(new URL('../packages/cli/templates/bedrock-core/packs/RP/pack_icon.png', import.meta.url));
+  const texture = path.join(resource, 'textures/example');
 
   await mkdir(cli, { recursive: true });
-  await mkdir(resource, { recursive: true });
+  await mkdir(sdk, { recursive: true });
+  await mkdir(texture, { recursive: true });
+  await writeFile(path.join(sdk, 'package.json'), JSON.stringify({ name: '@minecraft/server', version: '2.11.0-beta.1.26.50-stable' }));
   await writeFile(path.join(resource, 'manifest.json'), JSON.stringify(manifestFor('resources')));
+  await writeFile(path.join(resource, 'pack_icon.png'), icon);
+  await writeFile(path.join(texture, 'pack_icon.png'), icon);
   await writeFile(path.join(cli, 'package.json'), JSON.stringify({ name: '@minecraft/creator-tools', type: 'module', version: '0.21.0', bin: { mct: './test.js' } }));
   await writeFile(path.join(cli, 'test.js'), `
     import assert from 'node:assert/strict';
@@ -559,6 +566,9 @@ test('Creator Tools runs on the assembled pack set and can block export', async 
     console.log(JSON.stringify({ command: 'validate', projects: [{ items: [
       { type: 'warning', generatorId: 'JSON', path: '/behavior_packs/pack-0/loot_tables/example.json', message: 'Structure issue' },
       { type: 'error', generatorId: 'PRJINT', path: '/resource_packs/pack-1/manifest.json', message: 'Dependency is missing' },
+      { type: 'error', generatorId: 'CPACKICON', message: 'Found multiple pack icon files for pack-1, there should be only one.' },
+      { type: 'error', generatorId: 'SCRIPTMODULE', path: '/behavior_packs/pack-0/manifest.json', message: 'For @minecraft/server, using an out of date beta version 2.11.0-beta compared to the current version' },
+      { type: 'error', generatorId: 'SCRIPTMODULE', path: '/behavior_packs/pack-0/manifest.json', message: 'For @minecraft/server, using an out of date beta version 2.10.0-beta compared to the current version' },
     ] }] }));
     process.exitCode = 4;
   `);
@@ -572,16 +582,25 @@ test('Creator Tools runs on the assembled pack set and can block export', async 
   const options = { configPath: project.configPath, logger: {} };
   const result = await runBuild(options);
 
-  assert.deepEqual(result.validation.creatorTools.rules, ['JSON', 'PRJINT']);
+  assert.deepEqual(result.validation.creatorTools.rules, ['CPACKICON', 'JSON', 'PRJINT', 'SCRIPTMODULE']);
   assert.deepEqual(result.validation.creatorTools.diagnostics.map(({ pack, rule, severity }) => [pack, rule, severity]), [
     ['gameplay', 'JSON', 'warning'],
     ['assets', 'PRJINT', 'error'],
+    ['gameplay', 'SCRIPTMODULE', 'error'],
   ]);
+  assert.match(result.validation.creatorTools.diagnostics[2].message, /2\.10\.0-beta/);
   const previous = await readFile(path.join(project.root, 'dist/BP/loot_tables/example.json'), 'utf8');
 
   profile.creatorToolsValidation = 'strict';
   await writeFile(project.configPath, JSON.stringify(project.config));
   await writeFile(project.source, '{ "pools": [] }');
-  await assert.rejects(runBuild(options), /\[PRJINT\] Dependency is missing/);
+  icon.writeUInt32BE(129, 16);
+  await writeFile(path.join(resource, 'pack_icon.png'), icon);
+  await assert.rejects(runBuild(options), (error) => {
+    assert.ok(error instanceof ContentValidationError);
+    assert.deepEqual(error.diagnostics.map(issue => issue.rule), ['PRJINT', 'CPACKICON', 'SCRIPTMODULE']);
+
+    return true;
+  });
   assert.equal(await readFile(path.join(project.root, 'dist/BP/loot_tables/example.json'), 'utf8'), previous);
 });

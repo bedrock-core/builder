@@ -15,6 +15,16 @@
           "ui-compiler": { "resourcePack": "assets" }
         },
         "export": { "logic": "./dist/BP", "assets": "./dist/RP", "theme": "./dist/theme" }
+      },
+      "test": {
+        "stages": {
+          "manifest": { "manifestPath": "./packs/BP/manifest.test.json" },
+          "generator": true,
+          "guides": { "resourcePack": "assets" },
+          "i18n": { "resourcePack": "assets" },
+          "ui-compiler": { "resourcePack": "assets" }
+        },
+        "export": { "logic": "./dist/test/BP", "assets": "./dist/test/RP", "theme": "./dist/test/theme" }
       }
     }
   }

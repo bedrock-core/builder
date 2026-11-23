@@ -362,7 +362,7 @@ export async function validatePackContent(options: ContentValidationOptions): Pr
   if (options.creatorTools) {
     const creatorToolsOptions = { projectRoot: options.projectRoot, ...options.creatorTools };
 
-    result.creatorTools = await validateWithCreatorTools(options.packs, creatorToolsOptions, options.signal);
+    result.creatorTools = await validateWithCreatorTools(options.packs, creatorToolsOptions, options.signal, options.targetVersion);
     const errors = result.creatorTools.diagnostics.filter(issue => issue.severity === 'error');
 
     if (creatorToolsOptions.mode === 'strict' && errors.length) {

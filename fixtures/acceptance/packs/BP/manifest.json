@@ -13,7 +13,6 @@
     { "uuid": "5bfd7f92-c16d-4ff1-b837-abdbf92b4e84", "version": "1.0.0" },
     { "uuid": "8453c14b-69ad-4491-bc58-c54a44b5596f", "version": "1.0.0" },
     { "module_name": "@minecraft/server", "version": "2.10.0" },
-    { "module_name": "@minecraft/server-gametest", "version": "1.0.0-beta" },
     { "module_name": "@minecraft/server-ui", "version": "2.2.0" }
   ]
 }
