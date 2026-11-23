@@ -27,6 +27,7 @@
     "examples/generator-project/**",
     "examples/i18n-project/**",
     "examples/guides-project/**",
-    "packages/bedrock-types/types/**"
+    "packages/bedrock-types/types/**",
+    "packages/asset-maps/tests/**"
   ]
 }

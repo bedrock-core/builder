@@ -12,6 +12,11 @@ await mkdir(directory, { recursive: true });
 
 for (const workspace of new Set([...metadata.workspaces.filter(workspace => workspace !== '.'), '.'])) {
   const pkg = JSON.parse(await readFile(path.join(root, workspace, 'package.json'), 'utf8')) as { name: string; version: string };
+
+  if (pkg.name === '@bedrock-core/asset-maps') {
+    continue;
+  }
+
   const file = path.join(directory, `${pkg.name.split('/')[1]}-${pkg.version}.tgz`);
 
   yarn(['workspace', pkg.name, 'pack', '--out', file], root);

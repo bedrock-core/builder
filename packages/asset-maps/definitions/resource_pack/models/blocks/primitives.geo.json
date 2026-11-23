@@ -1,0 +1,335 @@
+{
+  "format_version": "1.16.0",
+  "minecraft:geometry": [
+    {
+      "description": {
+        "identifier": "minecraft:geometry.full_block",
+        "texture_width": 16,
+        "texture_height": 16
+      },
+      "bones": [
+        {
+          "name": "root",
+          "cubes": [
+            {
+              "origin": [
+                -8,
+                0,
+                -8
+              ],
+              "size": [
+                16,
+                16,
+                16
+              ],
+              "uv": {
+                "north": {
+                  "uv": [
+                    0,
+                    0
+                  ],
+                  "uv_size": [
+                    16,
+                    16
+                  ]
+                },
+                "south": {
+                  "uv": [
+                    0,
+                    0
+                  ],
+                  "uv_size": [
+                    16,
+                    16
+                  ]
+                },
+                "east": {
+                  "uv": [
+                    0,
+                    0
+                  ],
+                  "uv_size": [
+                    16,
+                    16
+                  ]
+                },
+                "west": {
+                  "uv": [
+                    0,
+                    0
+                  ],
+                  "uv_size": [
+                    16,
+                    16
+                  ]
+                },
+                "up": {
+                  "uv": [
+                    0,
+                    0
+                  ],
+                  "uv_size": [
+                    16,
+                    16
+                  ]
+                },
+                "down": {
+                  "uv": [
+                    16,
+                    16
+                  ],
+                  "uv_size": [
+                    -16,
+                    -16
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "description": {
+        "identifier": "minecraft:geometry.full_block_v1",
+        "texture_width": 16,
+        "texture_height": 16
+      },
+      "bones": [
+        {
+          "name": "root",
+          "cubes": [
+            {
+              "origin": [
+                -8,
+                0,
+                -8
+              ],
+              "size": [
+                16,
+                16,
+                16
+              ],
+              "uv": {
+                "north": {
+                  "uv": [
+                    0,
+                    0
+                  ],
+                  "uv_size": [
+                    16,
+                    16
+                  ]
+                },
+                "south": {
+                  "uv": [
+                    0,
+                    0
+                  ],
+                  "uv_size": [
+                    16,
+                    16
+                  ]
+                },
+                "east": {
+                  "uv": [
+                    0,
+                    0
+                  ],
+                  "uv_size": [
+                    16,
+                    16
+                  ]
+                },
+                "west": {
+                  "uv": [
+                    0,
+                    0
+                  ],
+                  "uv_size": [
+                    16,
+                    16
+                  ]
+                },
+                "up": {
+                  "uv": [
+                    0,
+                    0
+                  ],
+                  "uv_size": [
+                    16,
+                    16
+                  ]
+                },
+                "down": {
+                  "uv": [
+                    0,
+                    0
+                  ],
+                  "uv_size": [
+                    16,
+                    16
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "description": {
+        "identifier": "minecraft:geometry.cross",
+        "texture_width": 16,
+        "texture_height": 16
+      },
+      "bones": [
+        {
+          "name": "root",
+          "cubes": [
+            {
+              "origin": [
+                -8,
+                0,
+                0
+              ],
+              "size": [
+                16,
+                16,
+                0
+              ],
+              "pivot": [
+                0,
+                8,
+                0
+              ],
+              "rotation": [
+                -180,
+                -45,
+                0
+              ],
+              "uv": {
+                "north": {
+                  "uv": [
+                    0,
+                    16
+                  ],
+                  "uv_size": [
+                    16,
+                    -16
+                  ],
+                  "material_instance": "*"
+                }
+              }
+            },
+            {
+              "origin": [
+                -8,
+                0,
+                0
+              ],
+              "size": [
+                16,
+                16,
+                0
+              ],
+              "pivot": [
+                0,
+                8,
+                0
+              ],
+              "rotation": [
+                0,
+                45,
+                180
+              ],
+              "uv": {
+                "north": {
+                  "uv": [
+                    16,
+                    16
+                  ],
+                  "uv_size": [
+                    -16,
+                    -16
+                  ],
+                  "material_instance": "*"
+                }
+              }
+            },
+            {
+              "origin": [
+                -8,
+                0,
+                0
+              ],
+              "size": [
+                16,
+                16,
+                0
+              ],
+              "pivot": [
+                0,
+                8,
+                0
+              ],
+              "rotation": [
+                0,
+                -45,
+                180
+              ],
+              "uv": {
+                "north": {
+                  "uv": [
+                    0,
+                    16
+                  ],
+                  "uv_size": [
+                    16,
+                    -16
+                  ],
+                  "material_instance": "*"
+                }
+              }
+            },
+            {
+              "origin": [
+                -8,
+                0,
+                0
+              ],
+              "size": [
+                16,
+                16,
+                0
+              ],
+              "pivot": [
+                0,
+                8,
+                0
+              ],
+              "rotation": [
+                -180,
+                45,
+                0
+              ],
+              "uv": {
+                "north": {
+                  "uv": [
+                    16,
+                    16
+                  ],
+                  "uv_size": [
+                    -16,
+                    -16
+                  ],
+                  "material_instance": "*"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

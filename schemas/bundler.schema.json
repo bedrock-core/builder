@@ -30,6 +30,11 @@
     "debug": {
       "type": "boolean"
     },
+    "vanillaAssets": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include the checked shared vanilla asset catalog and generated atlas. Authored addon assets publish automatically regardless of this setting."
+    },
     "target": {
       "type": "string",
       "pattern": "\\S"

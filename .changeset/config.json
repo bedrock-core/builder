@@ -7,7 +7,7 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["@bedrock-core/bedrock-types"],
+  "ignore": ["@bedrock-core/asset-maps"],
   "bumpVersionsWithWorkspaceProtocolOnly": true,
   "format": false,
   "privatePackages": {

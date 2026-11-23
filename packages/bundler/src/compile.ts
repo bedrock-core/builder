@@ -8,7 +8,7 @@ import type { BuildContext } from '@bedrock-core/builder-plugin';
 export async function compilerFingerprint(): Promise<string> {
   const version = createHash('sha256');
 
-  for (const file of ['index', 'dependencies', 'compile', 'api', 'api-source', 'api-provider', 'api-package', 'api-library', 'typescript', 'native-access', 'native-access-transform']) {
+  for (const file of ['index', 'dependencies', 'compile', 'api', 'api-source', 'api-provider', 'api-package', 'api-library', 'typescript', 'native-access', 'native-access-transform', 'assets']) {
     version.update(await readFile(new URL(`./${file}.${new URL(import.meta.url).pathname.endsWith('.ts') ? 'ts' : 'js'}`, import.meta.url)));
   }
 

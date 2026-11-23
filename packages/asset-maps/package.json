@@ -1,0 +1,45 @@
+{
+  "name": "@bedrock-core/asset-maps",
+  "version": "26.60.30-preview",
+  "type": "module",
+  "description": "Missing vanilla rendering definitions in native Bedrock JSON formats",
+  "license": "SEE LICENSE IN SOURCES.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bedrock-core/builder.git",
+    "directory": "packages/asset-maps"
+  },
+  "exports": {
+    ".": "./dist/index.json",
+    "./source-lock.json": "./dist/source-lock.json",
+    "./coverage.json": "./dist/coverage.json",
+    "./behavior_pack/*": "./dist/behavior_pack/*",
+    "./resource_pack/*": "./dist/resource_pack/*"
+  },
+  "files": [
+    "dist/**",
+    "README.md",
+    "SOURCES.md"
+  ],
+  "scripts": {
+    "build": "node src/build.ts",
+    "prepack": "node src/build.ts",
+    "audit": "node src/audit.ts",
+    "pin": "node src/pin.ts",
+    "update": "node src/update.ts",
+    "diff": "node src/diff.ts",
+    "pack:release": "node src/pack.ts",
+    "lint": "node ../../node_modules/eslint/bin/eslint.js src tests --max-warnings 0",
+    "typecheck": "node ../../node_modules/typescript-native/bin/tsc -p tsconfig.json --noEmit",
+    "test": "node --test tests/*.test.ts"
+  },
+  "devDependencies": {
+    "@bedrock-core/bedrock-types": "workspace:*",
+    "@bedrock-core/builder-bundler": "workspace:*",
+    "@types/node": "25.9.9",
+    "jsonc-parser": "3.3.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

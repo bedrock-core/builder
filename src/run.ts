@@ -303,6 +303,9 @@ export async function runBuild({
         get inputDirectories() {
           return Object.freeze([...inputDirectories]);
         },
+        get assetRegistryExclusions() {
+          return Object.freeze([...artifacts.values()].filter(artifact => artifact.assetRegistry === false).map(artifact => artifact.path));
+        },
         generatedImportsFor(pack: string) {
           if (!Object.hasOwn(stagedPacks, pack)) {
             throw new Error(`Generated imports reference an unknown pack: ${pack}`);
@@ -363,7 +366,7 @@ export async function runBuild({
           exportExclusions.add(file);
           inputDirectories.add(file);
         },
-        async registerArtifact(id: string, filePath: string, options?: { importAs?: string; pack?: string }) {
+        async registerArtifact(id: string, filePath: string, options?: { importAs?: string; pack?: string; assetRegistry?: boolean }) {
           if (typeof id !== 'string' || !id.trim()) {
             throw new Error('Artifact ID must be nonempty');
           }
@@ -380,6 +383,10 @@ export async function runBuild({
 
           const importAs = options?.importAs;
           const pack = options?.pack;
+
+          if (options?.assetRegistry !== undefined && typeof options.assetRegistry !== 'boolean') {
+            throw new TypeError(`Artifact assetRegistry must be a boolean: ${id}`);
+          }
 
           if (pack !== undefined && !Object.hasOwn(stagedPacks, pack)) {
             throw new Error(`Artifact references an unknown pack: ${pack}`);
@@ -406,7 +413,7 @@ export async function runBuild({
             }
           }
 
-          artifacts.set(id, Object.freeze({ id, path: location, owner, ...(importAs ? { importAs } : {}), ...(pack ? { pack } : {}) }));
+          artifacts.set(id, Object.freeze({ id, path: location, owner, ...(importAs ? { importAs } : {}), ...(pack ? { pack } : {}), ...(options?.assetRegistry === false ? { assetRegistry: false } : {}) }));
         },
         finalizeArtifact(id: string, finalize: (artifact: Artifact) => void | Promise<void>) {
           const artifact = artifacts.get(id);
@@ -641,7 +648,7 @@ export async function runBuild({
         stages: stageResults,
         dependencies: [...dependencies],
         compilations: cache.results,
-        artifacts: [...artifacts.values()].map(({ id, owner, importAs, pack }) => ({ id, owner, ...(importAs ? { importAs } : {}), ...(pack ? { pack } : {}) })),
+        artifacts: [...artifacts.values()].map(({ id, owner, importAs, pack, assetRegistry }) => ({ id, owner, ...(importAs ? { importAs } : {}), ...(pack ? { pack } : {}), ...(assetRegistry === false ? { assetRegistry } : {}) })),
         packs: publishedPacks.map(pack => ({ ...pack, path: outputPaths[pack.id]! })),
       });
 

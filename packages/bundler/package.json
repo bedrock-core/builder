@@ -8,16 +8,20 @@
     "./dependencies": "./src/dependencies.ts",
     "./plugin": "./src/plugin.ts",
     "./compile": "./src/compile.ts",
-    "./entries": "./src/entries.ts"
+    "./entries": "./src/entries.ts",
+    "./assets": "./src/vanilla.ts"
   },
   "engines": {
     "node": ">=26.13.0"
   },
   "dependencies": {
+    "@bedrock-core/bedrock-types": "workspace:*",
     "@bedrock-core/builder-manifest": "workspace:*",
     "@bedrock-core/builder-plugin": "workspace:*",
     "esbuild": "0.25.12",
-    "typescript-native": "npm:typescript@7.1.0-beta"
+    "jsonc-parser": "3.3.1",
+    "typescript-native": "npm:typescript@7.1.0-beta",
+    "yauzl": "3.4.0"
   },
   "license": "MIT",
   "files": [
@@ -46,6 +50,10 @@
       "./entries": {
         "types": "./dist/src/entries.d.ts",
         "default": "./dist/src/entries.js"
+      },
+      "./assets": {
+        "types": "./dist/src/vanilla.d.ts",
+        "default": "./dist/src/vanilla.js"
       }
     },
     "access": "public"

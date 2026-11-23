@@ -19,8 +19,11 @@ if (error) {
   throw new Error(formatDiagnosticsWithColorAndContext([error], api));
 }
 
+const authoredConfig = authored as { exclude?: string[] };
 const config = api.parseJsonConfigFileContent({
-  ...authored as object, include: ['src/**/*.ts', 'bin/**/*.ts', 'packages/**/*.ts'],
+  ...authoredConfig,
+  include: ['src/**/*.ts', 'bin/**/*.ts', 'packages/**/*.ts'],
+  exclude: [...authoredConfig.exclude ?? [], 'packages/asset-maps/**'],
 }, { configFileName });
 const program = api.createProgram(config.fileNames, {
   ...config.options,
@@ -61,7 +64,7 @@ const workspaces = await Promise.all([...new Set(['.', ...metadata.workspaces])]
 const versions = new Map(workspaces.map(({ pkg }) => [pkg.name, pkg.version]));
 
 for (const { workspace, directory, pkg } of workspaces) {
-  if (workspace === 'packages/bedrock-types') {
+  if (workspace === 'packages/bedrock-types' || workspace === 'packages/asset-maps') {
     continue;
   }
 
@@ -77,6 +80,8 @@ for (const { workspace, directory, pkg } of workspaces) {
     const contract = await readFile(path.join(root, 'src/contract.d.ts'), 'utf8');
 
     await writeFile(path.join(dist, 'src/contract.d.ts'), contract.replaceAll('.ts\'', '.js\''));
+  } else if (workspace === 'packages/bundler') {
+    await cp(path.join(directory, 'src/vanilla'), path.join(dist, 'src/vanilla'), { recursive: true });
   }
 
   // Compiler fingerprints resolve metadata beside their release source directory.

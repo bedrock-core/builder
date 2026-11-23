@@ -37,7 +37,7 @@ export interface BuildResult {
   /** Individual compiler execution and reuse records. */
   readonly compilations: { id: string; status: 'executed' | 'cached' }[];
   /** Artifact identities and owners; workspace file paths are intentionally omitted. */
-  readonly artifacts: Pick<Artifact, 'id' | 'owner' | 'importAs' | 'pack'>[];
+  readonly artifacts: Pick<Artifact, 'id' | 'owner' | 'importAs' | 'pack' | 'assetRegistry'>[];
   /** Final manifest classifications with published pack paths. */
   readonly packs: PackInfo[];
 }

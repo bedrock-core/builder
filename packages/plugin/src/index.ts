@@ -65,6 +65,8 @@ export interface Artifact {
   readonly importAs?: string;
   /** Pack receiving the unqualified import; other packs use importAs/packId. */
   readonly pack?: string;
+  /** Whether automatic authored-asset registries include this file. Defaults to true. */
+  readonly assetRegistry?: boolean;
 }
 
 /** Deterministic output accepted by the host's file cache. */
@@ -167,8 +169,10 @@ export interface BuildContext {
   excludeFromExport?(file: string): void;
   /** Non-template source directories reserved by participating producers. */
   readonly inputDirectories?: readonly string[];
+  /** Exact generated artifact files omitted from automatic authored-asset registries. */
+  readonly assetRegistryExclusions?: readonly string[];
   /** Register an existing staged file; duplicate IDs/import names fail. */
-  registerArtifact(id: string, file: string, options?: { importAs?: string; pack?: string }): Promise<void>;
+  registerArtifact(id: string, file: string, options?: { importAs?: string; pack?: string; assetRegistry?: boolean }): Promise<void>;
   /** Update a registered producer-owned sidecar after all hooks and input exclusions, before final validation. */
   finalizeArtifact?(id: string, finalize: (artifact: Artifact) => void | Promise<void>): void;
   /** Read an earlier artifact; missing IDs fail. */

@@ -25,7 +25,7 @@
     "./schemas/guides.schema.json": "./schemas/guides.schema.json"
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test test \"scripts/*.test.*\" \"packages/*/test/**/*.{js,mjs,cjs,ts,mts,cts}\"",
     "plan": "node bin/plan.ts",
     "build": "yarn prepare:types && node bin/build.ts",
     "typecheck": "yarn prepare:types && node node_modules/typescript-native/bin/tsc --noEmit && node node_modules/typescript-native/bin/tsc -p packages/bedrock-types/tsconfig.json --noEmit",
@@ -64,6 +64,7 @@
     "test:release": "node --test scripts/publish-release.test.ts scripts/cli-artifact.test.mjs scripts/sync-cli-template.test.mjs scripts/release-versions.test.ts scripts/acceptance-archives.test.ts",
     "publish:ci": "yarn publish-release --scope \"$RELEASE_SCOPE\" && yarn tag-release --scope \"$RELEASE_SCOPE\"",
     "prepare:types": "node packages/bedrock-types/src/build.ts",
+    "prepare:assets": "node packages/asset-maps/src/build.ts",
     "setup": "yarn install && yarn prepare:types"
   },
   "engines": {
@@ -104,7 +105,8 @@
     "packages/plugin",
     "packages/manifest",
     "packages/cli",
-    "packages/bedrock-types"
+    "packages/bedrock-types",
+    "packages/asset-maps"
   ],
   "packageManager": "yarn@4.16.0",
   "license": "MIT",

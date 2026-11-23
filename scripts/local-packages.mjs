@@ -86,6 +86,10 @@ async function workspaces(directory) {
   }));
 }
 
+function snapshotPackage(row) {
+  return row.manifest.private !== true && row.name !== '@bedrock-core/asset-maps';
+}
+
 async function configure(directory, run, endpoint) {
   const manifest = await readJson(path.join(directory, 'package.json'));
   const match = /^yarn@(\d+)\.(\d+)/.exec(manifest.packageManager ?? '');
@@ -133,7 +137,7 @@ export async function publishSnapshot({ repository, build, directory = defaultRe
   const sourceDirectory = path.join(run, 'source');
   const source = await snapshotRepository(path.resolve(repository), sourceDirectory);
   let rows = await workspaces(sourceDirectory);
-  const selected = rows.filter(row => row.manifest.private !== true);
+  const selected = rows.filter(snapshotPackage);
 
   assert.ok(selected.length && selected.every(row => row.name.startsWith('@bedrock-core/')), 'Producer contains unexpected public packages');
   const configFile = path.join(sourceDirectory, '.changeset/config.json');
@@ -148,7 +152,7 @@ export async function publishSnapshot({ repository, build, directory = defaultRe
     cwd: sourceDirectory, stdio: 'inherit', windowsHide: true,
   });
   rows = await workspaces(sourceDirectory);
-  const versions = Object.fromEntries(rows.filter(row => row.manifest.private !== true).map(row => [row.name, row.manifest.version]));
+  const versions = Object.fromEntries(rows.filter(snapshotPackage).map(row => [row.name, row.manifest.version]));
 
   for (const row of rows) {
     for (const field of fields) {
@@ -165,7 +169,7 @@ export async function publishSnapshot({ repository, build, directory = defaultRe
       }
     }
 
-    if (row.manifest.private !== true) {
+    if (snapshotPackage(row)) {
       row.manifest.publishConfig = { ...row.manifest.publishConfig, registry: state.endpoint };
     }
 
@@ -184,7 +188,7 @@ export async function publishSnapshot({ repository, build, directory = defaultRe
   await mkdir(archives);
   const packages = [];
 
-  const publicRows = rows.filter(row => row.manifest.private !== true);
+  const publicRows = rows.filter(snapshotPackage);
   const ordered = [];
   const active = new Set();
   const visited = new Set();

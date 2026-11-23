@@ -6,9 +6,13 @@ import { readScriptEntries, scriptOutputEntry, scriptOutputManifest, type JsonOb
 import { bundleScripts, compilerVersion } from './index.ts';
 import { apiExports, needsNativeAccess } from './api.ts';
 import { emitApiPackage } from './api-package.ts';
+import { assetRevision, collectPackAssets, coreAssetPublisher, linkedResources, type SharedAssetCatalog } from './assets.ts';
+import { assetMapsIndex, generateVanillaAssets } from './vanilla.ts';
 
 export interface BundlerSettings {
   debug?: boolean;
+  /** Include the checked shared vanilla catalog and its generated resource assets. Defaults to false. */
+  vanillaAssets?: boolean;
   target?: string;
   tsconfig?: string;
   external?: string[];
@@ -120,6 +124,17 @@ export async function run(context: BuildContext, settings: BundlerSettings): Pro
   const apiManifests = new Map<string, JsonObject>();
   const apiInputs = new Set<string>();
   const updatedManifests = new Map<string, string>();
+  const assetPublisher = await coreAssetPublisher(context.projectRoot);
+  const packs = assetPublisher ? await context.inspectPacks?.() : undefined;
+  const assets = new Map<string, Awaited<ReturnType<typeof collectPackAssets>>>();
+  const generatorPath = settings.vanillaAssets === true ? assetMapsIndex(context.projectRoot) : undefined;
+
+  if (generatorPath && !assetPublisher) {
+    throw new Error('bundler.vanillaAssets=true requires @bedrock-core/server-runtime with an exported ./assets/publish entry point.');
+  }
+
+  const vanilla = new Map<string, { catalog?: SharedAssetCatalog; inputs: string[]; files?: string[]; unavailable?: string }>();
+  let warnedVanilla = false;
 
   for (const script of scripts) {
     const manifestPath = path.join(script.packPath, 'manifest.json');
@@ -141,8 +156,58 @@ export async function run(context: BuildContext, settings: BundlerSettings): Pro
     }
 
     let entry = script.source;
+    let assetSetup: string | undefined;
+    const namespace = manifest.namespace;
 
-    if (provider.modules.length) {
+    if (assetPublisher && packs && typeof namespace === 'string') {
+      if (!assets.has(script.packId)) {
+        const owner = packs.find(pack => pack.id === script.packId)!;
+        const collected = await collectPackAssets(owner, packs, { excluded: context.assetRegistryExclusions });
+
+        if (generatorPath) {
+          const resource = linkedResources(owner, packs)[0];
+          const resourceKey = resource?.path ?? '';
+
+          if (!vanilla.has(resourceKey)) {
+            const generated = await generateVanillaAssets({ mapsIndex: generatorPath, targetVersion: context.project?.targetVersion ?? '', dependencyRoot: context.projectRoot, resourcePack: resource?.path, registerDependency: file => context.registerDependency(file) });
+
+            vanilla.set(resourceKey, generated);
+
+            for (const [i, file] of (generated.files ?? []).entries()) {
+              await context.registerArtifact(`assets:vanilla:${script.packId}:${i}`, file, { pack: resource?.id });
+            }
+          }
+
+          const generated = vanilla.get(resourceKey)!;
+
+          collected.inputs.push(generatorPath, ...generated.inputs);
+
+          if (generated.catalog) {
+            collected.bundle.catalogs = [generated.catalog];
+            collected.bundle.imports = [{ id: generated.catalog.id, revision: generated.catalog.revision }];
+          } else if (generated.unavailable && !warnedVanilla) {
+            context.logger.warn?.(generated.unavailable);
+            warnedVanilla = true;
+          }
+
+          collected.bundle.revision = assetRevision(collected.bundle);
+        }
+
+        assets.set(script.packId, collected);
+
+        for (const input of [...collected.inputs, ...collected.directories]) {
+          context.registerDependency(within(context.stagedRoot, input) ? path.join(context.projectRoot, path.relative(context.stagedRoot, input)) : input);
+        }
+      }
+
+      const collected = assets.get(script.packId)!;
+
+      assetSetup = path.join(context.generatedDir, 'assets', script.packId, 'register.ts');
+      await mkdir(path.dirname(assetSetup), { recursive: true });
+      await writeFile(assetSetup, `import { registerGeneratedPackAssets } from '@bedrock-core/server-runtime/assets/publish';\nregisterGeneratedPackAssets(${JSON.stringify(namespace)}, ${JSON.stringify(JSON.stringify(collected.bundle))});\n`);
+    }
+
+    if (provider.modules.length || assetSetup) {
       entry = path.join(context.generatedDir, 'api', script.packId, `${path.basename(script.runtimeEntry)}.ts`);
 
       const specifier = (source: string): string => {
@@ -152,12 +217,13 @@ export async function run(context: BuildContext, settings: BundlerSettings): Pro
       };
 
       const contents = [
+        ...(assetSetup ? [`import ${JSON.stringify(specifier(assetSetup))};`] : []),
         ...provider.modules.map((module) => {
           const source = path.join(context.stagedRoot, path.relative(context.projectRoot, module.source));
 
           return `import ${JSON.stringify(specifier(source))};`;
         }),
-        `import ${JSON.stringify(specifier(script.source))};`,
+        `${assetSetup ? 'export * from' : 'import'} ${JSON.stringify(specifier(script.source))};`,
       ].join('\n');
 
       await mkdir(path.dirname(entry), { recursive: true });
@@ -178,7 +244,7 @@ export async function run(context: BuildContext, settings: BundlerSettings): Pro
     const moduleNames = [...new Set(extensions.flatMap(extension => extension.moduleNames ?? []))].sort();
     const id = `${script.packId}:${script.runtimeEntry}`;
     const result = await context.reuse(id, {
-      inputs: [script.source, ...pluginInputs, ...provider.inputs],
+      inputs: [script.source, ...pluginInputs, ...provider.inputs, ...(assetPublisher ? [assetPublisher] : []), ...(assets.get(script.packId)?.inputs ?? [])],
       cache: extensions.every(extension => !extension.plugins?.length || extension.cache === true),
       key: {
         version,
@@ -186,9 +252,11 @@ export async function run(context: BuildContext, settings: BundlerSettings): Pro
         nodePath: process.env.NODE_PATH ?? '',
         debug: settings.debug ?? false,
         target: settings.target ?? 'es2020',
+        vanillaAssets: settings.vanillaAssets === true,
         tsconfig: settings.tsconfig ?? null,
         external: settings.external ?? [],
         moduleNames,
+        assets: assets.has(script.packId) ? JSON.stringify(assets.get(script.packId)!.bundle) : null,
         provides: provider.modules.map(module => ({ moduleName: module.moduleName, shape: module.shape, source: path.relative(context.projectRoot, module.source) })),
         extensions: extensions.map(extension => ({ id: extension.id, version: extension.version, jsxImportSource: extension.jsxImportSource ?? null, resolveFromProject: extension.resolveFromProject ?? [] })),
         aliases: Object.fromEntries(Object.entries(aliases).map(([name, file]) => [name, path.relative(context.stagedRoot, file)])),
