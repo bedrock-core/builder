@@ -1,4 +1,4 @@
-import { glob, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { glob, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { mergeHook, parseJsonc } from './hooks.ts';
@@ -113,27 +113,6 @@ export async function writeUiResource(pack: string, linked: LinkedUi, entries: S
 
     for (const locale of Object.keys(lang)) {
       files.push(path.join(textsDir, `${locale}.lang`));
-    }
-  }
-
-  if (linked.screens.some(screen => screen.hasText)) {
-    await mkdir(textsDir, { recursive: true });
-    let names = (await readdir(textsDir)).filter(name => name.endsWith('.lang'));
-
-    if (!names.length) {
-      names = ['en_US.lang'];
-      await write('texts/languages.json', ['en_US']);
-    }
-
-    for (const name of names) {
-      const file = path.join(textsDir, name);
-      const existing = await optionalText(file) ?? '';
-
-      if (!linked.lang[0] || !existing.includes(linked.lang[0])) {
-        await writeFile(file, `${existing.trimEnd()}\n\n${linked.lang.join('\n')}\n`);
-      }
-
-      files.push(file);
     }
   }
 

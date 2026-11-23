@@ -60,12 +60,10 @@ export interface ScreenData {
   looks?: unknown[];
   /** Compiler-detected or declared live text positions for a container screen. */
   texts?: readonly number[];
-  hasText?: boolean;
   title?: string;
   snapshot?: {
     shape: string;
     vis: readonly number[];
-    baked?: readonly string[];
     texts?: readonly number[];
     looks?: readonly unknown[];
     data?: Readonly<Record<string, unknown>>;
@@ -87,7 +85,6 @@ export interface LinkedUi {
   screens: ScreenData[];
   hooks: UiDocument[];
   documents: UiDocument[];
-  lang: string[];
   layoutProperty: string;
   maxLayout: number;
   blockSlotLimit: number;
@@ -126,7 +123,6 @@ export interface UiLibrary {
     buildScreenTree(screen: unknown): unknown;
     hostFor(tree: unknown): { id: string };
     setBuildLocales(locales: PackLocales): void;
-    charsetLang?(): string[];
     protocolItemDefinitions?: (namespace: string) => LinkedUi['items'][string];
     LAYOUT_PROPERTY: string;
     MAX_LAYOUT: number;

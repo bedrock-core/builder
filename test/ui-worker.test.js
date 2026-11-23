@@ -6,7 +6,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { UiEvaluator } from '../packages/ui-compiler/src/evaluate.ts';
 
-async function fixture(t, charset = true) {
+async function fixture(t) {
   const root = await mkdtemp(path.join(tmpdir(), 'builder-ui-worker-'));
   const library = path.join(root, 'library.mjs');
   const module = path.join(root, 'screen.mjs');
@@ -25,12 +25,12 @@ async function fixture(t, charset = true) {
     export const ui = {};
     export const i18n = { createI18n() {} };
     export const runtime = { buildScreenTree: page => page(), hostFor: () => ({ id: 'form' }), setBuildLocales() {},
-      ${charset ? 'charsetLang: () => [' + JSON.stringify('core.ui.c.1=a') + '],' : ''} LAYOUT_PROPERTY: 'layout', MAX_LAYOUT: 100, BLOCK_SLOT_LIMIT: 54 };
+      LAYOUT_PROPERTY: 'layout', MAX_LAYOUT: 100, BLOCK_SLOT_LIMIT: 54 };
     export const compiler = {
       compileFormScreen(_page, spec) {
         return { name: spec.name, addon: spec.namespace, namespace: spec.namespace + '_' + spec.name,
           document: { namespace: 'screen', screen: { type: 'panel', optional: undefined } }, faces: {}, facesNamespace: 'faces', hasBackdrop: false,
-          title: 'Portable screen', snapshot: { shape: 'shape', baked: [], vis: [] },
+          title: 'Portable screen', snapshot: { shape: 'shape', texts: [], vis: [] },
           face: { document: { sourceOnly: true } }, entries: [{ element: { onPress() {} } }] };
       },
       buildUiPack(screens, namespace) {
@@ -52,7 +52,7 @@ test('transports emitted screen data without executable compiler source trees', 
   const screen = await evaluator.request({ kind: 'screen', module, name: 'page', namespace: 'test' });
 
   assert.deepEqual(screen.document, { namespace: 'screen', screen: { type: 'panel' } });
-  assert.deepEqual(screen.snapshot, { shape: 'shape', baked: [], vis: [] });
+  assert.deepEqual(screen.snapshot, { shape: 'shape', texts: [], vis: [] });
   assert.equal(screen.title, 'Portable screen');
   assert.equal(screen.entryCount, 1);
   assert.equal(Object.hasOwn(screen, 'entries'), false);
@@ -67,15 +67,6 @@ test('transports a linked collection whose JSON expansion exceeds the string lim
   assert.ok(sections.length * sections[0].text.length > constants.MAX_STRING_LENGTH);
   assert.equal(sections[0].text.length, 8 * 1024 * 1024);
   assert.ok(sections.every(section => section === sections[0]));
-  assert.deepEqual(linked.lang, ['core.ui.c.1=a']);
-});
-
-test('links item-name text runtimes without a character-table API', async (t) => {
-  const { evaluator } = await fixture(t, false);
-  const linked = await evaluator.request({ kind: 'link', screens: [], namespace: 'test' });
-
-  assert.deepEqual(linked.lang, []);
-  assert.equal(linked.blockSlotLimit, 54);
 });
 
 test('links virtual-container protocol items under the addon namespace', async (t) => {

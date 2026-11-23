@@ -33,7 +33,6 @@ port.on('message', async (request: UiRequest) => {
 
       value = {
         ...library.compiler.buildUiPack(screens, request.namespace),
-        lang: library.runtime.charsetLang?.() ?? [],
         layoutProperty: library.runtime.LAYOUT_PROPERTY,
         maxLayout: library.runtime.MAX_LAYOUT,
         blockSlotLimit: library.runtime.BLOCK_SLOT_LIMIT,

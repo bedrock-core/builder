@@ -73,7 +73,7 @@ test('container metadata and looks share the same owning component', async () =>
 
 test('live forms retain their component, compiled identity and parameter contract', async () => {
   const screen = {
-    name: 'edit', kind: 'modal', title: 'edit-title', snapshot: { shape: 'shape', baked: [], vis: [] },
+    name: 'edit', kind: 'modal', title: 'edit-title', snapshot: { shape: 'shape', texts: [], vis: [] },
     parameters: { item: { type: 'number' } },
   };
   const module = await evaluate([screen], [{ name: 'edit', source: './edit.screen.tsx' }]);
