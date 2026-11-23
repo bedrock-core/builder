@@ -1,0 +1,41 @@
+name: Set up Minecraft package
+description: Install Builder dependencies and restore pinned Minecraft inputs
+inputs:
+  package:
+    description: Builder workspace directory name
+    required: true
+  registry:
+    description: npm registry for publication
+    default: ''
+  directory:
+    description: Path to the Builder checkout
+    default: builder
+runs:
+  using: composite
+  steps:
+    - uses: bedrock-core/.github/.github/actions/setup-yarn@main
+      with:
+        registry: ${{ inputs.registry }}
+    - uses: actions/setup-java@v6
+      if: inputs.package == 'asset-maps' || inputs.package == 'both'
+      with:
+        distribution: temurin
+        java-version: '25'
+    - uses: actions/cache@v6
+      if: inputs.package == 'asset-maps' || inputs.package == 'both'
+      with:
+        path: ${{ inputs.directory }}/packages/asset-maps/.bedrock-core/cache/asset-maps/inputs
+        key: asset-inputs-${{ runner.os }}-${{ hashFiles(format('{0}/packages/asset-maps/releases.json', inputs.directory), format('{0}/packages/asset-maps/data/**/sources.json', inputs.directory), format('{0}/packages/asset-maps/src/sources/AssetExtract.java', inputs.directory)) }}
+        restore-keys: asset-inputs-${{ runner.os }}-
+    - uses: actions/cache@v6
+      if: inputs.package == 'bedrock-types' || inputs.package == 'both'
+      with:
+        path: |
+          ${{ inputs.directory }}/packages/bedrock-types/.bedrock-core/cache/schema-types/*.zip
+          ${{ inputs.directory }}/packages/bedrock-types/.bedrock-core/cache/schema-types/*.tgz
+        key: bedrock-types-inputs-${{ hashFiles(format('{0}/packages/bedrock-types/releases.json', inputs.directory)) }}
+        restore-keys: bedrock-types-inputs-
+    - name: Install pinned workspace dependencies
+      working-directory: ${{ inputs.directory }}
+      shell: bash
+      run: yarn install --immutable

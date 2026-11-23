@@ -1,0 +1,511 @@
+name: Update Minecraft packages
+
+on:
+  pull_request:
+    paths:
+      - 'packages/bedrock-types/**'
+      - 'packages/validation/**'
+      - 'packages/asset-maps/**'
+      - 'packages/bundler/src/vanilla/**'
+      - 'packages/bundler/src/vanilla.ts'
+      - '.github/actions/minecraft-package-setup/**'
+      - '.github/workflows/*-minecraft-packages.yml'
+      - 'sources.json'
+      - 'fixtures/acceptance/**'
+      - 'fixtures/asset-map-states/**'
+      - 'scripts/minecraft-*.ts'
+      - 'scripts/acceptance.ts'
+      - 'yarn.lock'
+  push:
+    branches: [renovate/minecraft-sources]
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Minecraft package operation
+        type: choice
+        options: [audit, update]
+        default: audit
+      target:
+        description: Packages to check
+        type: choice
+        options: [both, types, asset-maps]
+        default: both
+      types_version:
+        description: Audit one reviewed Types version. Leave empty for all.
+        type: string
+      asset_maps_version:
+        description: Audit one reviewed Asset Maps version. Leave empty for all.
+        type: string
+      schema_tag:
+        description: Discover a specific Mojang schema tag for Types.
+        type: string
+      samples_tag:
+        description: Discover a specific Mojang Samples tag for Asset Maps.
+        type: string
+      creator_tools:
+        description: Compare the Types audit with Mojang Creator Tools
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  ACT: ''
+  UPDATE_BRANCH: automation/minecraft-packages
+
+concurrency:
+  group: minecraft-packages-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: builder
+    shell: bash
+
+jobs:
+  audit:
+    if: >-
+      github.repository == 'bedrock-core/builder' &&
+      ((github.event_name == 'pull_request' && github.head_ref != 'automation/minecraft-packages') || inputs.operation == 'audit')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(inputs.target == 'types' && '["bedrock-types"]' || inputs.target == 'asset-maps' && '["asset-maps"]' || '["bedrock-types","asset-maps"]') }}
+    env:
+      PACKAGE: ${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: builder
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Check audit scope
+        id: scope
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == 'pull_request' ]]; then
+            paths=(.github/actions/minecraft-package-setup
+              .github/workflows/update-minecraft-packages.yml
+              .github/workflows/publish-minecraft-packages.yml yarn.lock)
+            if [[ "$PACKAGE" == 'bedrock-types' ]]; then
+              paths+=(packages/bedrock-types packages/validation)
+            else
+              paths+=(packages/asset-maps packages/bundler/src/vanilla packages/bundler/src/vanilla.ts
+                packages/bedrock-types/src/files.ts packages/bedrock-types/src/inputs/tar.ts)
+            fi
+            changes=$(git diff --name-only --no-renames HEAD^1 HEAD -- "${paths[@]}")
+            if [[ -z "$changes" ]]; then exit 0; fi
+          fi
+          echo 'selected=true' >> "$GITHUB_OUTPUT"
+      - uses: ./builder/.github/actions/minecraft-package-setup
+        if: steps.scope.outputs.selected == 'true'
+        with:
+          package: ${{ matrix.package }}
+      - name: Audit Bedrock Types
+        if: steps.scope.outputs.selected == 'true' && matrix.package == 'bedrock-types'
+        env:
+          TYPES_VERSION: ${{ inputs.types_version }}
+          CREATOR_TOOLS: ${{ inputs.creator_tools }}
+        run: |
+          args=()
+          if [[ -n "$TYPES_VERSION" ]]; then args+=("$TYPES_VERSION"); fi
+          if [[ "$CREATOR_TOOLS" == 'true' ]]; then
+            npm install --prefix "$RUNNER_TEMP/creator-tools" --ignore-scripts --omit=optional @minecraft/creator-tools@0.21.0
+            args+=(--creator-tools "$RUNNER_TEMP/creator-tools")
+          fi
+          node packages/bedrock-types/src/audit.ts "${args[@]}" --check
+      - name: Audit Asset Maps
+        if: steps.scope.outputs.selected == 'true' && matrix.package == 'asset-maps'
+        env:
+          ASSET_MAPS_VERSION: ${{ inputs.asset_maps_version }}
+        run: |
+          yarn prepare:types
+          yarn prepare:assets
+          yarn workspace @bedrock-core/asset-maps lint
+          yarn workspace @bedrock-core/asset-maps typecheck
+          yarn workspace @bedrock-core/asset-maps test
+          if [[ -n "$ASSET_MAPS_VERSION" ]]; then
+            versions=("$ASSET_MAPS_VERSION")
+          else
+            mapfile -t versions < <(node -p 'Object.keys(require("./packages/asset-maps/releases.json")).join("\n")')
+          fi
+          for version in "${versions[@]}"; do
+            node packages/asset-maps/src/build.ts --version "$version"
+            node packages/asset-maps/src/build.ts --version "$version" --check --offline
+            node packages/asset-maps/src/audit.ts --version "$version" --offline \
+              --output "packages/asset-maps/.bedrock-core/releases/$version/audit.json"
+          done
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() && steps.scope.outputs.selected == 'true' && env.ACT != 'true' }}
+        with:
+          name: ${{ matrix.package }}-audit
+          include-hidden-files: true
+          path: |
+            builder/packages/${{ matrix.package }}/.bedrock-core/releases/*/vanilla.json
+            builder/packages/${{ matrix.package }}/.bedrock-core/releases/*/creator-tools.json
+            builder/packages/${{ matrix.package }}/.bedrock-core/releases/*/audit.json
+            builder/packages/${{ matrix.package }}/.bedrock-core/releases/*/build.json
+            builder/packages/${{ matrix.package }}/.bedrock-core/asset-maps-refresh.json
+          if-no-files-found: ignore
+
+  resolve:
+    if: >-
+      github.repository == 'bedrock-core/builder' &&
+      ((github.event_name == 'push' && github.actor == 'renovate[bot]') ||
+      (github.event_name == 'workflow_dispatch' && github.ref_name == github.event.repository.default_branch && inputs.operation == 'update') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'automation/minecraft-packages'))
+    uses: bedrock-core/.github/.github/workflows/minecraft-release.yml@main
+    with:
+      require-gametest: true
+
+  generate:
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    defaults:
+      run:
+        working-directory: .
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+      COMPATIBILITY_MATRIX: ${{ needs.resolve.outputs.matrix }}
+      MINECRAFT_GAMES: ${{ needs.resolve.outputs.games }}
+      BASE_BRANCH: ${{ github.event.repository.default_branch }}
+      PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      BC_BDS_HOME: ${{ github.workspace }}/.bds
+    outputs:
+      base: ${{ steps.branch.outputs.base }}
+      previous: ${{ steps.branch.outputs.previous }}
+      candidate: ${{ steps.bundle.outputs.candidate }}
+      changed: ${{ steps.bundle.outputs.changed }}
+      propose: ${{ steps.bundle.outputs.propose }}
+      review: ${{ steps.packages.outputs.review }}
+      assets: ${{ steps.assets.outcome }}
+      evidence: ${{ steps.evidence.outputs.artifact-url }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.sha || github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prepare the update branch
+        id: branch
+        run: |
+          base="$PR_BASE_SHA"
+          if [[ -z "$base" ]]; then base=$(git rev-parse "origin/$BASE_BRANCH"); fi
+          previous=$(git rev-parse --verify --quiet "origin/$UPDATE_BRANCH" || true)
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          if [[ "$GITHUB_EVENT_NAME" != 'pull_request' && -n "$previous" ]]; then
+            git switch -c minecraft-candidate "$previous"
+            git merge --no-edit "$base"
+          else
+            git switch -c minecraft-candidate
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == 'push' ]]; then
+            git merge-base --is-ancestor "$base" "$GITHUB_SHA"
+            git restore --source="$GITHUB_SHA" -- sources.json
+            dependencies="$RUNNER_TEMP/minecraft-dependencies.patch"
+            git diff --binary "$base" "$GITHUB_SHA" -- package.json ':(glob)**/package.json' yarn.lock > "$dependencies"
+            if [[ -s "$dependencies" ]]; then git apply --3way --index "$dependencies"; fi
+          fi
+
+          mkdir -p "$RUNNER_TEMP/baseline" "$RUNNER_TEMP/minecraft-candidates"
+          git archive "$base" packages/asset-maps/{data,definitions,releases.json} | tar -x -C "$RUNNER_TEMP/baseline"
+          {
+            echo "base=$base"
+            echo "previous=$previous"
+          } >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/minecraft-package-setup
+        with:
+          package: both
+          directory: .
+      - name: Install published generation tools
+        run: |
+          npm install --prefix "$RUNNER_TEMP/bds-runner" --ignore-scripts --no-audit @bedrock-core/bds-runner@0.3.0
+          npm install --prefix "$RUNNER_TEMP/creator-tools" --ignore-scripts --no-audit @minecraft/creator-tools@0.21.0
+      - name: Generate and verify the Minecraft packages
+        id: packages
+        env:
+          BASE_SHA: ${{ steps.branch.outputs.base }}
+          TARGET: ${{ inputs.target || 'both' }}
+          SCHEMA_TAG: ${{ inputs.schema_tag }}
+          SAMPLES_TAG: ${{ inputs.samples_tag }}
+          BUILDER_BDS_RUNNER: ${{ runner.temp }}/bds-runner/node_modules/@bedrock-core/bds-runner/bin/bc-bds.mjs
+        run: |
+          args=()
+          if [[ "$GITHUB_EVENT_NAME" == 'pull_request' ]]; then args+=(--verify-pins); fi
+          if [[ -n "$SCHEMA_TAG" ]]; then args+=(--schema-tag "$SCHEMA_TAG"); fi
+          if [[ -n "$SAMPLES_TAG" ]]; then args+=(--samples-tag "$SAMPLES_TAG"); fi
+          node scripts/minecraft-update.ts --base "$BASE_SHA" --target "$TARGET" \
+            --output "$RUNNER_TEMP/minecraft-candidates" --creator-tools "$RUNNER_TEMP/creator-tools" \
+            --baseline-maps "$RUNNER_TEMP/baseline/packages/asset-maps" "${args[@]}"
+      - name: Check the Asset Maps compiler
+        id: assets
+        continue-on-error: true
+        run: |
+          yarn prepare:assets
+          yarn workspace @bedrock-core/asset-maps typecheck
+          yarn workspace @bedrock-core/asset-maps test
+      - name: Save the exact candidate revision
+        id: bundle
+        env:
+          BASE_SHA: ${{ steps.branch.outputs.base }}
+        run: |
+          git add -A -- sources.json packages/{bedrock-types,asset-maps}/releases.json packages/asset-maps/data
+          if ! git diff --cached --quiet; then
+            if [[ "$GITHUB_EVENT_NAME" == 'pull_request' ]]; then
+              echo '::error::The reviewed source pins changed during validation.'
+              exit 1
+            fi
+            git commit -m 'Update Minecraft source and package pins'
+          fi
+
+          propose=false
+          changed=false
+          if ! git diff --quiet "$BASE_SHA" HEAD -- . ':!sources.json'; then propose=true; fi
+          if ! git diff --quiet "$BASE_SHA" HEAD; then changed=true; fi
+
+          candidate=$(git rev-parse HEAD)
+          if [[ "$candidate" != "$BASE_SHA" ]]; then
+            git bundle create "$RUNNER_TEMP/minecraft-candidates/candidate.bundle" HEAD "^$BASE_SHA"
+          fi
+          {
+            echo "candidate=$candidate"
+            echo "changed=$changed"
+            echo "propose=$propose"
+          } >> "$GITHUB_OUTPUT"
+      - name: Save the archives and candidate commit for the matrix
+        uses: actions/upload-artifact@v7
+        with:
+          name: minecraft-package-candidates
+          path: ${{ runner.temp }}/minecraft-candidates
+          if-no-files-found: error
+      - name: Attach generation evidence
+        id: evidence
+        if: ${{ !cancelled() && env.ACT != 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: minecraft-package-reports
+          include-hidden-files: true
+          path: |
+            packages/*/.bedrock-core/releases/*/dist
+            packages/*/.bedrock-core/releases/*/dist.patch
+            packages/*/.bedrock-core/releases/*/dist-diff.json
+            packages/*/.bedrock-core/releases/*/vanilla.json
+            packages/*/.bedrock-core/releases/*/creator-tools.json
+            packages/*/.bedrock-core/releases/*/audit-error.txt
+            packages/*/.bedrock-core/releases/*/audit.json
+            packages/*/.bedrock-core/releases/*/build.json
+            packages/asset-maps/.bedrock-core/releases/*/coverage-regressions.json
+            ${{ runner.temp }}/minecraft-candidates/**/*.json
+            .bds/logs/**/*.log
+          if-no-files-found: ignore
+
+  check:
+    needs: [resolve, generate]
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: .
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.matrix) }}
+    env:
+      BC_BDS_HOME: ${{ github.workspace }}/.bds
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.generate.outputs.base }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: minecraft-package-candidates
+          path: ${{ runner.temp }}/minecraft-candidates
+      - name: Check out the candidate
+        env:
+          CANDIDATE: ${{ needs.generate.outputs.candidate }}
+        run: |
+          if [[ -f "$RUNNER_TEMP/minecraft-candidates/candidate.bundle" ]]; then
+            git fetch "$RUNNER_TEMP/minecraft-candidates/candidate.bundle" HEAD
+            git checkout --detach FETCH_HEAD
+          fi
+          test "$(git rev-parse HEAD)" = "$CANDIDATE"
+      - uses: bedrock-core/.github/.github/actions/setup-minecraft-compatibility@main
+        id: setup
+        with:
+          target: ${{ toJSON(matrix) }}
+          fixtures: fixtures/acceptance
+      - name: Install and inspect the candidate npm packages
+        id: acceptance
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        env:
+          COMPATIBILITY_ROW: ${{ toJSON(matrix) }}
+        run: yarn node scripts/minecraft-acceptance.ts "$RUNNER_TEMP/minecraft-candidates" "$RUNNER_TEMP/acceptance"
+      - name: Run Builder checks
+        if: ${{ !cancelled() && steps.acceptance.outputs.installed == 'true' }}
+        env:
+          BUILDER_ACCEPTANCE_DEPENDENCY_ROOT: ${{ runner.temp }}/acceptance
+        run: yarn check
+      - name: Verify Builder release packages
+        if: matrix.id == 'locked' && !cancelled() && steps.acceptance.outputs.installed == 'true'
+        env:
+          BUILDER_ACCEPTANCE_DEPENDENCY_ROOT: ${{ runner.temp }}/acceptance
+        run: yarn pack-release && yarn test:packages
+      - name: Run locked build acceptance
+        if: matrix.id == 'locked' && !cancelled() && steps.acceptance.outputs.installed == 'true'
+        env:
+          BUILDER_EXPECTED_TYPES_VERSION: ${{ steps.acceptance.outputs.types }}
+          BUILDER_ACCEPTANCE_DEPENDENCY_ROOT: ${{ runner.temp }}/acceptance
+          BUILDER_CREATOR_TOOLS_REPORT: ${{ runner.temp }}/builder-creator-tools.json
+        run: yarn acceptance
+      - uses: actions/cache@v6
+        if: matrix.id != 'locked' && !cancelled() && steps.acceptance.outputs.installed == 'true' && env.ACT != 'true'
+        with:
+          path: .bds/cache
+          key: bds-${{ runner.os }}-${{ matrix.gameChannel }}-${{ matrix.gameVersion }}
+      - name: Install the published BDS Runner
+        id: runner
+        if: matrix.id != 'locked' && !cancelled() && steps.acceptance.outputs.installed == 'true'
+        run: npm install --prefix "$RUNNER_TEMP/bds-runner" --ignore-scripts --no-audit @bedrock-core/bds-runner@0.3.0
+      - name: Run GameTests on the exact BDS build
+        if: matrix.id != 'locked' && !cancelled() && steps.runner.outcome == 'success'
+        env:
+          BC_BDS_VERSION: ${{ matrix.gameVersion }}
+          BC_BDS_CHANNEL: ${{ matrix.gameChannel }}
+          BUILDER_EXPECTED_TYPES_VERSION: ${{ steps.acceptance.outputs.types }}
+          BUILDER_ACCEPTANCE_DEPENDENCY_ROOT: ${{ runner.temp }}/acceptance
+          BUILDER_CREATOR_TOOLS_REPORT: ${{ runner.temp }}/builder-creator-tools.json
+          BUILDER_BDS_RUNNER: ${{ runner.temp }}/bds-runner/node_modules/@bedrock-core/bds-runner/bin/bc-bds.mjs
+          BUILDER_BDS_RESULT: ${{ runner.temp }}/builder-gametest.json
+        run: yarn acceptance:native
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() && env.ACT != 'true' }}
+        with:
+          name: minecraft-compatibility-${{ matrix.id }}
+          include-hidden-files: true
+          path: |
+            ${{ runner.temp }}/acceptance/package.json
+            ${{ runner.temp }}/acceptance/yarn.lock
+            ${{ runner.temp }}/builder-creator-tools.json
+            ${{ runner.temp }}/builder-gametest.json
+            .bds/logs/**/*.log
+            .bedrock-core/release/tarballs/verified*.json
+          if-no-files-found: ignore
+
+  gate:
+    name: Minecraft package compatibility
+    if: ${{ !cancelled() && needs.resolve.result != 'skipped' }}
+    needs: [resolve, generate, check]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    defaults:
+      run:
+        working-directory: .
+    env:
+      GENERATION: ${{ needs.generate.result }}
+      ASSETS: ${{ needs.generate.outputs.assets }}
+      REVIEW: ${{ needs.generate.outputs.review }}
+      MATRIX: ${{ needs.check.result }}
+    steps:
+      - name: Require all checks and no unresolved candidate findings
+        run: test "$GENERATION:$ASSETS:$REVIEW:$MATRIX" = 'success:success:false:success'
+
+  propose:
+    if: >-
+      !cancelled() && github.event_name != 'pull_request' &&
+      needs.generate.result == 'success' &&
+      (needs.generate.outputs.propose == 'true' || (needs.gate.result == 'failure' && needs.generate.outputs.changed == 'true'))
+    needs: [generate, gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/create-github-app-token@v3
+        if: env.ACT != 'true'
+        id: app
+        with:
+          client-id: ${{ vars.MINECRAFT_AUTOMATION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.MINECRAFT_AUTOMATION_PRIVATE_KEY }}
+          owner: bedrock-core
+          repositories: builder
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: actions/checkout@v7
+        if: env.ACT != 'true'
+        with:
+          ref: ${{ needs.generate.outputs.base }}
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+      - uses: actions/download-artifact@v8
+        if: env.ACT != 'true'
+        with:
+          name: minecraft-package-candidates
+          path: ${{ runner.temp }}/minecraft-candidates
+      - name: Propose the tested commit
+        if: env.ACT != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          BASE_SHA: ${{ needs.generate.outputs.base }}
+          PREVIOUS: ${{ needs.generate.outputs.previous }}
+          CANDIDATE: ${{ needs.generate.outputs.candidate }}
+          READY: ${{ needs.gate.result == 'success' }}
+          EVIDENCE: ${{ needs.generate.outputs.evidence }}
+        run: |
+          current_base=$(git ls-remote origin "refs/heads/$BASE_BRANCH" | cut -f1)
+          current_head=$(git ls-remote origin "refs/heads/$UPDATE_BRANCH" | cut -f1)
+          current_source=$(git ls-remote origin "$GITHUB_REF" | cut -f1)
+          if [[ "$current_base" != "$BASE_SHA" || "$current_head" != "$PREVIOUS" || "$current_source" != "$GITHUB_SHA" ]]; then
+            echo '::error::The update inputs or PR branch advanced. The newer revision needs its own checks.'
+            exit 1
+          fi
+
+          git fetch "$RUNNER_TEMP/minecraft-candidates/candidate.bundle" HEAD
+          test "$(git rev-parse FETCH_HEAD)" = "$CANDIDATE"
+          if [[ -n "$PREVIOUS" ]]; then git merge-base --is-ancestor "$PREVIOUS" "$CANDIDATE"; fi
+          git push --force-with-lease="refs/heads/$UPDATE_BRANCH:$PREVIOUS" origin "$CANDIDATE:refs/heads/$UPDATE_BRANCH"
+
+          run="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          if [[ "$READY" == 'true' ]]; then
+            status='The candidate packages passed the available Minecraft compatibility checks.'
+          else
+            status='The candidate needs review. See the failed checks and generation reports.'
+          fi
+          {
+            echo "$status"
+            echo
+            echo "[Compatibility run and per-target logs]($run)"
+            echo
+            echo "[Generated distributions, diffs and audits]($EVIDENCE)"
+            echo
+            echo "Pinned package archives are attached to the compatibility run."
+            echo
+            jq -r '((.review | unique) + (.pending | unique))[:12][] | "- " + .' "$RUNNER_TEMP/minecraft-candidates/packages.json"
+          } > "$RUNNER_TEMP/minecraft-update.md"
+
+          number=$(gh api --method GET "repos/$GITHUB_REPOSITORY/pulls" \
+            -f state=open -f base="$BASE_BRANCH" -f head="$GITHUB_REPOSITORY_OWNER:$UPDATE_BRANCH" \
+            --jq '.[0].number // empty')
+          if [[ -z "$number" ]]; then
+            args=()
+            if [[ "$READY" != 'true' ]]; then args+=(--draft); fi
+            gh pr create --title 'Update Minecraft packages' --base "$BASE_BRANCH" --head "$UPDATE_BRANCH" \
+              --body-file "$RUNNER_TEMP/minecraft-update.md" "${args[@]}"
+          else
+            gh pr edit "$number" --body-file "$RUNNER_TEMP/minecraft-update.md"
+            draft=$(gh pr view "$number" --json isDraft --jq .isDraft)
+            if [[ "$READY:$draft" == 'true:true' ]]; then
+              gh pr ready "$number"
+            elif [[ "$READY:$draft" == 'false:false' ]]; then
+              gh pr ready "$number" --undo
+            fi
+          fi

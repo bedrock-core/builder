@@ -1,6 +1,7 @@
 name: Check
 on:
   push:
+    branches-ignore: [renovate/minecraft-sources, automation/minecraft-packages]
   pull_request:
 permissions:
   contents: read
@@ -19,8 +20,15 @@ jobs:
       - run: corepack enable
       - run: yarn install --immutable
       - uses: ./.github/actions/acceptance
+        id: acceptance-dependencies
+        with:
+          mode: ${{ github.head_ref == 'automation/minecraft-packages' && 'registry' || 'candidates' }}
       - run: yarn check
-      - run: yarn acceptance
+      - name: Validate assembled packs with Creator Tools
+        if: ${{ !cancelled() && steps.acceptance-dependencies.outcome == 'success' }}
+        env:
+          BUILDER_CREATOR_TOOLS_REPORT: ${{ runner.temp }}/builder-creator-tools.json
+        run: yarn acceptance
       - run: yarn pack-release
       - run: yarn test:packages
       - name: Keep package verification
@@ -31,6 +39,7 @@ jobs:
           path: |
             .bedrock-core/release/tarballs/verified*.json
             .bedrock-core/acceptance/candidate-*/archives/index.json
+            ${{ runner.temp }}/builder-creator-tools.json
           if-no-files-found: ignore
       - name: Verify release preparation leaves source clean
         run: node -e "const {execFileSync}=require('node:child_process'); const changed=execFileSync('git',['status','--porcelain=v1'],{encoding:'utf8'}).trim(); if(changed){console.error(changed);process.exit(1)}"

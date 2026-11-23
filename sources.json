@@ -1,0 +1,20 @@
+{
+  "bds": {
+    "repository": "https://github.com/Bedrock-OSS/BDS-Versions",
+    "branch": "main",
+    "commit": "0000000000000000000000000000000000000000"
+  },
+  "npm": {
+    "@minecraft/bedrock-schemas": "0",
+    "@minecraft/common": "0",
+    "@minecraft/server": "0",
+    "@minecraft/server-gametest": "0",
+    "@minecraft/server-ui": "0",
+    "@minecraft/vanilla-data": "0"
+  },
+  "releases": {
+    "Mojang/bedrock-samples": "0",
+    "Mojang/bedrock-schemas": "0",
+    "GeyserMC/mappings-generator": "0"
+  }
+}

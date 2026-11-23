@@ -1,0 +1,76 @@
+name: Publish Minecraft packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Packages to publish from reviewed release pins
+        type: choice
+        options: [both, types, asset-maps]
+        default: both
+      types_version:
+        description: Reviewed Bedrock Types version (required for types or both)
+        type: string
+      asset_maps_version:
+        description: Reviewed Asset Maps version (required for asset-maps or both)
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+defaults:
+  run:
+    working-directory: builder
+    shell: bash
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(inputs.target == 'types' && '["bedrock-types"]' || inputs.target == 'asset-maps' && '["asset-maps"]' || '["bedrock-types","asset-maps"]') }}
+    concurrency:
+      group: publish-${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: builder
+          persist-credentials: false
+      - name: Check version inputs
+        env:
+          TARGET: ${{ inputs.target }}
+          TYPES_VERSION: ${{ inputs.types_version }}
+          ASSET_MAPS_VERSION: ${{ inputs.asset_maps_version }}
+        run: |
+          if [[ "$TARGET" != 'asset-maps' && -z "$TYPES_VERSION" ]]; then
+            echo '::error::Enter a reviewed Bedrock Types version in types_version.'
+            exit 1
+          fi
+          if [[ "$TARGET" != 'types' && -z "$ASSET_MAPS_VERSION" ]]; then
+            echo '::error::Enter a reviewed Asset Maps version in asset_maps_version.'
+            exit 1
+          fi
+      - uses: ./builder/.github/actions/minecraft-package-setup
+        with:
+          package: ${{ matrix.package }}
+          registry: https://registry.npmjs.org
+      - name: Audit, verify and publish the selected version
+        env:
+          PACKAGE: ${{ matrix.package }}
+          VERSION: ${{ inputs[matrix.package == 'bedrock-types' && 'types_version' || 'asset_maps_version'] }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: node "packages/$PACKAGE/src/pack.ts" "$VERSION" --publish
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: ${{ matrix.package }}-release
+          include-hidden-files: true
+          path: |
+            builder/packages/${{ matrix.package }}/.bedrock-core/releases/*/*.tgz
+            builder/packages/${{ matrix.package }}/.bedrock-core/releases/*/audit.json
+            builder/packages/${{ matrix.package }}/.bedrock-core/releases/*/vanilla.json
+          if-no-files-found: ignore

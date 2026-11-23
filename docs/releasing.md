@@ -73,6 +73,25 @@ either Builder or CLI publication after that PR has merged. Configure npm truste
 publishing for the repository and `.github/workflows/publish.yml` before using
 the workflow's publish job. Version PR creation does not publish packages.
 
+## Publish Minecraft-versioned packages
+
+**Update Minecraft packages** runs when Renovate updates the Minecraft sources
+branch. It matches upstream inputs to the BDS and SDK matrix, generates candidate
+packages, and opens or refreshes one PR with the release pins. The workflow
+attaches distributions, diffs, and validation results. Candidates with findings
+that need review are draft PRs. Unavailable upstream releases are reported as
+pending.
+
+Run the workflow manually in `audit` mode to check reviewed versions, or select
+`update` on `main` to evaluate new inputs. The optional schema and samples tag
+inputs select specific upstream releases.
+
+After merging a release PR, run **Publish Minecraft packages** from `main`.
+Choose `types`, `asset-maps`, or `both`, and enter the reviewed version for
+each selected package. Each job audits and verifies its own npm tarball. For
+npm trusted publishing, configure `publish-minecraft-packages.yml` for each
+package.
+
 ## Package contents and native acceptance
 
 Use Node.js 26.13.0 or newer. Install Corepack with `npm install --global corepack`
