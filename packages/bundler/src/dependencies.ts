@@ -7,13 +7,13 @@ export { findConfigFile, moduleResolutionOptions, trackedCompiler } from './type
 export class CompilationDependencies {
   /** Existing inputs and missing candidates that can change module resolution. */
   readonly files = new Set<string>();
-  private configs = new Map<string, ResolutionOptions>();
-  private nearest = new Map<string, string | undefined>();
-  private explicitConfig?: string;
+  private _configs = new Map<string, ResolutionOptions>();
+  private _nearest = new Map<string, string | undefined>();
+  private _explicitConfig?: string;
 
   /** Start tracking with an optional TypeScript configuration relative to root. */
   constructor(root: string, config?: string) {
-    this.explicitConfig = config ? path.resolve(root, config) : undefined;
+    this._explicitConfig = config ? path.resolve(root, config) : undefined;
   }
 
   /** Track a resolved path and alternative extensions, index files and package metadata. */
@@ -32,14 +32,14 @@ export class CompilationDependencies {
 
   /** Read the applicable compiler options and track their configuration inputs. */
   config(directory: string): ResolutionOptions {
-    let file = this.explicitConfig;
+    let file = this._explicitConfig;
 
     if (!file) {
-      if (this.nearest.has(directory)) {
-        file = this.nearest.get(directory);
+      if (this._nearest.has(directory)) {
+        file = this._nearest.get(directory);
       } else {
         file = findConfigFile(directory, candidate => this.files.add(candidate));
-        this.nearest.set(directory, file);
+        this._nearest.set(directory, file);
       }
     }
 
@@ -47,13 +47,13 @@ export class CompilationDependencies {
       return {};
     }
 
-    if (!this.configs.has(file)) {
+    if (!this._configs.has(file)) {
       using api = trackedCompiler(candidate => this.files.add(candidate));
 
-      this.configs.set(file, api.parseConfigFile(file).options);
+      this._configs.set(file, api.parseConfigFile(file).options);
     }
 
-    return this.configs.get(file)!;
+    return this._configs.get(file)!;
   }
 
   /** Track relative, npm and tsconfig-alias candidates from the importing directory. */

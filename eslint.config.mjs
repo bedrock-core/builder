@@ -53,4 +53,16 @@ export default defineConfig([
       ],
     },
   },
+
+  {
+    files: ['packages/*/src/**/*.ts'],
+    rules: {
+      '@typescript-eslint/naming-convention': ['error', {
+        selector: 'memberLike',
+        modifiers: ['private'],
+        format: ['camelCase'],
+        leadingUnderscore: 'require',
+      }],
+    },
+  },
 ]);

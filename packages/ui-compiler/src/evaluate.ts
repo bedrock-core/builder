@@ -3,16 +3,16 @@ import type { UiEnvironment, UiRequest } from './types.ts';
 
 /** Bound module memory while evaluating screens against one shared toolkit bundle. */
 export class UiEvaluator {
-  private worker?: Worker;
-  private count = 0;
-  private pending = false;
-  private readonly environment: UiEnvironment;
-  private readonly signal?: AbortSignal;
+  private _worker?: Worker;
+  private _count = 0;
+  private _pending = false;
+  private readonly _environment: UiEnvironment;
+  private readonly _signal?: AbortSignal;
 
   /** Configure the shared toolkit bundle and cooperative cancellation for worker requests. */
   constructor(environment: UiEnvironment, signal?: AbortSignal) {
-    this.environment = environment;
-    this.signal = signal;
+    this._environment = environment;
+    this._signal = signal;
   }
 
   /**
@@ -22,19 +22,19 @@ export class UiEvaluator {
    * @throws If another request is pending, evaluation fails or cancellation occurs.
    */
   async request<T>(message: UiRequest): Promise<T> {
-    this.signal?.throwIfAborted();
+    this._signal?.throwIfAborted();
 
-    if (this.pending) {
+    if (this._pending) {
       throw new Error('UI compilation is sequential');
     }
 
-    if (this.count >= 64) {
+    if (this._count >= 64) {
       await this.close();
     }
 
-    this.pending = true;
-    const worker = this.worker ??= new Worker(new URL(import.meta.url.endsWith('.ts') ? './worker.ts' : './worker.js', import.meta.url), {
-      workerData: this.environment,
+    this._pending = true;
+    const worker = this._worker ??= new Worker(new URL(import.meta.url.endsWith('.ts') ? './worker.ts' : './worker.js', import.meta.url), {
+      workerData: this._environment,
       ...(process.execArgv.some(argument => argument.startsWith('--input-type')) ? { execArgv: [] } : {}),
     });
 
@@ -44,7 +44,7 @@ export class UiEvaluator {
           worker.off('message', receive);
           worker.off('error', fail);
           worker.off('exit', exited);
-          this.signal?.removeEventListener('abort', abort);
+          this._signal?.removeEventListener('abort', abort);
         };
 
         const receive = (response: { value?: unknown; error?: Error }) => {
@@ -66,27 +66,27 @@ export class UiEvaluator {
 
         const abort = () => {
           void worker.terminate();
-          fail(this.signal!.reason);
+          fail(this._signal!.reason);
         };
 
         worker.once('message', receive);
         worker.once('error', fail);
         worker.once('exit', exited);
-        this.signal?.addEventListener('abort', abort, { once: true });
+        this._signal?.addEventListener('abort', abort, { once: true });
         worker.postMessage(message);
       });
     } finally {
-      this.count++;
-      this.pending = false;
+      this._count++;
+      this._pending = false;
     }
   }
 
   /** Terminate the active worker and reset its module lifetime; call in a finally block. */
   async close(): Promise<void> {
-    const worker = this.worker;
+    const worker = this._worker;
 
-    this.worker = undefined;
-    this.count = 0;
+    this._worker = undefined;
+    this._count = 0;
     await worker?.terminate();
   }
 }
