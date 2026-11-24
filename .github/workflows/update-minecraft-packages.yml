@@ -429,22 +429,12 @@ jobs:
       run:
         working-directory: .
     steps:
-      - uses: actions/create-github-app-token@v3
-        if: env.ACT != 'true'
-        id: app
-        with:
-          client-id: ${{ vars.MINECRAFT_AUTOMATION_APP_CLIENT_ID }}
-          private-key: ${{ secrets.MINECRAFT_AUTOMATION_PRIVATE_KEY }}
-          owner: bedrock-core
-          repositories: builder
-          permission-contents: write
-          permission-pull-requests: write
       - uses: actions/checkout@v7
         if: env.ACT != 'true'
         with:
           ref: ${{ needs.generate.outputs.base }}
           fetch-depth: 0
-          token: ${{ steps.app.outputs.token }}
+          token: ${{ secrets.MINECRAFT_AUTOMATION_TOKEN }}
       - uses: actions/download-artifact@v8
         if: env.ACT != 'true'
         with:
@@ -453,7 +443,7 @@ jobs:
       - name: Propose the tested commit
         if: env.ACT != 'true'
         env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_TOKEN: ${{ secrets.MINECRAFT_AUTOMATION_TOKEN }}
           BASE_BRANCH: ${{ github.event.repository.default_branch }}
           BASE_SHA: ${{ needs.generate.outputs.base }}
           PREVIOUS: ${{ needs.generate.outputs.previous }}
