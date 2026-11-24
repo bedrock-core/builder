@@ -97,7 +97,9 @@ async function pack(directory: string, only?: string): Promise<void> {
 yarn(['pack-release'], repository);
 const builderDirectory = path.join(repository, '.bedrock-core/release/tarballs');
 const builderPackages = JSON.parse(await readFile(path.join(builderDirectory, 'index.json'), 'utf8')) as { name: string; file: string }[];
-const builderResolutions = Object.fromEntries(builderPackages.filter(pkg => pkg.name.startsWith('@bedrock-core/builder')).map(pkg => [pkg.name, `file:${path.join(builderDirectory, pkg.file).replaceAll('\\', '/')}`]));
+const builderResolutions = Object.fromEntries(builderPackages
+  .filter(pkg => pkg.name.startsWith('@bedrock-core/builder') || pkg.name === '@bedrock-core/bedrock-types')
+  .map(pkg => [pkg.name, `file:${path.join(builderDirectory, pkg.file).replaceAll('\\', '/')}`]));
 const ui = await snapshot(args[1], 'ui');
 
 await install(ui, builderResolutions);
