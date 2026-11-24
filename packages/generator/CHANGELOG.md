@@ -1,5 +1,29 @@
 # @bedrock-core/builder-generator
 
+## 0.3.0
+
+### Minor Changes
+
+- 8adcb6e: Expose native Bedrock document types through the `@bedrock-core/bedrock-types` package root. Keep schema preparation, corrections, declaration compilation and distribution builds in the types package. The generator evaluates content templates using published document types.
+  
+  Provide detailed animations, controller state machines and render controllers. Share client-resource descriptions and scripts between entities and attachables, retaining their document-specific fields and conditional item bindings.
+  
+  Expose extensible component registries and reuse their maps in native documents. Standardize declaration cleanup, semantic duplicate detection, bounded-array output and interface spacing.
+  
+  Use extensionless declaration imports and resolve generated definitions in the package's authoring project. Keep vanilla-only block metadata outside the public authoring API.
+  
+  Run optional Creator Tools validation on the assembled behavior and resource packs and report rule diagnostics with pack paths.
+  
+  Check final JSON documents against the installed native Bedrock types for the project's target version. Expose the release as `typesVersion` and each checked document as a `category`. Use `typesRoot` to select an explicit types package.
+
+### Patch Changes
+
+- Updated dependencies [62e4639]
+- Updated dependencies [8adcb6e]
+- Updated dependencies [8adcb6e]
+- Updated dependencies [62e4639]
+  - @bedrock-core/builder-bundler@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

@@ -1,6 +1,6 @@
 {
   "name": "@bedrock-core/builder-validation",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Standalone pack content validation against native Bedrock document types",
   "exports": {
