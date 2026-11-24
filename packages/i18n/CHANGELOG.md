@@ -1,5 +1,15 @@
 # @bedrock-core/builder-i18n
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [62e4639]
+- Updated dependencies [8adcb6e]
+- Updated dependencies [8adcb6e]
+- Updated dependencies [62e4639]
+  - @bedrock-core/builder-bundler@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

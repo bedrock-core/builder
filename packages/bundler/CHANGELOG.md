@@ -1,5 +1,29 @@
 # @bedrock-core/builder-bundler
 
+## 0.3.0
+
+### Minor Changes
+
+- 62e4639: Compose pinned Mojang asset documents with JSON-only rendering supplements. Validate source and document hashes, preserve native component precedence, and expose build-time asset collection for rendering consumers. Generate schema version 2 asset bundles with native geometry model records and block rendering components.
+
+### Patch Changes
+
+- 8adcb6e: Keep debug source maps linked to authored and external TypeScript files when packs are exported, including cached builds. Include the generated JavaScript filename for debugger lookup.
+  
+  Retain generated debug sources in the project cache so their frames remain inspectable after temporary build cleanup.
+- 8adcb6e: Expose native Bedrock document types through the `@bedrock-core/bedrock-types` package root. Keep schema preparation, corrections, declaration compilation and distribution builds in the types package. The generator evaluates content templates using published document types.
+  
+  Provide detailed animations, controller state machines and render controllers. Share client-resource descriptions and scripts between entities and attachables, retaining their document-specific fields and conditional item bindings.
+  
+  Expose extensible component registries and reuse their maps in native documents. Standardize declaration cleanup, semantic duplicate detection, bounded-array output and interface spacing.
+  
+  Use extensionless declaration imports and resolve generated definitions in the package's authoring project. Keep vanilla-only block metadata outside the public authoring API.
+  
+  Run optional Creator Tools validation on the assembled behavior and resource packs and report rule diagnostics with pack paths.
+  
+  Check final JSON documents against the installed native Bedrock types for the project's target version. Expose the release as `typesVersion` and each checked document as a `category`. Use `typesRoot` to select an explicit types package.
+- 62e4639: Collect schema-typed native entity documents, render-only block/item definitions, icon bindings and carried textures into addon asset registries.
+
 ## 0.2.0
 
 ### Minor Changes

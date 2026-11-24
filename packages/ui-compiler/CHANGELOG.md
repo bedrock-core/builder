@@ -1,5 +1,21 @@
 # @bedrock-core/builder-ui
 
+## 0.4.0
+
+### Minor Changes
+
+- 68dac73: Compile and register virtual container screens with their complete native allocation, snapshots and runtime metadata. Generate their protocol items in the owning behavior pack without requiring an entity or block definition.
+  
+  Remove experimental Ore host settings, browser assets and input-resource packaging from UI builds.
+
+### Patch Changes
+
+- Updated dependencies [62e4639]
+- Updated dependencies [8adcb6e]
+- Updated dependencies [8adcb6e]
+- Updated dependencies [62e4639]
+  - @bedrock-core/builder-bundler@0.3.0
+
 ## 0.3.0
 
 ### Minor Changes

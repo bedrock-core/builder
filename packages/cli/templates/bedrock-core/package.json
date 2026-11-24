@@ -48,11 +48,11 @@
 		"typescript": "^6.0.3",
 		"typescript-eslint": "^8.60.1",
 		"typescript-native": "npm:typescript@7.1.0-beta",
-		"@bedrock-core/builder": "0.2.0",
+		"@bedrock-core/builder": "0.3.0",
 		"@bedrock-core/bds-runner": "^0.3.0",
 		"eslint-plugin-react-hooks": "7.1.1",
 		"@bedrock-core/bedrock-types": "~26.50.5",
-		"@bedrock-core/builder-generator": "0.2.0"
+		"@bedrock-core/builder-generator": "0.3.0"
 	},
 	"packageManager": "yarn@4.18.0",
 	"engines": {

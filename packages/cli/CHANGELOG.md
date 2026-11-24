@@ -1,5 +1,11 @@
 # @bedrock-core/cli
 
+## 0.13.1
+
+### Patch Changes
+
+- 8adcb6e: Include native BDS profiling commands and a VS Code Minecraft debugger task in full and script starters, with source maps and the generated script module identity configured.
+
 ## 0.13.0
 
 ### Minor Changes
