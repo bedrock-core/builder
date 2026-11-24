@@ -1,0 +1,1195 @@
+{
+  "schemaVersion": 1,
+  "java": "26.3",
+  "client": "4508d006323f24fa02876310c192d739af56516eb259000ac50f0909a68c9a2d",
+  "models": {
+    "minecraft:chest": {
+      "transform": [],
+      "layers": {
+        "main": {
+          "textureLocation": "minecraft:textures/entity/chest/normal.png",
+          "render": "cutout_cull"
+        }
+      }
+    },
+    "minecraft:double_chest_left": {
+      "transform": [],
+      "layers": {
+        "main": {
+          "textureLocation": "minecraft:textures/entity/chest/normal_left.png",
+          "render": "cutout_cull"
+        }
+      }
+    },
+    "minecraft:double_chest_right": {
+      "transform": [],
+      "layers": {
+        "main": {
+          "textureLocation": "minecraft:textures/entity/chest/normal_right.png",
+          "render": "cutout_cull"
+        }
+      }
+    },
+    "minecraft:boat/oak": {
+      "transform": [
+        {
+          "translate": [
+            0,
+            6,
+            0
+          ]
+        },
+        {
+          "rotate": [
+            0,
+            3.1415927,
+            0
+          ]
+        },
+        {
+          "scale": [
+            -1,
+            -1,
+            1
+          ]
+        },
+        {
+          "rotate": [
+            0,
+            1.5707964,
+            0
+          ]
+        }
+      ],
+      "layers": {
+        "main": {
+          "textureLocation": "minecraft:textures/entity/boat/oak.png"
+        }
+      }
+    },
+    "minecraft:chest_boat/oak": {
+      "transform": [
+        {
+          "translate": [
+            0,
+            6,
+            0
+          ]
+        },
+        {
+          "rotate": [
+            0,
+            3.1415927,
+            0
+          ]
+        },
+        {
+          "scale": [
+            -1,
+            -1,
+            1
+          ]
+        },
+        {
+          "rotate": [
+            0,
+            1.5707964,
+            0
+          ]
+        }
+      ],
+      "layers": {
+        "main": {
+          "textureLocation": "minecraft:textures/entity/chest_boat/oak.png"
+        }
+      }
+    },
+    "minecraft:standing_banner": {
+      "transform": [
+        {
+          "translate": [
+            8,
+            0,
+            8
+          ]
+        },
+        {
+          "scale": [
+            0.6666667,
+            -0.6666667,
+            -0.6666667
+          ]
+        }
+      ],
+      "layers": {
+        "flag": {
+          "textureLocation": "minecraft:textures/entity/banner/banner_base.png",
+          "render": "solid"
+        },
+        "main": {
+          "textureLocation": "minecraft:textures/entity/banner/banner_base.png",
+          "render": "solid"
+        }
+      }
+    },
+    "minecraft:wall_banner": {
+      "transform": [
+        {
+          "translate": [
+            8,
+            0,
+            8
+          ]
+        },
+        {
+          "scale": [
+            0.6666667,
+            -0.6666667,
+            -0.6666667
+          ]
+        }
+      ],
+      "layers": {
+        "flag": {
+          "textureLocation": "minecraft:textures/entity/banner/banner_base.png",
+          "render": "solid"
+        },
+        "main": {
+          "textureLocation": "minecraft:textures/entity/banner/banner_base.png",
+          "render": "solid"
+        }
+      }
+    },
+    "minecraft:conduit": {
+      "transform": [
+        {
+          "translate": [
+            8,
+            8,
+            8
+          ]
+        }
+      ],
+      "layers": {
+        "cage": {
+          "textureLocation": "minecraft:textures/entity/conduit/cage.png"
+        },
+        "eye": {
+          "textureLocation": "minecraft:textures/entity/conduit/closed_eye.png"
+        },
+        "shell": {
+          "textureLocation": "minecraft:textures/entity/conduit/base.png",
+          "render": "solid"
+        },
+        "wind": {
+          "textureLocation": "minecraft:textures/entity/conduit/wind.png"
+        }
+      }
+    },
+    "minecraft:decorated_pot_base": {
+      "transform": [
+        {
+          "translate": [
+            8,
+            0,
+            8
+          ]
+        },
+        {
+          "rotate": [
+            0,
+            3.1415927,
+            0
+          ]
+        },
+        {
+          "translate": [
+            -8,
+            0,
+            -8
+          ]
+        }
+      ],
+      "layers": {
+        "main": {
+          "textureLocation": "minecraft:textures/entity/decorated_pot/decorated_pot_base.png",
+          "render": "solid"
+        }
+      }
+    },
+    "minecraft:decorated_pot_sides": {
+      "transform": [
+        {
+          "translate": [
+            8,
+            0,
+            8
+          ]
+        },
+        {
+          "rotate": [
+            0,
+            3.1415927,
+            0
+          ]
+        },
+        {
+          "translate": [
+            -8,
+            0,
+            -8
+          ]
+        }
+      ],
+      "layers": {
+        "main": {
+          "textureLocation": "minecraft:textures/entity/decorated_pot/decorated_pot_side.png",
+          "render": "solid"
+        }
+      }
+    }
+  },
+  "blocks": {
+    "minecraft:black_banner": {
+      "parts": [
+        {
+          "model": "minecraft:standing_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:standing_banner"
+        }
+      ],
+      "rotation": {
+        "property": "rotation",
+        "step": -22.5
+      }
+    },
+    "minecraft:black_wall_banner": {
+      "parts": [
+        {
+          "model": "minecraft:wall_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:wall_banner"
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:blue_banner": {
+      "parts": [
+        {
+          "model": "minecraft:standing_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:standing_banner"
+        }
+      ],
+      "rotation": {
+        "property": "rotation",
+        "step": -22.5
+      }
+    },
+    "minecraft:blue_wall_banner": {
+      "parts": [
+        {
+          "model": "minecraft:wall_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:wall_banner"
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:brown_banner": {
+      "parts": [
+        {
+          "model": "minecraft:standing_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:standing_banner"
+        }
+      ],
+      "rotation": {
+        "property": "rotation",
+        "step": -22.5
+      }
+    },
+    "minecraft:brown_wall_banner": {
+      "parts": [
+        {
+          "model": "minecraft:wall_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:wall_banner"
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:chest": {
+      "parts": [
+        {
+          "model": "minecraft:chest",
+          "when": {
+            "type": "single"
+          }
+        },
+        {
+          "model": "minecraft:double_chest_left",
+          "when": {
+            "type": "left"
+          }
+        },
+        {
+          "model": "minecraft:double_chest_right",
+          "when": {
+            "type": "right"
+          }
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:conduit": {
+      "parts": [
+        {
+          "layer": "shell",
+          "model": "minecraft:conduit"
+        }
+      ]
+    },
+    "minecraft:copper_chest": {
+      "parts": [
+        {
+          "model": "minecraft:chest",
+          "textureLocation": "minecraft:textures/entity/chest/copper.png",
+          "when": {
+            "type": "single"
+          }
+        },
+        {
+          "model": "minecraft:double_chest_left",
+          "textureLocation": "minecraft:textures/entity/chest/copper_left.png",
+          "when": {
+            "type": "left"
+          }
+        },
+        {
+          "model": "minecraft:double_chest_right",
+          "textureLocation": "minecraft:textures/entity/chest/copper_right.png",
+          "when": {
+            "type": "right"
+          }
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:cyan_banner": {
+      "parts": [
+        {
+          "model": "minecraft:standing_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:standing_banner"
+        }
+      ],
+      "rotation": {
+        "property": "rotation",
+        "step": -22.5
+      }
+    },
+    "minecraft:cyan_wall_banner": {
+      "parts": [
+        {
+          "model": "minecraft:wall_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:wall_banner"
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:decorated_pot": {
+      "parts": [
+        {
+          "model": "minecraft:decorated_pot_base"
+        },
+        {
+          "model": "minecraft:decorated_pot_sides"
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:ender_chest": {
+      "parts": [
+        {
+          "model": "minecraft:chest",
+          "textureLocation": "minecraft:textures/entity/chest/ender.png"
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:exposed_copper_chest": {
+      "parts": [
+        {
+          "model": "minecraft:chest",
+          "textureLocation": "minecraft:textures/entity/chest/copper_exposed.png",
+          "when": {
+            "type": "single"
+          }
+        },
+        {
+          "model": "minecraft:double_chest_left",
+          "textureLocation": "minecraft:textures/entity/chest/copper_exposed_left.png",
+          "when": {
+            "type": "left"
+          }
+        },
+        {
+          "model": "minecraft:double_chest_right",
+          "textureLocation": "minecraft:textures/entity/chest/copper_exposed_right.png",
+          "when": {
+            "type": "right"
+          }
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:gray_banner": {
+      "parts": [
+        {
+          "model": "minecraft:standing_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:standing_banner"
+        }
+      ],
+      "rotation": {
+        "property": "rotation",
+        "step": -22.5
+      }
+    },
+    "minecraft:gray_wall_banner": {
+      "parts": [
+        {
+          "model": "minecraft:wall_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:wall_banner"
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:green_banner": {
+      "parts": [
+        {
+          "model": "minecraft:standing_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:standing_banner"
+        }
+      ],
+      "rotation": {
+        "property": "rotation",
+        "step": -22.5
+      }
+    },
+    "minecraft:green_wall_banner": {
+      "parts": [
+        {
+          "model": "minecraft:wall_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:wall_banner"
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:light_blue_banner": {
+      "parts": [
+        {
+          "model": "minecraft:standing_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:standing_banner"
+        }
+      ],
+      "rotation": {
+        "property": "rotation",
+        "step": -22.5
+      }
+    },
+    "minecraft:light_blue_wall_banner": {
+      "parts": [
+        {
+          "model": "minecraft:wall_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:wall_banner"
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:light_gray_banner": {
+      "parts": [
+        {
+          "model": "minecraft:standing_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:standing_banner"
+        }
+      ],
+      "rotation": {
+        "property": "rotation",
+        "step": -22.5
+      }
+    },
+    "minecraft:light_gray_wall_banner": {
+      "parts": [
+        {
+          "model": "minecraft:wall_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:wall_banner"
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:lime_banner": {
+      "parts": [
+        {
+          "model": "minecraft:standing_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:standing_banner"
+        }
+      ],
+      "rotation": {
+        "property": "rotation",
+        "step": -22.5
+      }
+    },
+    "minecraft:lime_wall_banner": {
+      "parts": [
+        {
+          "model": "minecraft:wall_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:wall_banner"
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:magenta_banner": {
+      "parts": [
+        {
+          "model": "minecraft:standing_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:standing_banner"
+        }
+      ],
+      "rotation": {
+        "property": "rotation",
+        "step": -22.5
+      }
+    },
+    "minecraft:magenta_wall_banner": {
+      "parts": [
+        {
+          "model": "minecraft:wall_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:wall_banner"
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:orange_banner": {
+      "parts": [
+        {
+          "model": "minecraft:standing_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:standing_banner"
+        }
+      ],
+      "rotation": {
+        "property": "rotation",
+        "step": -22.5
+      }
+    },
+    "minecraft:orange_wall_banner": {
+      "parts": [
+        {
+          "model": "minecraft:wall_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:wall_banner"
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:oxidized_copper_chest": {
+      "parts": [
+        {
+          "model": "minecraft:chest",
+          "textureLocation": "minecraft:textures/entity/chest/copper_oxidized.png",
+          "when": {
+            "type": "single"
+          }
+        },
+        {
+          "model": "minecraft:double_chest_left",
+          "textureLocation": "minecraft:textures/entity/chest/copper_oxidized_left.png",
+          "when": {
+            "type": "left"
+          }
+        },
+        {
+          "model": "minecraft:double_chest_right",
+          "textureLocation": "minecraft:textures/entity/chest/copper_oxidized_right.png",
+          "when": {
+            "type": "right"
+          }
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:pink_banner": {
+      "parts": [
+        {
+          "model": "minecraft:standing_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:standing_banner"
+        }
+      ],
+      "rotation": {
+        "property": "rotation",
+        "step": -22.5
+      }
+    },
+    "minecraft:pink_wall_banner": {
+      "parts": [
+        {
+          "model": "minecraft:wall_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:wall_banner"
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:purple_banner": {
+      "parts": [
+        {
+          "model": "minecraft:standing_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:standing_banner"
+        }
+      ],
+      "rotation": {
+        "property": "rotation",
+        "step": -22.5
+      }
+    },
+    "minecraft:purple_wall_banner": {
+      "parts": [
+        {
+          "model": "minecraft:wall_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:wall_banner"
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:red_banner": {
+      "parts": [
+        {
+          "model": "minecraft:standing_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:standing_banner"
+        }
+      ],
+      "rotation": {
+        "property": "rotation",
+        "step": -22.5
+      }
+    },
+    "minecraft:red_wall_banner": {
+      "parts": [
+        {
+          "model": "minecraft:wall_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:wall_banner"
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:trapped_chest": {
+      "parts": [
+        {
+          "model": "minecraft:chest",
+          "textureLocation": "minecraft:textures/entity/chest/trapped.png",
+          "when": {
+            "type": "single"
+          }
+        },
+        {
+          "model": "minecraft:double_chest_left",
+          "textureLocation": "minecraft:textures/entity/chest/trapped_left.png",
+          "when": {
+            "type": "left"
+          }
+        },
+        {
+          "model": "minecraft:double_chest_right",
+          "textureLocation": "minecraft:textures/entity/chest/trapped_right.png",
+          "when": {
+            "type": "right"
+          }
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:waxed_copper_chest": {
+      "parts": [
+        {
+          "model": "minecraft:chest",
+          "textureLocation": "minecraft:textures/entity/chest/copper.png",
+          "when": {
+            "type": "single"
+          }
+        },
+        {
+          "model": "minecraft:double_chest_left",
+          "textureLocation": "minecraft:textures/entity/chest/copper_left.png",
+          "when": {
+            "type": "left"
+          }
+        },
+        {
+          "model": "minecraft:double_chest_right",
+          "textureLocation": "minecraft:textures/entity/chest/copper_right.png",
+          "when": {
+            "type": "right"
+          }
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:waxed_exposed_copper_chest": {
+      "parts": [
+        {
+          "model": "minecraft:chest",
+          "textureLocation": "minecraft:textures/entity/chest/copper_exposed.png",
+          "when": {
+            "type": "single"
+          }
+        },
+        {
+          "model": "minecraft:double_chest_left",
+          "textureLocation": "minecraft:textures/entity/chest/copper_exposed_left.png",
+          "when": {
+            "type": "left"
+          }
+        },
+        {
+          "model": "minecraft:double_chest_right",
+          "textureLocation": "minecraft:textures/entity/chest/copper_exposed_right.png",
+          "when": {
+            "type": "right"
+          }
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:waxed_oxidized_copper_chest": {
+      "parts": [
+        {
+          "model": "minecraft:chest",
+          "textureLocation": "minecraft:textures/entity/chest/copper_oxidized.png",
+          "when": {
+            "type": "single"
+          }
+        },
+        {
+          "model": "minecraft:double_chest_left",
+          "textureLocation": "minecraft:textures/entity/chest/copper_oxidized_left.png",
+          "when": {
+            "type": "left"
+          }
+        },
+        {
+          "model": "minecraft:double_chest_right",
+          "textureLocation": "minecraft:textures/entity/chest/copper_oxidized_right.png",
+          "when": {
+            "type": "right"
+          }
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:waxed_weathered_copper_chest": {
+      "parts": [
+        {
+          "model": "minecraft:chest",
+          "textureLocation": "minecraft:textures/entity/chest/copper_weathered.png",
+          "when": {
+            "type": "single"
+          }
+        },
+        {
+          "model": "minecraft:double_chest_left",
+          "textureLocation": "minecraft:textures/entity/chest/copper_weathered_left.png",
+          "when": {
+            "type": "left"
+          }
+        },
+        {
+          "model": "minecraft:double_chest_right",
+          "textureLocation": "minecraft:textures/entity/chest/copper_weathered_right.png",
+          "when": {
+            "type": "right"
+          }
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:weathered_copper_chest": {
+      "parts": [
+        {
+          "model": "minecraft:chest",
+          "textureLocation": "minecraft:textures/entity/chest/copper_weathered.png",
+          "when": {
+            "type": "single"
+          }
+        },
+        {
+          "model": "minecraft:double_chest_left",
+          "textureLocation": "minecraft:textures/entity/chest/copper_weathered_left.png",
+          "when": {
+            "type": "left"
+          }
+        },
+        {
+          "model": "minecraft:double_chest_right",
+          "textureLocation": "minecraft:textures/entity/chest/copper_weathered_right.png",
+          "when": {
+            "type": "right"
+          }
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:white_banner": {
+      "parts": [
+        {
+          "model": "minecraft:standing_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:standing_banner"
+        }
+      ],
+      "rotation": {
+        "property": "rotation",
+        "step": -22.5
+      }
+    },
+    "minecraft:white_wall_banner": {
+      "parts": [
+        {
+          "model": "minecraft:wall_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:wall_banner"
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    },
+    "minecraft:yellow_banner": {
+      "parts": [
+        {
+          "model": "minecraft:standing_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:standing_banner"
+        }
+      ],
+      "rotation": {
+        "property": "rotation",
+        "step": -22.5
+      }
+    },
+    "minecraft:yellow_wall_banner": {
+      "parts": [
+        {
+          "model": "minecraft:wall_banner"
+        },
+        {
+          "layer": "flag",
+          "model": "minecraft:wall_banner"
+        }
+      ],
+      "rotation": {
+        "degrees": {
+          "east": 90,
+          "north": 180,
+          "south": 0,
+          "west": 270
+        },
+        "property": "facing"
+      }
+    }
+  }
+}

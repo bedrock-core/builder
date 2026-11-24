@@ -1,0 +1,852 @@
+{
+  "schemaVersion": 1,
+  "minecraft": "1.26.60.5",
+  "blocks": {
+    "minecraft:iron_chain": "minecraft:chain"
+  },
+  "items": {
+    "minecraft:iron_chain": {
+      "default": "item:chain"
+    },
+    "minecraft:acacia_boat": {
+      "default": {
+        "alias": "boat",
+        "index": 4
+      }
+    },
+    "minecraft:acacia_sign": {
+      "default": "item:sign_acacia"
+    },
+    "minecraft:allay_spawn_egg": {
+      "default": "item:spawn_egg_allay"
+    },
+    "minecraft:armadillo_spawn_egg": {
+      "default": "item:spawn_egg_armadillo"
+    },
+    "minecraft:axolotl_bucket": {
+      "default": {
+        "alias": "bucket",
+        "index": 9
+      }
+    },
+    "minecraft:axolotl_spawn_egg": {
+      "default": "item:spawn_egg_axolotl"
+    },
+    "minecraft:baked_potato": {
+      "default": "item:potato_baked"
+    },
+    "minecraft:bat_spawn_egg": {
+      "default": "item:spawn_egg_bat"
+    },
+    "minecraft:bee_spawn_egg": {
+      "default": "item:spawn_egg_bee"
+    },
+    "minecraft:beef": {
+      "default": "item:beef_raw"
+    },
+    "minecraft:beetroot_seeds": {
+      "default": "item:seeds_beetroot"
+    },
+    "minecraft:birch_boat": {
+      "default": {
+        "alias": "boat",
+        "index": 2
+      }
+    },
+    "minecraft:birch_sign": {
+      "default": "item:sign_birch"
+    },
+    "minecraft:black_dye": {
+      "default": {
+        "alias": "dye_powder",
+        "index": 16
+      }
+    },
+    "minecraft:black_harness": {
+      "default": "item:harness_black"
+    },
+    "minecraft:blaze_spawn_egg": {
+      "default": "item:spawn_egg_blaze"
+    },
+    "minecraft:blue_dye": {
+      "default": {
+        "alias": "dye_powder",
+        "index": 18
+      }
+    },
+    "minecraft:blue_harness": {
+      "default": "item:harness_blue"
+    },
+    "minecraft:bogged_spawn_egg": {
+      "default": "item:spawn_egg_bogged"
+    },
+    "minecraft:bone_meal": {
+      "default": {
+        "alias": "dye_powder",
+        "index": 15
+      }
+    },
+    "minecraft:book": {
+      "default": "item:book_normal"
+    },
+    "minecraft:bow": {
+      "default": "item:bow_standby"
+    },
+    "minecraft:breeze_spawn_egg": {
+      "default": "item:spawn_egg_breeze"
+    },
+    "minecraft:brown_dye": {
+      "default": {
+        "alias": "dye_powder",
+        "index": 17
+      }
+    },
+    "minecraft:brown_harness": {
+      "default": "item:harness_brown"
+    },
+    "minecraft:bucket": {
+      "default": {
+        "alias": "bucket",
+        "index": 0
+      }
+    },
+    "minecraft:camel_husk_spawn_egg": {
+      "default": "item:spawn_egg_camel_husk"
+    },
+    "minecraft:camel_spawn_egg": {
+      "default": "item:spawn_egg_camel"
+    },
+    "minecraft:cat_spawn_egg": {
+      "default": "item:spawn_egg_cat"
+    },
+    "minecraft:cave_spider_spawn_egg": {
+      "default": "item:spawn_egg_cave_spider"
+    },
+    "minecraft:chest_minecart": {
+      "default": "item:minecart_chest"
+    },
+    "minecraft:chicken": {
+      "default": "item:chicken_raw"
+    },
+    "minecraft:chicken_spawn_egg": {
+      "default": "item:spawn_egg_chicken"
+    },
+    "minecraft:clock": {
+      "default": "item:clock_item"
+    },
+    "minecraft:cocoa_beans": {
+      "default": {
+        "alias": "dye_powder",
+        "index": 3
+      }
+    },
+    "minecraft:cod": {
+      "default": "item:fish"
+    },
+    "minecraft:cod_bucket": {
+      "default": {
+        "alias": "bucket",
+        "index": 4
+      }
+    },
+    "minecraft:cod_spawn_egg": {
+      "default": "item:spawn_egg_cod"
+    },
+    "minecraft:command_block_minecart": {
+      "default": "item:minecart_command_block"
+    },
+    "minecraft:compass": {
+      "default": "item:compass_item"
+    },
+    "minecraft:cooked_beef": {
+      "default": "item:beef_cooked"
+    },
+    "minecraft:cooked_chicken": {
+      "default": "item:chicken_cooked"
+    },
+    "minecraft:cooked_cod": {
+      "default": "item:cooked_fish"
+    },
+    "minecraft:cooked_mutton": {
+      "default": "item:mutton_cooked"
+    },
+    "minecraft:cooked_porkchop": {
+      "default": "item:porkchop_cooked"
+    },
+    "minecraft:cooked_rabbit": {
+      "default": "item:rabbit_cooked"
+    },
+    "minecraft:copper_golem_spawn_egg": {
+      "default": "item:spawn_egg_copper_golem"
+    },
+    "minecraft:cow_spawn_egg": {
+      "default": "item:spawn_egg_cow"
+    },
+    "minecraft:creaking_spawn_egg": {
+      "default": "item:spawn_egg_creaking"
+    },
+    "minecraft:creeper_spawn_egg": {
+      "default": "item:spawn_egg_creeper"
+    },
+    "minecraft:crimson_sign": {
+      "default": "item:crimson_sign_item"
+    },
+    "minecraft:crossbow": {
+      "default": "item:crossbow_standby"
+    },
+    "minecraft:cyan_dye": {
+      "default": {
+        "alias": "dye_powder",
+        "index": 6
+      }
+    },
+    "minecraft:cyan_harness": {
+      "default": "item:harness_cyan"
+    },
+    "minecraft:dark_oak_boat": {
+      "default": {
+        "alias": "boat",
+        "index": 5
+      }
+    },
+    "minecraft:dark_oak_sign": {
+      "default": "item:sign_darkoak"
+    },
+    "minecraft:dolphin_spawn_egg": {
+      "default": "item:spawn_egg_dolphin"
+    },
+    "minecraft:donkey_spawn_egg": {
+      "default": "item:spawn_egg_donkey"
+    },
+    "minecraft:drowned_spawn_egg": {
+      "default": "item:spawn_egg_drowned"
+    },
+    "minecraft:elder_guardian_spawn_egg": {
+      "default": "item:spawn_egg_elder_guardian"
+    },
+    "minecraft:empty_map": {
+      "default": "item:map_empty"
+    },
+    "minecraft:enchanted_book": {
+      "default": "item:book_enchanted"
+    },
+    "minecraft:enchanted_golden_apple": {
+      "default": "item:apple_golden"
+    },
+    "minecraft:ender_dragon_spawn_egg": {
+      "default": "item:spawn_egg_ender_dragon"
+    },
+    "minecraft:enderman_spawn_egg": {
+      "default": "item:spawn_egg_enderman"
+    },
+    "minecraft:endermite_spawn_egg": {
+      "default": "item:spawn_egg_endermite"
+    },
+    "minecraft:evoker_spawn_egg": {
+      "default": "item:spawn_egg_evoker"
+    },
+    "minecraft:fermented_spider_eye": {
+      "default": "item:spider_eye_fermented"
+    },
+    "minecraft:filled_map": {
+      "default": "item:map_filled"
+    },
+    "minecraft:fire_charge": {
+      "default": "item:fireball"
+    },
+    "minecraft:firework_rocket": {
+      "default": "item:fireworks"
+    },
+    "minecraft:firework_star": {
+      "default": "item:fireworks_charge"
+    },
+    "minecraft:fox_spawn_egg": {
+      "default": "item:spawn_egg_fox"
+    },
+    "minecraft:frog_spawn_egg": {
+      "default": "item:spawn_egg_frog"
+    },
+    "minecraft:ghast_spawn_egg": {
+      "default": "item:spawn_egg_ghast"
+    },
+    "minecraft:glass_bottle": {
+      "default": "item:potion_bottle_empty"
+    },
+    "minecraft:glistering_melon_slice": {
+      "default": "item:melon_speckled"
+    },
+    "minecraft:glow_ink_sac": {
+      "default": {
+        "alias": "dye_powder",
+        "index": 20
+      }
+    },
+    "minecraft:glow_squid_spawn_egg": {
+      "default": "item:spawn_egg_glow_squid"
+    },
+    "minecraft:goat_spawn_egg": {
+      "default": "item:spawn_egg_goat"
+    },
+    "minecraft:golden_apple": {
+      "default": "item:apple_golden"
+    },
+    "minecraft:golden_axe": {
+      "default": "textures/items/gold_axe"
+    },
+    "minecraft:golden_boots": {
+      "default": "textures/items/gold_boots"
+    },
+    "minecraft:golden_carrot": {
+      "default": "item:carrot_golden"
+    },
+    "minecraft:golden_chestplate": {
+      "default": "textures/items/gold_chestplate"
+    },
+    "minecraft:golden_helmet": {
+      "default": "textures/items/gold_helmet"
+    },
+    "minecraft:golden_hoe": {
+      "default": "textures/items/gold_hoe"
+    },
+    "minecraft:golden_horse_armor": {
+      "default": "textures/items/gold_horse_armor"
+    },
+    "minecraft:golden_leggings": {
+      "default": "textures/items/gold_leggings"
+    },
+    "minecraft:golden_nautilus_armor": {
+      "default": "item:gold_nautilus_armor"
+    },
+    "minecraft:golden_pickaxe": {
+      "default": "textures/items/gold_pickaxe"
+    },
+    "minecraft:golden_shovel": {
+      "default": "textures/items/gold_shovel"
+    },
+    "minecraft:golden_sword": {
+      "default": "textures/items/gold_sword"
+    },
+    "minecraft:gray_dye": {
+      "default": {
+        "alias": "dye_powder",
+        "index": 8
+      }
+    },
+    "minecraft:gray_harness": {
+      "default": "item:harness_gray"
+    },
+    "minecraft:green_dye": {
+      "default": {
+        "alias": "dye_powder",
+        "index": 2
+      }
+    },
+    "minecraft:green_harness": {
+      "default": "item:harness_green"
+    },
+    "minecraft:guardian_spawn_egg": {
+      "default": "item:spawn_egg_guardian"
+    },
+    "minecraft:happy_ghast_spawn_egg": {
+      "default": "item:spawn_egg_happy_ghast"
+    },
+    "minecraft:hoglin_spawn_egg": {
+      "default": "item:spawn_egg_hoglin"
+    },
+    "minecraft:hopper_minecart": {
+      "default": "item:minecart_hopper"
+    },
+    "minecraft:horse_spawn_egg": {
+      "default": "item:spawn_egg_horse"
+    },
+    "minecraft:husk_spawn_egg": {
+      "default": "item:spawn_egg_husk"
+    },
+    "minecraft:ink_sac": {
+      "default": {
+        "alias": "dye_powder",
+        "index": 0
+      }
+    },
+    "minecraft:iron_golem_spawn_egg": {
+      "default": "item:spawn_egg_iron_golem"
+    },
+    "minecraft:jungle_boat": {
+      "default": {
+        "alias": "boat",
+        "index": 3
+      }
+    },
+    "minecraft:jungle_sign": {
+      "default": "item:sign_jungle"
+    },
+    "minecraft:lapis_lazuli": {
+      "default": {
+        "alias": "dye_powder",
+        "index": 4
+      }
+    },
+    "minecraft:lava_bucket": {
+      "default": {
+        "alias": "bucket",
+        "index": 3
+      }
+    },
+    "minecraft:light_blue_dye": {
+      "default": {
+        "alias": "dye_powder",
+        "index": 12
+      }
+    },
+    "minecraft:light_blue_harness": {
+      "default": "item:harness_light_blue"
+    },
+    "minecraft:light_gray_dye": {
+      "default": {
+        "alias": "dye_powder",
+        "index": 7
+      }
+    },
+    "minecraft:light_gray_harness": {
+      "default": "item:harness_light_gray"
+    },
+    "minecraft:lime_dye": {
+      "default": {
+        "alias": "dye_powder",
+        "index": 10
+      }
+    },
+    "minecraft:lime_harness": {
+      "default": "item:harness_lime"
+    },
+    "minecraft:lingering_potion": {
+      "default": "item:potion_bottle_lingering",
+      "overlay": "item:potion_overlay"
+    },
+    "minecraft:llama_spawn_egg": {
+      "default": "item:spawn_egg_llama"
+    },
+    "minecraft:lodestone_compass": {
+      "default": "item:lodestonecompass_item"
+    },
+    "minecraft:magenta_dye": {
+      "default": {
+        "alias": "dye_powder",
+        "index": 13
+      }
+    },
+    "minecraft:magenta_harness": {
+      "default": "item:harness_magenta"
+    },
+    "minecraft:magma_cube_spawn_egg": {
+      "default": "item:spawn_egg_magma_cube"
+    },
+    "minecraft:melon_seeds": {
+      "default": "item:seeds_melon"
+    },
+    "minecraft:melon_slice": {
+      "default": "item:melon"
+    },
+    "minecraft:milk_bucket": {
+      "default": {
+        "alias": "bucket",
+        "index": 1
+      }
+    },
+    "minecraft:minecart": {
+      "default": "item:minecart_normal"
+    },
+    "minecraft:mooshroom_spawn_egg": {
+      "default": "item:spawn_egg_mooshroom"
+    },
+    "minecraft:mule_spawn_egg": {
+      "default": "item:spawn_egg_mule"
+    },
+    "minecraft:music_disc_11": {
+      "default": "item:record_11"
+    },
+    "minecraft:music_disc_13": {
+      "default": "item:record_13"
+    },
+    "minecraft:music_disc_5": {
+      "default": "item:record_5"
+    },
+    "minecraft:music_disc_blocks": {
+      "default": "item:record_blocks"
+    },
+    "minecraft:music_disc_bounce": {
+      "default": "item:record_bounce"
+    },
+    "minecraft:music_disc_cat": {
+      "default": "item:record_cat"
+    },
+    "minecraft:music_disc_chirp": {
+      "default": "item:record_chirp"
+    },
+    "minecraft:music_disc_creator": {
+      "default": "item:record_creator"
+    },
+    "minecraft:music_disc_creator_music_box": {
+      "default": "item:record_creator_music_box"
+    },
+    "minecraft:music_disc_far": {
+      "default": "item:record_far"
+    },
+    "minecraft:music_disc_lava_chicken": {
+      "default": "item:record_lava_chicken"
+    },
+    "minecraft:music_disc_mall": {
+      "default": "item:record_mall"
+    },
+    "minecraft:music_disc_mellohi": {
+      "default": "item:record_mellohi"
+    },
+    "minecraft:music_disc_otherside": {
+      "default": "item:record_otherside"
+    },
+    "minecraft:music_disc_pigstep": {
+      "default": "item:record_pigstep"
+    },
+    "minecraft:music_disc_precipice": {
+      "default": "item:record_precipice"
+    },
+    "minecraft:music_disc_relic": {
+      "default": "item:record_relic"
+    },
+    "minecraft:music_disc_stal": {
+      "default": "item:record_stal"
+    },
+    "minecraft:music_disc_strad": {
+      "default": "item:record_strad"
+    },
+    "minecraft:music_disc_tears": {
+      "default": "item:record_tears"
+    },
+    "minecraft:music_disc_wait": {
+      "default": "item:record_wait"
+    },
+    "minecraft:music_disc_ward": {
+      "default": "item:record_ward"
+    },
+    "minecraft:mutton": {
+      "default": "item:mutton_raw"
+    },
+    "minecraft:nautilus_spawn_egg": {
+      "default": "item:spawn_egg_nautilus"
+    },
+    "minecraft:oak_boat": {
+      "default": {
+        "alias": "boat",
+        "index": 0
+      }
+    },
+    "minecraft:oak_sign": {
+      "default": "item:sign"
+    },
+    "minecraft:ocelot_spawn_egg": {
+      "default": "item:spawn_egg_ocelot"
+    },
+    "minecraft:orange_dye": {
+      "default": {
+        "alias": "dye_powder",
+        "index": 14
+      }
+    },
+    "minecraft:orange_harness": {
+      "default": "item:harness_orange"
+    },
+    "minecraft:panda_spawn_egg": {
+      "default": "item:spawn_egg_panda"
+    },
+    "minecraft:parched_spawn_egg": {
+      "default": "item:spawn_egg_parched"
+    },
+    "minecraft:parrot_spawn_egg": {
+      "default": "item:spawn_egg_parrot"
+    },
+    "minecraft:phantom_spawn_egg": {
+      "default": "item:spawn_egg_phantom"
+    },
+    "minecraft:pig_spawn_egg": {
+      "default": "item:spawn_egg_pig"
+    },
+    "minecraft:piglin_brute_spawn_egg": {
+      "default": "item:spawn_egg_piglin_brute"
+    },
+    "minecraft:piglin_spawn_egg": {
+      "default": "item:spawn_egg_piglin"
+    },
+    "minecraft:pillager_spawn_egg": {
+      "default": "item:spawn_egg_pillager"
+    },
+    "minecraft:pink_dye": {
+      "default": {
+        "alias": "dye_powder",
+        "index": 9
+      }
+    },
+    "minecraft:pink_harness": {
+      "default": "item:harness_pink"
+    },
+    "minecraft:poisonous_potato": {
+      "default": "item:potato_poisonous"
+    },
+    "minecraft:polar_bear_spawn_egg": {
+      "default": "item:spawn_egg_polar_bear"
+    },
+    "minecraft:popped_chorus_fruit": {
+      "default": "item:chorus_fruit_popped"
+    },
+    "minecraft:porkchop": {
+      "default": "item:porkchop_raw"
+    },
+    "minecraft:potion": {
+      "default": "item:potion_bottle_drinkable",
+      "overlay": "item:potion_overlay"
+    },
+    "minecraft:powder_snow_bucket": {
+      "default": {
+        "alias": "bucket",
+        "index": 8
+      }
+    },
+    "minecraft:pufferfish_bucket": {
+      "default": {
+        "alias": "bucket",
+        "index": 7
+      }
+    },
+    "minecraft:pufferfish_spawn_egg": {
+      "default": "item:spawn_egg_pufferfish"
+    },
+    "minecraft:pumpkin_seeds": {
+      "default": "item:seeds_pumpkin"
+    },
+    "minecraft:purple_dye": {
+      "default": {
+        "alias": "dye_powder",
+        "index": 5
+      }
+    },
+    "minecraft:purple_harness": {
+      "default": "item:harness_purple"
+    },
+    "minecraft:rabbit_spawn_egg": {
+      "default": "item:spawn_egg_rabbit"
+    },
+    "minecraft:ravager_spawn_egg": {
+      "default": "item:spawn_egg_ravager"
+    },
+    "minecraft:red_dye": {
+      "default": {
+        "alias": "dye_powder",
+        "index": 1
+      }
+    },
+    "minecraft:red_harness": {
+      "default": "item:harness_red"
+    },
+    "minecraft:redstone": {
+      "default": "item:redstone_dust"
+    },
+    "minecraft:salmon_bucket": {
+      "default": {
+        "alias": "bucket",
+        "index": 5
+      }
+    },
+    "minecraft:salmon_spawn_egg": {
+      "default": "item:spawn_egg_salmon"
+    },
+    "minecraft:sheep_spawn_egg": {
+      "default": "item:spawn_egg_sheep"
+    },
+    "minecraft:shulker_spawn_egg": {
+      "default": "item:spawn_egg_shulker"
+    },
+    "minecraft:silverfish_spawn_egg": {
+      "default": "item:spawn_egg_silverfish"
+    },
+    "minecraft:skeleton_horse_spawn_egg": {
+      "default": "item:spawn_egg_skeleton_horse"
+    },
+    "minecraft:skeleton_spawn_egg": {
+      "default": "item:spawn_egg_skeleton"
+    },
+    "minecraft:slime_ball": {
+      "default": "item:slimeball"
+    },
+    "minecraft:slime_spawn_egg": {
+      "default": "item:spawn_egg_slime"
+    },
+    "minecraft:sniffer_spawn_egg": {
+      "default": "item:spawn_egg_sniffer"
+    },
+    "minecraft:snow_golem_spawn_egg": {
+      "default": "item:spawn_egg_snow_golem"
+    },
+    "minecraft:spider_spawn_egg": {
+      "default": "item:spawn_egg_spider"
+    },
+    "minecraft:splash_potion": {
+      "default": "item:potion_bottle_splash",
+      "overlay": "item:potion_overlay"
+    },
+    "minecraft:spruce_boat": {
+      "default": {
+        "alias": "boat",
+        "index": 1
+      }
+    },
+    "minecraft:spruce_sign": {
+      "default": "item:sign_spruce"
+    },
+    "minecraft:squid_spawn_egg": {
+      "default": "item:spawn_egg_squid"
+    },
+    "minecraft:stray_spawn_egg": {
+      "default": "item:spawn_egg_stray"
+    },
+    "minecraft:strider_spawn_egg": {
+      "default": "item:spawn_egg_strider"
+    },
+    "minecraft:sugar_cane": {
+      "default": "item:reeds"
+    },
+    "minecraft:sulfur_cube_bucket": {
+      "default": {
+        "alias": "bucket",
+        "index": 11
+      }
+    },
+    "minecraft:sulfur_cube_spawn_egg": {
+      "default": "item:spawn_egg_sulfur_cube"
+    },
+    "minecraft:tadpole_bucket": {
+      "default": {
+        "alias": "bucket",
+        "index": 10
+      }
+    },
+    "minecraft:tadpole_spawn_egg": {
+      "default": "item:spawn_egg_tadpole"
+    },
+    "minecraft:tnt_minecart": {
+      "default": "item:minecart_tnt"
+    },
+    "minecraft:totem_of_undying": {
+      "default": "item:totem"
+    },
+    "minecraft:trader_llama_spawn_egg": {
+      "default": "item:spawn_egg_trader_llama"
+    },
+    "minecraft:tropical_fish": {
+      "default": "item:clownfish"
+    },
+    "minecraft:tropical_fish_bucket": {
+      "default": {
+        "alias": "bucket",
+        "index": 6
+      }
+    },
+    "minecraft:tropical_fish_spawn_egg": {
+      "default": "item:spawn_egg_tropicalfish"
+    },
+    "minecraft:turtle_spawn_egg": {
+      "default": "item:spawn_egg_turtle"
+    },
+    "minecraft:vex_spawn_egg": {
+      "default": "item:spawn_egg_vex"
+    },
+    "minecraft:villager_spawn_egg": {
+      "default": "item:spawn_egg_villager"
+    },
+    "minecraft:vindicator_spawn_egg": {
+      "default": "item:spawn_egg_vindicator"
+    },
+    "minecraft:wandering_trader_spawn_egg": {
+      "default": "item:spawn_egg_wandering_trader"
+    },
+    "minecraft:warden_spawn_egg": {
+      "default": "item:spawn_egg_warden"
+    },
+    "minecraft:warped_sign": {
+      "default": "item:warped_sign_item"
+    },
+    "minecraft:water_bucket": {
+      "default": {
+        "alias": "bucket",
+        "index": 2
+      }
+    },
+    "minecraft:wheat_seeds": {
+      "default": "item:seeds_wheat"
+    },
+    "minecraft:white_dye": {
+      "default": {
+        "alias": "dye_powder",
+        "index": 19
+      }
+    },
+    "minecraft:white_harness": {
+      "default": "item:harness_white"
+    },
+    "minecraft:witch_spawn_egg": {
+      "default": "item:spawn_egg_witch"
+    },
+    "minecraft:wither_skeleton_spawn_egg": {
+      "default": "item:spawn_egg_wither_skeleton"
+    },
+    "minecraft:wither_spawn_egg": {
+      "default": "item:spawn_egg_wither"
+    },
+    "minecraft:wolf_spawn_egg": {
+      "default": "item:spawn_egg_wolf"
+    },
+    "minecraft:wooden_axe": {
+      "default": "textures/items/wood_axe"
+    },
+    "minecraft:wooden_hoe": {
+      "default": "textures/items/wood_hoe"
+    },
+    "minecraft:wooden_pickaxe": {
+      "default": "textures/items/wood_pickaxe"
+    },
+    "minecraft:wooden_shovel": {
+      "default": "textures/items/wood_shovel"
+    },
+    "minecraft:wooden_sword": {
+      "default": "textures/items/wood_sword"
+    },
+    "minecraft:writable_book": {
+      "default": "item:book_writable"
+    },
+    "minecraft:yellow_dye": {
+      "default": {
+        "alias": "dye_powder",
+        "index": 11
+      }
+    },
+    "minecraft:yellow_harness": {
+      "default": "item:harness_yellow"
+    },
+    "minecraft:zoglin_spawn_egg": {
+      "default": "item:spawn_egg_zoglin"
+    },
+    "minecraft:zombie_horse_spawn_egg": {
+      "default": "item:spawn_egg_zombie_horse"
+    },
+    "minecraft:zombie_nautilus_spawn_egg": {
+      "default": "item:spawn_egg_zombie_nautilus"
+    },
+    "minecraft:zombie_pigman_spawn_egg": {
+      "default": "item:spawn_egg_zombified_piglin"
+    },
+    "minecraft:zombie_spawn_egg": {
+      "default": "item:spawn_egg_zombie"
+    },
+    "minecraft:zombie_villager_spawn_egg": {
+      "default": "item:spawn_egg_zombie_villager"
+    }
+  }
+}
