@@ -1,4 +1,12 @@
 {
+  "26.50.4": {
+    "samplesTag": "v1.26.50.4",
+    "samplesSha256": "c0b6151f5f9a0c31ebe3c909dfc82d97f12473ed2c6e039aa7e22d667042026c"
+  },
+  "26.60.5": {
+    "samplesTag": "v1.26.60.5",
+    "samplesSha256": "d93dea9aa1fb241a3184cc9f9a074a2ff34bd1b3c00d859b09c24b4b9e4e9adf"
+  },
   "26.60.30-preview": {
     "samplesTag": "v1.26.60.30-preview",
     "samplesSha256": "b7e66ccb64370d345d898ac92cf5a524866657d5aad6ff2655ce1dc6a8d102b9",
