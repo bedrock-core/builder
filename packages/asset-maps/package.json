@@ -36,7 +36,7 @@
   "devDependencies": {
     "@bedrock-core/bedrock-types": "workspace:*",
     "@bedrock-core/builder-bundler": "workspace:*",
-    "@types/node": "25.9.9",
+    "@types/node": "25.9.12",
     "jsonc-parser": "3.3.1"
   },
   "publishConfig": {

@@ -27,12 +27,12 @@
     "audit": "node src/audit.ts"
   },
   "devDependencies": {
-    "@types/node": "25.9.9",
+    "@types/node": "25.9.12",
     "json-schema-to-typescript": "15.0.4",
     "jsonc-parser": "3.3.1",
     "prettier": "^3.2.5",
     "typescript": "5.9.3",
-    "typescript-native": "npm:typescript@7.1.0-beta",
+    "typescript-native": "npm:typescript@7.1.0-dev.20261127.1",
     "yauzl": "3.4.0"
   },
   "publishConfig": {

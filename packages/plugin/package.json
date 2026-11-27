@@ -10,7 +10,7 @@
     "node": ">=26.13.0"
   },
   "dependencies": {
-    "esbuild": "0.25.12"
+    "esbuild": "0.28.2"
   },
   "license": "MIT",
   "files": [
